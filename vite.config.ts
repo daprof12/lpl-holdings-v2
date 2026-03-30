@@ -6,15 +6,16 @@ import fs from 'fs';
 
 // Plugin to resolve figma:asset/* imports to a placeholder
 function figmaAssetPlugin() {
+    const virtualPrefix = '\0figma:asset/';
     return {
         name: 'figma-asset-resolver',
         resolveId(source: string) {
             if (source.startsWith('figma:asset/')) {
-                return source; // Mark as resolved
+                return virtualPrefix + source.slice('figma:asset/'.length); 
             }
         },
         load(id: string) {
-            if (id.startsWith('figma:asset/')) {
+            if (id.startsWith(virtualPrefix)) {
                 // Return a transparent 1x1 pixel PNG as data URL
                 return `export default "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="`;
             }

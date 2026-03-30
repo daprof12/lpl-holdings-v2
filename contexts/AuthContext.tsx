@@ -164,18 +164,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       localStorage.setItem('gross_passwords', JSON.stringify(passwords));
     }
 
-    if (storedCurrentUser) {
-      const parsedCurrentUser = JSON.parse(storedCurrentUser);
-      // Migrate current user if needed
-      const migratedCurrentUser = {
-        ...parsedCurrentUser,
-        liveBalance: parsedCurrentUser.liveBalance ?? 0,
-        paperBalance: parsedCurrentUser.paperBalance ?? (parsedCurrentUser.balance || 0),
-      };
-      setCurrentUser(migratedCurrentUser);
-      localStorage.setItem('gross_current_user', JSON.stringify(migratedCurrentUser));
+    if (storedCurrentUser || sessionStorage.getItem('gross_current_user')) {
+      const parsedCurrentUser = JSON.parse(
+        sessionStorage.getItem('gross_current_user') || storedCurrentUser || 'null'
+      );
+      if (parsedCurrentUser) {
+        // Migrate current user if needed
+        const migratedCurrentUser = {
+          ...parsedCurrentUser,
+          liveBalance: parsedCurrentUser.liveBalance ?? 0,
+          paperBalance: parsedCurrentUser.paperBalance ?? (parsedCurrentUser.balance || 0),
+        };
+        setCurrentUser(migratedCurrentUser);
+        sessionStorage.setItem('gross_current_user', JSON.stringify(migratedCurrentUser));
+      }
     }
-
+    
     if (storedActivities) {
       setUserActivities(JSON.parse(storedActivities));
     }
@@ -191,6 +195,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     setIsHydrated(true);
+
+    // ── Login As User support ──────────────────────────────────────────
+    // If the admin initiated a "Login As User" session, override the currentUser
+    const adminLoginAsUser = localStorage.getItem('adminLoginAsUser');
+    if (adminLoginAsUser) {
+      try {
+        const { userId } = JSON.parse(adminLoginAsUser);
+        const storedUsers = localStorage.getItem('gross_users');
+        if (storedUsers) {
+          const allUsers = JSON.parse(storedUsers);
+          const targetUser = allUsers.find((u: any) => u.id === userId);
+          if (targetUser) {
+            console.log('🔑 Initializing isolated session as user:', targetUser.email);
+            // Mark this tab as isolated BEFORE setting currentUser
+            sessionStorage.setItem('gross_current_user_isolated', 'true');
+            sessionStorage.setItem('gross_current_user', JSON.stringify(targetUser));
+            setCurrentUser(targetUser);
+            
+            // Clear the bridge key
+            localStorage.removeItem('adminLoginAsUser');
+          }
+        }
+      } catch (error) {
+        console.error('Failed to process Login As User:', error);
+      }
+    }
   }, []);
 
   // Listen for external updates to users/notifications (e.g., from TransactionProvider)
@@ -232,21 +262,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Cross-tab sync via storage event (fires when another tab modifies localStorage)
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
+      // If this tab is isolated (e.g., an admin "Logged in as User"), 
+      // we must ignore identity changes from other tabs to avoid being 
+      // forcefully logged back in as the main account (admin).
+      const isIsolated = sessionStorage.getItem('gross_current_user_isolated') === 'true';
+
       if (e.key === 'gross_users' && e.newValue) {
         try {
           const parsedUsers = JSON.parse(e.newValue);
           setUsers(parsedUsers);
-          // Update currentUser if logged in
-          const storedCurrentUser = localStorage.getItem('gross_current_user');
-          if (storedCurrentUser) {
-            const currentId = JSON.parse(storedCurrentUser).id;
-            const updatedUser = parsedUsers.find((u: UserProfile) => u.id === currentId);
+          
+          // Refresh the currentUser object from the updated users list, but keep the current ID
+          const activeUser = currentUser || (isIsolated ? JSON.parse(sessionStorage.getItem('gross_current_user') || 'null') : null);
+          
+          if (activeUser) {
+            const updatedUser = parsedUsers.find((u: UserProfile) => u.id === activeUser.id);
             if (updatedUser) {
               setCurrentUser(updatedUser);
             }
           }
         } catch (error) {
           console.error('Cross-tab users sync failed:', error);
+        }
+      }
+
+      // ONLY sync current user across tabs if we are NOT in an isolated session
+      if (!isIsolated && e.key === 'gross_current_user' && e.newValue) {
+        try {
+          const newUser = JSON.parse(e.newValue);
+          if (newUser && (!currentUser || newUser.id !== currentUser.id)) {
+            setCurrentUser(newUser);
+          } else if (!newUser) {
+            setCurrentUser(null);
+          }
+        } catch (error) {
+          console.error('Cross-tab current user sync failed:', error);
         }
       }
       if (e.key === 'gross_notifications' && e.newValue) {
@@ -287,8 +337,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem('gross_current_user', JSON.stringify(currentUser));
+      const userJson = JSON.stringify(currentUser);
+      sessionStorage.setItem('gross_current_user', userJson);
+      
+      // Only persist to localStorage if it's NOT an isolated session
+      const isIsolated = sessionStorage.getItem('gross_current_user_isolated') === 'true';
+      if (!isIsolated) {
+        localStorage.setItem('gross_current_user', userJson);
+      }
     } else {
+      sessionStorage.removeItem('gross_current_user');
+      sessionStorage.removeItem('gross_current_user_isolated');
       localStorage.removeItem('gross_current_user');
     }
   }, [currentUser]);
@@ -382,6 +441,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (storedPasswords[email] && storedPasswords[email] === password) {
       const user = storedUsers.find((u: UserProfile) => u.email === email);
       if (user) {
+        // Clear any isolated marker on explicit login
+        sessionStorage.removeItem('gross_current_user_isolated');
         setCurrentUser(user);
 
         // Capture real device/browser info
@@ -559,6 +620,58 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setCurrentUser(prev => prev ? { ...prev, ...updates } : null);
     }
 
+    // ── Sync with TradingContext's localStorage entries ──────────────────
+    // If liveBalance or paperBalance is being updated, sync those specifically
+    if (Object.prototype.hasOwnProperty.call(updates, 'liveBalance')) {
+      const storageKey = `gross_live_account_${userId}`;
+      const fallbackKey = 'gross_live_account';
+      const amount = updates.liveBalance as number;
+
+      try {
+        const stored = localStorage.getItem(storageKey) || localStorage.getItem(fallbackKey);
+        const tradingAccount = stored
+          ? JSON.parse(stored)
+          : { balance: 0, equity: 0, realizedPnL: 0, unrealizedPnL: 0, margin: 0, availableFunds: 0, bonus: 0 };
+
+        tradingAccount.balance = amount;
+        // Adjust equity by the same difference to preserve unrealized PnL logic if possible, 
+        // but simple balance update usually resets or recalibrates equity in these systems.
+        tradingAccount.equity = tradingAccount.equity + (amount - (tradingAccount.balance_old || tradingAccount.balance));
+        tradingAccount.availableFunds = tradingAccount.equity - (tradingAccount.margin || 0);
+        tradingAccount.balance = amount;
+
+        localStorage.setItem(storageKey, JSON.stringify(tradingAccount));
+        localStorage.setItem(fallbackKey, JSON.stringify(tradingAccount));
+        window.dispatchEvent(new Event('storage'));
+      } catch (e) {
+        console.error('Failed to sync live balance update:', e);
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, 'paperBalance')) {
+      const storageKey = `gross_paper_account_${userId}`;
+      const fallbackKey = 'gross_paper_account';
+      const amount = updates.paperBalance as number;
+
+      try {
+        const stored = localStorage.getItem(storageKey) || localStorage.getItem(fallbackKey);
+        const tradingAccount = stored
+          ? JSON.parse(stored)
+          : { balance: 0, equity: 0, realizedPnL: 0, unrealizedPnL: 0, margin: 0, availableFunds: 0, bonus: 0 };
+
+        tradingAccount.balance = amount;
+        tradingAccount.equity = tradingAccount.equity + (amount - (tradingAccount.balance_old || tradingAccount.balance));
+        tradingAccount.availableFunds = tradingAccount.equity - (tradingAccount.margin || 0);
+        tradingAccount.balance = amount;
+
+        localStorage.setItem(storageKey, JSON.stringify(tradingAccount));
+        localStorage.setItem(fallbackKey, JSON.stringify(tradingAccount));
+        window.dispatchEvent(new Event('storage'));
+      } catch (e) {
+        console.error('Failed to sync paper balance update:', e);
+      }
+    }
+
     // Log activity
     const activity: UserActivity = {
       id: `activity-${Date.now()}`,
@@ -715,6 +828,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
     }
 
+    // ── Sync with TradingContext's localStorage entries ──────────────────
+    // TradingContext reads from gross_live_account_{userId} / gross_paper_account_{userId}
+    // so we must update those in parallel for the user's WalletPage to reflect the change.
+    const storageKey = accountType === 'live'
+      ? `gross_live_account_${userId}`
+      : `gross_paper_account_${userId}`;
+    const fallbackKey = accountType === 'live' ? 'gross_live_account' : 'gross_paper_account';
+
+    try {
+      const stored = localStorage.getItem(storageKey) || localStorage.getItem(fallbackKey);
+      const tradingAccount = stored
+        ? JSON.parse(stored)
+        : { balance: 0, equity: 0, realizedPnL: 0, unrealizedPnL: 0, margin: 0, availableFunds: 0, bonus: 0 };
+
+      tradingAccount.balance = (tradingAccount.balance || 0) + amount;
+      tradingAccount.equity = (tradingAccount.equity || 0) + amount;
+      tradingAccount.availableFunds = (tradingAccount.availableFunds || 0) + amount;
+      if (type === 'bonus') {
+        tradingAccount.bonus = (tradingAccount.bonus || 0) + amount;
+      }
+
+      localStorage.setItem(storageKey, JSON.stringify(tradingAccount));
+      localStorage.setItem(fallbackKey, JSON.stringify(tradingAccount));
+
+      // Dispatch storage event so TradingContext picks up the change in real-time
+      window.dispatchEvent(new Event('storage'));
+    } catch (error) {
+      console.error('Failed to sync trading account:', error);
+    }
+
     // Log activity
     const activity: UserActivity = {
       id: `activity-${Date.now()}`,
@@ -759,6 +902,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           return { ...prev, paperBalance: (prev.paperBalance || 0) - amount };
         }
       });
+    }
+
+    // ── Sync with TradingContext's localStorage entries ──────────────────
+    const storageKey = accountType === 'live'
+      ? `gross_live_account_${userId}`
+      : `gross_paper_account_${userId}`;
+    const fallbackKey = accountType === 'live' ? 'gross_live_account' : 'gross_paper_account';
+
+    try {
+      const stored = localStorage.getItem(storageKey) || localStorage.getItem(fallbackKey);
+      if (stored) {
+        const tradingAccount = JSON.parse(stored);
+        tradingAccount.balance = Math.max(0, (tradingAccount.balance || 0) - amount);
+        tradingAccount.equity = Math.max(0, (tradingAccount.equity || 0) - amount);
+        tradingAccount.availableFunds = Math.max(0, (tradingAccount.availableFunds || 0) - amount);
+
+        localStorage.setItem(storageKey, JSON.stringify(tradingAccount));
+        localStorage.setItem(fallbackKey, JSON.stringify(tradingAccount));
+
+        // Dispatch storage event so TradingContext picks up the change in real-time
+        window.dispatchEvent(new Event('storage'));
+      }
+    } catch (error) {
+      console.error('Failed to sync trading account deduction:', error);
     }
 
     // Log activity

@@ -1,8 +1,15 @@
+import { useState, useEffect, useMemo } from 'react';
 import { useTrading } from '../../contexts/TradingContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import { formatCurrency } from '../../utils/formatNumber';
 import { useTransactions } from '../../contexts/TransactionProvider';
+import DashboardLayout from '../layouts/DashboardLayout';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import { Wallet, CheckCircle, ArrowDownCircle, ArrowUpCircle, Clock, Briefcase } from 'lucide-react';
+import DepositTab from './DepositTab';
+import WithdrawTab from './WithdrawTab';
+import TransactionHistory from './TransactionHistory';
 
 export default function WalletPage() {
   const { account, positions, orders, tradingMode, liveAccount } = useTrading();

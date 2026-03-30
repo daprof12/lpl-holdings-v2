@@ -122,8 +122,21 @@ export default function UserManagement() {
             subscriptionPlan: addUserForm.subscription || undefined,
           };
           if (addUserForm.initialBalance && parseFloat(addUserForm.initialBalance) > 0) {
-            updates.balance = parseFloat(addUserForm.initialBalance);
-            updates.liveBalance = parseFloat(addUserForm.initialBalance);
+            const initBal = parseFloat(addUserForm.initialBalance);
+            updates.balance = initBal;
+            updates.liveBalance = initBal;
+            // Also create the TradingContext trading account entry so WalletPage sees the balance
+            const tradingAccount = {
+              balance: initBal,
+              equity: initBal,
+              realizedPnL: 0,
+              unrealizedPnL: 0,
+              margin: 0,
+              availableFunds: initBal,
+              bonus: 0,
+            };
+            localStorage.setItem(`gross_live_account_${newUser.id}`, JSON.stringify(tradingAccount));
+            localStorage.setItem('gross_live_account', JSON.stringify(tradingAccount));
           }
           // Set initial portfolio balance if provided
           if (addUserForm.initialPortfolioBalance && parseFloat(addUserForm.initialPortfolioBalance) > 0) {
@@ -296,23 +309,6 @@ export default function UserManagement() {
       addFundsToAccount(selectedUserId, amount, 'live', addFundData.type);
       balanceLabel = 'Live Balance';
       
-      // Write to per-user key unconditionally (create if not yet present)
-      const liveAccountKey = `gross_live_account_${selectedUserId}`;
-      const storedAccount = localStorage.getItem(liveAccountKey);
-      const account = storedAccount
-        ? JSON.parse(storedAccount)
-        : { balance: 0, equity: 0, realizedPnL: 0, unrealizedPnL: 0, margin: 0, availableFunds: 0, bonus: 0 };
-
-      account.balance = (account.balance || 0) + amount;
-      account.equity = (account.equity || 0) + amount;
-      account.availableFunds = (account.availableFunds || 0) + amount;
-      if (addFundData.type === 'bonus') {
-        account.bonus = (account.bonus || 0) + amount;
-      }
-      // Write both the per-user key (read by TradingContext) and the generic key
-      // (kept in sync as a fallback for the storage-event listener)
-      localStorage.setItem(liveAccountKey, JSON.stringify(account));
-      localStorage.setItem('gross_live_account', JSON.stringify(account));
       // Dispatch storage event so the user's tab reacts immediately
       window.dispatchEvent(new Event('storage'));
       

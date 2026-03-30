@@ -364,17 +364,17 @@ export function TradingProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     const loadUserData = async () => {
-      if (auth.user && auth.user.id) {
-        console.log('🔄 Loading trading data for user:', auth.user.id);
+      if (auth.currentUser && auth.currentUser.id) {
+        console.log('🔄 Loading trading data for user:', auth.currentUser.id);
         
         // Fetch live positions from database
-        const dbPositions = await fetchPositionsFromDatabase(auth.user.id);
+        const dbPositions = await fetchPositionsFromDatabase(auth.currentUser.id);
         if (dbPositions.length > 0) {
           setLivePositions(dbPositions);
         }
 
         // Fetch trade history from database
-        const dbHistory = await fetchTradeHistoryFromDatabase(auth.user.id);
+        const dbHistory = await fetchTradeHistoryFromDatabase(auth.currentUser.id);
         if (dbHistory.length > 0) {
           setLiveHistory(dbHistory);
         }
@@ -382,7 +382,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     };
 
     loadUserData();
-  }, [auth.user?.id]);
+  }, [auth.currentUser?.id]);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -491,16 +491,32 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
   // Listen for storage events to sync balance changes from admin in real-time
   useEffect(() => {
-    const handleStorageChange = () => {
+    const handleStorageChange = (e?: StorageEvent) => {
+      // If this is a real storage event, we can filter for specific keys to avoid unnecessary re-renders
+      if (e && e.key && !e.key.startsWith('gross_live_account') && !e.key.startsWith('gross_paper_account')) {
+        return;
+      }
+
+      console.log('📬 Storage event received in TradingContext');
       const userId = auth.currentUser?.id;
       // Prefer per-user key, fall back to generic key
-      const raw =
-        (userId && localStorage.getItem(`gross_live_account_${userId}`)) ||
-        localStorage.getItem('gross_live_account');
-      if (raw) {
+      const liveKey = userId ? `gross_live_account_${userId}` : 'gross_live_account';
+      const paperKey = userId ? `gross_paper_account_${userId}` : 'gross_paper_account';
+
+      const rawLive = localStorage.getItem(liveKey) || localStorage.getItem('gross_live_account');
+      if (rawLive) {
         try {
-          setLiveAccount(JSON.parse(raw));
+          const parsed = JSON.parse(rawLive);
+          setLiveAccount(parsed);
           isLiveAccountHydrated.current = true;
+          console.log(`✅ Live balance synced: $${parsed.balance}`);
+        } catch { /* ignore */ }
+      }
+
+      const rawPaper = localStorage.getItem(paperKey) || localStorage.getItem('gross_paper_account');
+      if (rawPaper) {
+        try {
+          setPaperAccount(JSON.parse(rawPaper));
         } catch { /* ignore */ }
       }
     };

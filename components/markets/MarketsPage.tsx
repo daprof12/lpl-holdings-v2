@@ -1,9 +1,12 @@
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { useNavigate } from 'react-router-dom';
 import { useMarketData } from '../../contexts/MarketDataContext';
 import DashboardLayout from '../layouts/DashboardLayout';
 import { formatPercentage } from '../../utils/formatNumber';
+import { Star, Search, TrendingUp, TrendingDown, BarChart2, List } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface Asset {
   symbol: string;

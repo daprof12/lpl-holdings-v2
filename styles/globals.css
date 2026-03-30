@@ -424,9 +424,9 @@ html:not(.dark) *::-webkit-scrollbar-thumb {
 /* ── 1. Secondary/muted text colour used throughout marketing pages ──── */
 /*    #b0b7bf is designed for near-black backgrounds; on white it is      */
 /*    nearly invisible → remap to a readable mid-gray.                    */
-html:not(.dark) .text-\[#b0b7bf\]       { color: #6b7280 !important; }
-html:not(.dark) .text-\[#98a4b3\]       { color: #6b7280 !important; }
-html:not(.dark) .text-\[#8899aa\]       { color: #6b7280 !important; }
+html:not(.dark) .text-\[\#b0b7bf\]       { color: #6b7280 !important; }
+html:not(.dark) .text-\[\#98a4b3\]       { color: #6b7280 !important; }
+html:not(.dark) .text-\[\#8899aa\]       { color: #6b7280 !important; }
 
 /* ── 2. White text/icons inside gradient containers → keep white ──────── */
 /*    Gradient backgrounds stay coloured in light mode, so white text is  */
@@ -435,14 +435,14 @@ html:not(.dark) .text-\[#8899aa\]       { color: #6b7280 !important; }
 html:not(.dark) [class*="bg-gradient"] .text-white { color: #ffffff !important; }
 
 /* ── 3. White icons inside solid brand-colour boxes → keep white ──────── */
-html:not(.dark) .bg-\[#25AABE\] .text-white,
-html:not(.dark) .bg-\[#0e88ad\] .text-white,
-html:not(.dark) .bg-\[#1fa5ca\] .text-white,
-html:not(.dark) .bg-\[#34e834\] .text-white,
-html:not(.dark) .bg-\[#74d848\] .text-white,
-html:not(.dark) .bg-\[#6949d1\] .text-white,
-html:not(.dark) .bg-\[#8b5cf6\] .text-white,
-html:not(.dark) .bg-\[#2aa77b\] .text-white { color: #ffffff !important; }
+html:not(.dark) .bg-\[\#25AABE\] .text-white,
+html:not(.dark) .bg-\[\#0e88ad\] .text-white,
+html:not(.dark) .bg-\[\#1fa5ca\] .text-white,
+html:not(.dark) .bg-\[\#34e834\] .text-white,
+html:not(.dark) .bg-\[\#74d848\] .text-white,
+html:not(.dark) .bg-\[\#6949d1\] .text-white,
+html:not(.dark) .bg-\[\#8b5cf6\] .text-white,
+html:not(.dark) .bg-\[\#2aa77b\] .text-white { color: #ffffff !important; }
 
 /* Also handle Tailwind named-colour icon boxes */
 html:not(.dark) .bg-green-500 .text-white,
@@ -465,8 +465,8 @@ html:not(.dark) .border-white { border-color: #374151 !important; }
 /* ── 6. Outlined ghost buttons (border only, no bg) ─────────────────── */
 /*    "border border-gray-700 text-white" buttons are already handled by  */
 /*    the general text-white rule, but ensure hover keeps them legible.   */
-html:not(.dark) .hover\:border-\[#1fa5ca\]:hover { border-color: #0e88ad !important; }
+html:not(.dark) .hover\:border-\[\#1fa5ca\]:hover { border-color: #0e88ad !important; }
 
 /* ── 7. Inline text-white inside dark card wrappers (non-remapped ones) ─ */
-html:not(.dark) .bg-\[#1f1f24\] .text-white,
-html:not(.dark) .bg-\[#111115\] .text-white { color: #111827 !important; }
+html:not(.dark) .bg-\[\#1f1f24\] .text-white,
+html:not(.dark) .bg-\[\#111115\] .text-white { color: #111827 !important; }
