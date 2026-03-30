@@ -1,0 +1,472 @@
+@import "tailwindcss";
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-size: 16px;
+  --background: #ffffff;
+  --foreground: oklch(0.145 0 0);
+  --card: #ffffff;
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: #030213;
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.95 0.0058 264.53);
+  --secondary-foreground: #030213;
+  --muted: #ececf0;
+  --muted-foreground: #717182;
+  --accent: #e9ebef;
+  --accent-foreground: #030213;
+  --destructive: #d4183d;
+  --destructive-foreground: #ffffff;
+  --border: rgba(0, 0, 0, 0.1);
+  --input: transparent;
+  --input-background: #f3f3f5;
+  --switch-background: #cbced4;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: #030213;
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.145 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --ring: oklch(0.439 0 0);
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.269 0 0);
+  --sidebar-ring: oklch(0.439 0 0);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/**
+ * Base typography. This is not applied to elements which have an ancestor with a Tailwind text class.
+ */
+@layer base {
+  :where(:not(:has([class*=' text-']), :not(:has([class^='text-'])))) {
+    h1 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h2 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h3 {
+      font-size: var(--text-lg);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h4 {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    p {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-normal);
+      line-height: 1.5;
+    }
+
+    label {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    button {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    input {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-normal);
+      line-height: 1.5;
+    }
+  }
+}
+
+html {
+  font-size: var(--font-size);
+}
+
+/* Ultra-thin scrollbar styles - Default for entire app */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 2px;
+  height: 2px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
+  border-radius: 10px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.5);
+}
+
+/* Dark mode scrollbar */
+.dark * {
+  scrollbar-color: rgba(71, 85, 105, 0.3) transparent;
+}
+
+.dark *::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.3);
+}
+
+.dark *::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 0.5);
+}
+
+/* Remove the old scrollbar-ultra-thin class as it's now default */
+
+/* Hide scrollbar utility class */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LIGHT MODE OVERRIDES
+   Applied when the .dark class is removed from <html> (light theme active).
+   Remaps every hardcoded dark hex colour to its light-mode equivalent so
+   the landing / marketing pages, user dashboard and admin panel all look
+   correct in both themes.
+═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Header (inline-style background handled in Header.tsx via theme prop)
+   – nav link text must be dark on a white header ─────────────────────── */
+html:not(.dark) header .text-white,
+html:not(.dark) header .text-gray-300,
+html:not(.dark) header .text-gray-400 {
+  color: #1f2937 !important;
+}
+/* Submenu items: restore light text on hover (hover bg is dark slate-800) */
+html:not(.dark) header a.hover\:bg-slate-800:hover,
+html:not(.dark) header .group:hover .text-white {
+  color: #ffffff !important;
+}
+html:not(.dark) header .hover\:bg-white\/10:hover {
+  background-color: #f3f4f6 !important;
+}
+html:not(.dark) header .border-slate-800 {
+  border-color: #e5e7eb !important;
+}
+html:not(.dark) header .border-slate-700 {
+  border-color: #d1d5db !important;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────── */
+html:not(.dark) footer.bg-\[\#08080a\],
+html:not(.dark) footer {
+  background-color: #f1f5f9 !important;
+  border-color: #e5e7eb !important;
+}
+html:not(.dark) footer .text-white    { color: #111827 !important; }
+html:not(.dark) footer .text-gray-400 { color: #4b5563 !important; }
+html:not(.dark) footer .border-gray-800 { border-color: #e5e7eb !important; }
+html:not(.dark) footer .bg-slate-900  { background-color: #e2e8f0 !important; }
+html:not(.dark) footer .border-slate-800 { border-color: #e5e7eb !important; }
+
+/* ── Page-level dark wrappers ────────────────────────────────────────── */
+html:not(.dark) .bg-\[\#08080a\]  { background-color: #ffffff !important; }
+html:not(.dark) .bg-\[\#050505\]  { background-color: #ffffff !important; }
+html:not(.dark) .bg-\[\#0d0d0f\]  { background-color: #ffffff !important; }
+
+/* ── Section alternating backgrounds ─────────────────────────────────── */
+html:not(.dark) .bg-\[\#111114\]  { background-color: #f1f5f9 !important; }
+html:not(.dark) .bg-\[\#111115\]  { background-color: #f1f5f9 !important; }
+html:not(.dark) .bg-\[\#0b0b0d\]  { background-color: #f1f5f9 !important; }
+html:not(.dark) .bg-\[\#0e0e10\]  { background-color: #f1f5f9 !important; }
+html:not(.dark) .bg-\[\#0e0f10\]  { background-color: #f1f5f9 !important; }
+html:not(.dark) .bg-\[\#0c0c0f\]  { background-color: #f0f4f8 !important; }
+
+/* ── Card / component backgrounds ─────────────────────────────────────── */
+html:not(.dark) .bg-\[\#18181c\]  { background-color: #e8edf2 !important; }
+html:not(.dark) .bg-\[\#1a1a1d\]  { background-color: #e8edf2 !important; }
+html:not(.dark) .bg-\[\#1a1a1e\]  { background-color: #e8edf2 !important; }
+html:not(.dark) .bg-\[\#1f1f24\]  { background-color: #e8edf2 !important; }
+
+/* ── Darker interactive / hover backgrounds ──────────────────────────── */
+html:not(.dark) .bg-\[\#2b2b31\]  { background-color: #dce2e8 !important; }
+html:not(.dark) .bg-\[\#2c2c33\]  { background-color: #dce2e8 !important; }
+html:not(.dark) .bg-\[\#34343d\]  { background-color: #d1d5db !important; }
+html:not(.dark) .bg-\[\#35353b\]  { background-color: #d1d5db !important; }
+html:not(.dark) .bg-\[\#353540\]  { background-color: #d1d5db !important; }
+html:not(.dark) .bg-\[\#3a3a42\]  { background-color: #c5ccd4 !important; }
+
+/* ── Hover overrides for the same dark shades ────────────────────────── */
+html:not(.dark) .hover\:bg-\[\#1a1a1d\]:hover { background-color: #dce2e8 !important; }
+html:not(.dark) .hover\:bg-\[\#35353b\]:hover  { background-color: #c5ccd4 !important; }
+html:not(.dark) .hover\:bg-\[\#353540\]:hover  { background-color: #c5ccd4 !important; }
+html:not(.dark) .hover\:bg-\[\#3a3a42\]:hover  { background-color: #b9c0c9 !important; }
+html:not(.dark) .hover\:bg-\[\#111\]:hover     { background-color: #e5e7eb !important; }
+
+/* ── FAQPage / accordion backgrounds ─────────────────────────────────── */
+html:not(.dark) .bg-black        { background-color: #f1f5f9 !important; }
+html:not(.dark) .hover\:bg-\[\#111\]:hover { background-color: #e5e7eb !important; }
+
+/* ── Text colours: generic dark-page white/light text → dark ─────────── */
+html:not(.dark) .text-white   { color: #111827 !important; }
+html:not(.dark) .text-gray-300 { color: #374151 !important; }
+html:not(.dark) .text-gray-400 { color: #4b5563 !important; }
+
+/* ── Restore white text on coloured brand buttons / badges ───────────── */
+/* Gradient CTA buttons */
+html:not(.dark) [class*="from-"][class*="text-white"],
+html:not(.dark) [class*="bg-gradient"][class*="text-white"] {
+  color: #ffffff !important;
+}
+/* Specific solid-colour buttons/badges that must stay white */
+html:not(.dark) .bg-\[\#34e834\].text-white,
+html:not(.dark) .bg-\[\#22c55e\].text-white,
+html:not(.dark) .bg-\[\#16a34a\].text-white,
+html:not(.dark) .bg-\[\#00B67A\].text-white,
+html:not(.dark) .bg-blue-600.text-white,
+html:not(.dark) .bg-blue-500.text-white,
+html:not(.dark) .bg-red-600.text-white,
+html:not(.dark) .bg-green-600.text-white,
+html:not(.dark) .bg-purple-600.text-white {
+  color: #ffffff !important;
+}
+
+/* ── Border colours ─────────────────────────────────────────────────── */
+html:not(.dark) .border-gray-800 { border-color: #e5e7eb !important; }
+html:not(.dark) .border-gray-700 { border-color: #d1d5db !important; }
+html:not(.dark) .border-slate-800 { border-color: #e5e7eb !important; }
+html:not(.dark) .border-slate-700 { border-color: #d1d5db !important; }
+
+/* ── FAQ / accordion border overrides ────────────────────────────────── */
+html:not(.dark) .border-t.border-gray-800 { border-color: #e5e7eb !important; }
+
+/* ── Sticky nav on TradingHours page ─────────────────────────────────── */
+html:not(.dark) .bg-\[\#08080a\].sticky { background-color: #ffffff !important; }
+
+/* ── bg-black used in various sections ───────────────────────────────── */
+html:not(.dark) section.bg-black,
+html:not(.dark) div.bg-black {
+  background-color: #f1f5f9 !important;
+}
+
+/* ── bg-slate-900 / bg-slate-800 on non-dark: (admin uses dark: prefix, 
+      these catch any stray non-prefixed usages in landing pages) ──────── */
+html:not(.dark) section.bg-slate-900,
+html:not(.dark) div.bg-slate-900 {
+  background-color: #f1f5f9 !important;
+}
+
+/* ── Scrollbar light-mode reset ──────────────────────────────────────── */
+html:not(.dark) * {
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+}
+html:not(.dark) *::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.5);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DARK MODE PALETTE ALIGNMENT
+   Remaps the blue-gray Tailwind slate palette used in the admin panel and
+   user dashboard to the same near-black palette used on the landing page,
+   so every dark-mode surface shares one consistent visual language.
+
+   Landing-page reference colours:
+     Deepest bg   → #08080a  (was dark:bg-slate-900  ≈ #0f172a)
+     Panel / bar  → #111114  (was dark:bg-slate-800  ≈ #1e293b)
+     Card surface → #1a1a1d  (was dark:bg-slate-700  ≈ #334155)
+     Hover / chip → #2b2b31  (was dark:bg-slate-600  ≈ #475569)
+     Borders      → rgba(255,255,255,0.08) (was dark:border-slate-700)
+═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Background fills ────────────────────────────────────────────────── */
+.dark .dark\:bg-slate-900   { background-color: #08080a !important; }
+.dark .dark\:bg-slate-800   { background-color: #111114 !important; }
+.dark .dark\:bg-slate-700   { background-color: #1a1a1d !important; }
+.dark .dark\:bg-slate-600   { background-color: #2b2b31 !important; }
+
+/* ── Opacity variants (e.g. dark:bg-slate-700/50) ────────────────────── */
+.dark .dark\:bg-slate-900\/50  { background-color: rgba(8,8,10,0.5)    !important; }
+.dark .dark\:bg-slate-800\/50  { background-color: rgba(17,17,20,0.5)  !important; }
+.dark .dark\:bg-slate-700\/50  { background-color: rgba(26,26,29,0.5)  !important; }
+.dark .dark\:bg-slate-700\/60  { background-color: rgba(26,26,29,0.6)  !important; }
+
+/* ── Hover backgrounds ───────────────────────────────────────────────── */
+.dark .dark\:hover\:bg-slate-900:hover { background-color: #08080a !important; }
+.dark .dark\:hover\:bg-slate-800:hover { background-color: #111114 !important; }
+.dark .dark\:hover\:bg-slate-700:hover { background-color: #1a1a1d !important; }
+.dark .dark\:hover\:bg-slate-600:hover { background-color: #2b2b31 !important; }
+
+/* ── Border colours ──────────────────────────────────────────────────── */
+.dark .dark\:border-slate-800 { border-color: rgba(255,255,255,0.05) !important; }
+.dark .dark\:border-slate-700 { border-color: rgba(255,255,255,0.08) !important; }
+.dark .dark\:border-slate-600 { border-color: rgba(255,255,255,0.12) !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LIGHT MODE – SUPPLEMENTAL TEXT & COLOUR FIXES
+   Covers every remaining white-on-white / invisible-text scenario that
+   the general rules above do not fully catch.
+═══════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Secondary/muted text colour used throughout marketing pages ──── */
+/*    #b0b7bf is designed for near-black backgrounds; on white it is      */
+/*    nearly invisible → remap to a readable mid-gray.                    */
+html:not(.dark) .text-\[#b0b7bf\]       { color: #6b7280 !important; }
+html:not(.dark) .text-\[#98a4b3\]       { color: #6b7280 !important; }
+html:not(.dark) .text-\[#8899aa\]       { color: #6b7280 !important; }
+
+/* ── 2. White text/icons inside gradient containers → keep white ──────── */
+/*    Gradient backgrounds stay coloured in light mode, so white text is  */
+/*    readable. Without this rule the general text-white → #111827 fires  */
+/*    first and produces invisible dark-on-dark situations.               */
+html:not(.dark) [class*="bg-gradient"] .text-white { color: #ffffff !important; }
+
+/* ── 3. White icons inside solid brand-colour boxes → keep white ──────── */
+html:not(.dark) .bg-\[#25AABE\] .text-white,
+html:not(.dark) .bg-\[#0e88ad\] .text-white,
+html:not(.dark) .bg-\[#1fa5ca\] .text-white,
+html:not(.dark) .bg-\[#34e834\] .text-white,
+html:not(.dark) .bg-\[#74d848\] .text-white,
+html:not(.dark) .bg-\[#6949d1\] .text-white,
+html:not(.dark) .bg-\[#8b5cf6\] .text-white,
+html:not(.dark) .bg-\[#2aa77b\] .text-white { color: #ffffff !important; }
+
+/* Also handle Tailwind named-colour icon boxes */
+html:not(.dark) .bg-green-500 .text-white,
+html:not(.dark) .bg-green-600 .text-white,
+html:not(.dark) .bg-blue-500  .text-white,
+html:not(.dark) .bg-blue-600  .text-white,
+html:not(.dark) .bg-red-500   .text-white,
+html:not(.dark) .bg-red-600   .text-white,
+html:not(.dark) .bg-purple-500 .text-white,
+html:not(.dark) .bg-purple-600 .text-white { color: #ffffff !important; }
+
+/* ── 4. hover:text-white → dark on light backgrounds ─────────────────── */
+/*    Footer nav links, outlined CTA hover states etc. should not flash   */
+/*    white text over a light/white surface.                              */
+html:not(.dark) .hover\:text-white:hover { color: #374151 !important; }
+
+/* ── 5. border-white → visible in light mode ─────────────────────────── */
+html:not(.dark) .border-white { border-color: #374151 !important; }
+
+/* ── 6. Outlined ghost buttons (border only, no bg) ─────────────────── */
+/*    "border border-gray-700 text-white" buttons are already handled by  */
+/*    the general text-white rule, but ensure hover keeps them legible.   */
+html:not(.dark) .hover\:border-\[#1fa5ca\]:hover { border-color: #0e88ad !important; }
+
+/* ── 7. Inline text-white inside dark card wrappers (non-remapped ones) ─ */
+html:not(.dark) .bg-\[#1f1f24\] .text-white,
+html:not(.dark) .bg-\[#111115\] .text-white { color: #111827 !important; }

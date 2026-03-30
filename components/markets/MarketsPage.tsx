@@ -1,0 +1,617 @@
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { useNavigate } from 'react-router-dom';
+import { useMarketData } from '../../contexts/MarketDataContext';
+import DashboardLayout from '../layouts/DashboardLayout';
+import { formatPercentage } from '../../utils/formatNumber';
+
+interface Asset {
+  symbol: string;
+  name: string;
+  category: string;
+  price: number;
+  change24h: number;
+  volume24h: string;
+  high24h: number;
+  low24h: number;
+  isFavorite: boolean;
+  exchange?: string;
+}
+
+// ── Full TradingView-based instrument catalogue ────────────────────────────
+const CATALOGUE: Omit<Asset, 'price' | 'change24h' | 'volume24h' | 'high24h' | 'low24h' | 'isFavorite'>[] = [
+  // ── Stocks ────────────────────────────────────────────────────────────────
+  { symbol: 'AAPL',  name: 'Apple Inc.',                    category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'MSFT',  name: 'Microsoft Corporation',         category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'GOOGL', name: 'Alphabet Inc. Class A',         category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'GOOG',  name: 'Alphabet Inc. Class C',         category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'AMZN',  name: 'Amazon.com Inc.',               category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'TSLA',  name: 'Tesla Inc.',                    category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'META',  name: 'Meta Platforms Inc.',           category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'NVDA',  name: 'NVIDIA Corporation',            category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'JPM',   name: 'JPMorgan Chase & Co.',          category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'V',     name: 'Visa Inc.',                     category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'WMT',   name: 'Walmart Inc.',                  category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'JNJ',   name: 'Johnson & Johnson',             category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'XOM',   name: 'Exxon Mobil Corporation',       category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'BAC',   name: 'Bank of America Corp.',         category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'BRK.B', name: 'Berkshire Hathaway Class B',   category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'UNH',   name: 'UnitedHealth Group Inc.',       category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'MA',    name: 'Mastercard Inc.',               category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'HD',    name: 'Home Depot Inc.',               category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'PG',    name: 'Procter & Gamble Co.',          category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'KO',    name: 'Coca-Cola Company',             category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'ABBV',  name: 'AbbVie Inc.',                   category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'PFE',   name: 'Pfizer Inc.',                   category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'MRK',   name: 'Merck & Co. Inc.',              category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'CVX',   name: 'Chevron Corporation',           category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'AVGO',  name: 'Broadcom Inc.',                 category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'LLY',   name: 'Eli Lilly and Company',        category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'COST',  name: 'Costco Wholesale Corp.',        category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'ORCL',  name: 'Oracle Corporation',            category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'ACN',   name: 'Accenture plc',                 category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'AMD',   name: 'Advanced Micro Devices Inc.',   category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'INTC',  name: 'Intel Corporation',             category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'CRM',   name: 'Salesforce Inc.',               category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'ADBE',  name: 'Adobe Inc.',                    category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'NFLX',  name: 'Netflix Inc.',                  category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'DIS',   name: 'Walt Disney Company',           category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'PYPL',  name: 'PayPal Holdings Inc.',          category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'UBER',  name: 'Uber Technologies Inc.',        category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'SHOP',  name: 'Shopify Inc.',                  category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'SQ',    name: 'Block Inc.',                    category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'SPOT',  name: 'Spotify Technology S.A.',       category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'COIN',  name: 'Coinbase Global Inc.',          category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'HOOD',  name: 'Robinhood Markets Inc.',        category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'PLTR',  name: 'Palantir Technologies Inc.',    category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'SNOW',  name: 'Snowflake Inc.',                category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'DDOG',  name: 'Datadog Inc.',                  category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'ZM',    name: 'Zoom Video Communications',     category: 'Stocks', exchange: 'NASDAQ' },
+  { symbol: 'TWLO',  name: 'Twilio Inc.',                   category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'NET',   name: 'Cloudflare Inc.',               category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'RBLX',  name: 'Roblox Corporation',           category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'GME',   name: 'GameStop Corp.',                category: 'Stocks', exchange: 'NYSE'   },
+  { symbol: 'AMC',   name: 'AMC Entertainment Holdings',    category: 'Stocks', exchange: 'NYSE'   },
+
+  // ── Forex ─────────────────────────────────────────────────────────────────
+  { symbol: 'EURUSD', name: 'Euro / US Dollar',                       category: 'Forex', exchange: 'FX' },
+  { symbol: 'GBPUSD', name: 'British Pound / US Dollar',              category: 'Forex', exchange: 'FX' },
+  { symbol: 'USDJPY', name: 'US Dollar / Japanese Yen',               category: 'Forex', exchange: 'FX' },
+  { symbol: 'AUDUSD', name: 'Australian Dollar / US Dollar',          category: 'Forex', exchange: 'FX' },
+  { symbol: 'USDCAD', name: 'US Dollar / Canadian Dollar',            category: 'Forex', exchange: 'FX' },
+  { symbol: 'NZDUSD', name: 'New Zealand Dollar / US Dollar',         category: 'Forex', exchange: 'FX' },
+  { symbol: 'USDCHF', name: 'US Dollar / Swiss Franc',                category: 'Forex', exchange: 'FX' },
+  { symbol: 'EURGBP', name: 'Euro / British Pound',                   category: 'Forex', exchange: 'FX' },
+  { symbol: 'EURJPY', name: 'Euro / Japanese Yen',                    category: 'Forex', exchange: 'FX' },
+  { symbol: 'GBPJPY', name: 'British Pound / Japanese Yen',           category: 'Forex', exchange: 'FX' },
+  { symbol: 'AUDJPY', name: 'Australian Dollar / Japanese Yen',       category: 'Forex', exchange: 'FX' },
+  { symbol: 'CADJPY', name: 'Canadian Dollar / Japanese Yen',         category: 'Forex', exchange: 'FX' },
+  { symbol: 'CHFJPY', name: 'Swiss Franc / Japanese Yen',             category: 'Forex', exchange: 'FX' },
+  { symbol: 'NZDJPY', name: 'New Zealand Dollar / Japanese Yen',      category: 'Forex', exchange: 'FX' },
+  { symbol: 'EURCAD', name: 'Euro / Canadian Dollar',                 category: 'Forex', exchange: 'FX' },
+  { symbol: 'EURAUD', name: 'Euro / Australian Dollar',               category: 'Forex', exchange: 'FX' },
+  { symbol: 'EURCHF', name: 'Euro / Swiss Franc',                     category: 'Forex', exchange: 'FX' },
+  { symbol: 'EURNZD', name: 'Euro / New Zealand Dollar',              category: 'Forex', exchange: 'FX' },
+  { symbol: 'GBPAUD', name: 'British Pound / Australian Dollar',      category: 'Forex', exchange: 'FX' },
+  { symbol: 'GBPCAD', name: 'British Pound / Canadian Dollar',        category: 'Forex', exchange: 'FX' },
+  { symbol: 'GBPCHF', name: 'British Pound / Swiss Franc',            category: 'Forex', exchange: 'FX' },
+  { symbol: 'GBPNZD', name: 'British Pound / New Zealand Dollar',     category: 'Forex', exchange: 'FX' },
+  { symbol: 'AUDCAD', name: 'Australian Dollar / Canadian Dollar',    category: 'Forex', exchange: 'FX' },
+  { symbol: 'AUDCHF', name: 'Australian Dollar / Swiss Franc',        category: 'Forex', exchange: 'FX' },
+  { symbol: 'AUDNZD', name: 'Australian Dollar / New Zealand Dollar', category: 'Forex', exchange: 'FX' },
+  { symbol: 'CADCHF', name: 'Canadian Dollar / Swiss Franc',          category: 'Forex', exchange: 'FX' },
+  { symbol: 'NZDCAD', name: 'New Zealand Dollar / Canadian Dollar',   category: 'Forex', exchange: 'FX' },
+  { symbol: 'NZDCHF', name: 'New Zealand Dollar / Swiss Franc',       category: 'Forex', exchange: 'FX' },
+  { symbol: 'USDSGD', name: 'US Dollar / Singapore Dollar',           category: 'Forex', exchange: 'FX' },
+  { symbol: 'USDHKD', name: 'US Dollar / Hong Kong Dollar',           category: 'Forex', exchange: 'FX' },
+  { symbol: 'USDMXN', name: 'US Dollar / Mexican Peso',               category: 'Forex', exchange: 'FX' },
+  { symbol: 'USDZAR', name: 'US Dollar / South African Rand',         category: 'Forex', exchange: 'FX' },
+  { symbol: 'USDTRY', name: 'US Dollar / Turkish Lira',               category: 'Forex', exchange: 'FX' },
+  { symbol: 'USDSEK', name: 'US Dollar / Swedish Krona',              category: 'Forex', exchange: 'FX' },
+  { symbol: 'USDNOK', name: 'US Dollar / Norwegian Krone',            category: 'Forex', exchange: 'FX' },
+
+  // ── Crypto ────────────────────────────────────────────────────────────────
+  { symbol: 'BTCUSD',  name: 'Bitcoin',           category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'ETHUSD',  name: 'Ethereum',           category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'BNBUSD',  name: 'BNB',               category: 'Crypto', exchange: 'BINANCE'  },
+  { symbol: 'XRPUSD',  name: 'XRP',               category: 'Crypto', exchange: 'KRAKEN'   },
+  { symbol: 'ADAUSD',  name: 'Cardano',            category: 'Crypto', exchange: 'KRAKEN'   },
+  { symbol: 'SOLUSD',  name: 'Solana',             category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'DOGEUSD', name: 'Dogecoin',           category: 'Crypto', exchange: 'BINANCE'  },
+  { symbol: 'MATICUSD',name: 'Polygon',            category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'DOTUSD',  name: 'Polkadot',           category: 'Crypto', exchange: 'KRAKEN'   },
+  { symbol: 'LTCUSD',  name: 'Litecoin',           category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'LINKUSD', name: 'Chainlink',          category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'UNIUSD',  name: 'Uniswap',            category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'XLMUSD',  name: 'Stellar',            category: 'Crypto', exchange: 'KRAKEN'   },
+  { symbol: 'ETCUSD',  name: 'Ethereum Classic',   category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'FILUSD',  name: 'Filecoin',           category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'AAVEUSD', name: 'Aave',               category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'ATOMUSD', name: 'Cosmos',              category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'ALGOUSD', name: 'Algorand',            category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'NEARUSD', name: 'NEAR Protocol',       category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'AVAXUSD', name: 'Avalanche',           category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'APTUSD',  name: 'Aptos',              category: 'Crypto', exchange: 'BINANCE'  },
+  { symbol: 'ARBUSD',  name: 'Arbitrum',           category: 'Crypto', exchange: 'BINANCE'  },
+  { symbol: 'OPUSD',   name: 'Optimism',           category: 'Crypto', exchange: 'COINBASE' },
+  { symbol: 'SUIUSD',  name: 'Sui',                category: 'Crypto', exchange: 'BINANCE'  },
+  { symbol: 'SHIBUSDT',name: 'Shiba Inu',          category: 'Crypto', exchange: 'BINANCE'  },
+  { symbol: 'TRXUSD',  name: 'TRON',               category: 'Crypto', exchange: 'BINANCE'  },
+  { symbol: 'TONUSD',  name: 'Toncoin',            category: 'Crypto', exchange: 'BINANCE'  },
+  { symbol: 'PEPEUSD', name: 'Pepe',               category: 'Crypto', exchange: 'BINANCE'  },
+
+  // ── Commodities ───────────────────────────────────────────────────────────
+  { symbol: 'XAUUSD',  name: 'Gold Spot',                   category: 'Commodities', exchange: 'OANDA'  },
+  { symbol: 'XAGUSD',  name: 'Silver Spot',                 category: 'Commodities', exchange: 'OANDA'  },
+  { symbol: 'XPTUSD',  name: 'Platinum Spot',               category: 'Commodities', exchange: 'OANDA'  },
+  { symbol: 'XPDUSD',  name: 'Palladium Spot',              category: 'Commodities', exchange: 'OANDA'  },
+  { symbol: 'USOIL',   name: 'WTI Crude Oil',               category: 'Commodities', exchange: 'OANDA'  },
+  { symbol: 'UKOIL',   name: 'Brent Crude Oil',             category: 'Commodities', exchange: 'OANDA'  },
+  { symbol: 'NGAS',    name: 'Natural Gas',                  category: 'Commodities', exchange: 'NYMEX'  },
+  { symbol: 'COPPER',  name: 'Copper',                       category: 'Commodities', exchange: 'COMEX'  },
+  { symbol: 'WHEAT',   name: 'Wheat',                        category: 'Commodities', exchange: 'CBOT'   },
+  { symbol: 'CORN',    name: 'Corn',                         category: 'Commodities', exchange: 'CBOT'   },
+  { symbol: 'SOYBEAN', name: 'Soybeans',                     category: 'Commodities', exchange: 'CBOT'   },
+  { symbol: 'SUGAR',   name: 'Sugar No. 11',                 category: 'Commodities', exchange: 'ICE'    },
+  { symbol: 'COFFEE',  name: 'Coffee C',                     category: 'Commodities', exchange: 'ICE'    },
+  { symbol: 'COCOA',   name: 'Cocoa',                        category: 'Commodities', exchange: 'ICE'    },
+  { symbol: 'COTTON',  name: 'Cotton No. 2',                 category: 'Commodities', exchange: 'ICE'    },
+  { symbol: 'LUMBER',  name: 'Lumber',                       category: 'Commodities', exchange: 'CME'    },
+  { symbol: 'ORANGE',  name: 'Orange Juice',                 category: 'Commodities', exchange: 'ICE'    },
+  { symbol: 'LEAN',    name: 'Lean Hogs',                    category: 'Commodities', exchange: 'CME'    },
+  { symbol: 'CATTLE',  name: 'Live Cattle',                  category: 'Commodities', exchange: 'CME'    },
+  { symbol: 'ALUM',    name: 'Aluminium',                    category: 'Commodities', exchange: 'LME'    },
+  { symbol: 'NICKEL',  name: 'Nickel',                       category: 'Commodities', exchange: 'LME'    },
+  { symbol: 'ZINC',    name: 'Zinc',                         category: 'Commodities', exchange: 'LME'    },
+  { symbol: 'LEAD',    name: 'Lead',                         category: 'Commodities', exchange: 'LME'    },
+
+  // ── Indices ───────────────────────────────────────────────────────────────
+  { symbol: 'SPX',    name: 'S&P 500 Index',                        category: 'Indices', exchange: 'SP'      },
+  { symbol: 'DJI',    name: 'Dow Jones Industrial Average',         category: 'Indices', exchange: 'DJ'      },
+  { symbol: 'IXIC',   name: 'NASDAQ Composite',                     category: 'Indices', exchange: 'NASDAQ'  },
+  { symbol: 'NDX',    name: 'NASDAQ 100',                           category: 'Indices', exchange: 'NASDAQ'  },
+  { symbol: 'RUT',    name: 'Russell 2000',                         category: 'Indices', exchange: 'RUSSELL' },
+  { symbol: 'VIX',    name: 'CBOE Volatility Index',                category: 'Indices', exchange: 'CBOE'    },
+  { symbol: 'FTSE',   name: 'FTSE 100',                             category: 'Indices', exchange: 'LSE'     },
+  { symbol: 'DAX',    name: 'DAX Performance Index',                category: 'Indices', exchange: 'XETR'    },
+  { symbol: 'CAC40',  name: 'CAC 40',                               category: 'Indices', exchange: 'EURONEXT'},
+  { symbol: 'N225',   name: 'Nikkei 225',                           category: 'Indices', exchange: 'TSE'     },
+  { symbol: 'HSI',    name: 'Hang Seng Index',                      category: 'Indices', exchange: 'HKEX'    },
+  { symbol: 'SHCOMP', name: 'Shanghai Composite',                   category: 'Indices', exchange: 'SSE'     },
+  { symbol: 'ASX200', name: 'S&P/ASX 200',                         category: 'Indices', exchange: 'ASX'     },
+  { symbol: 'TSX',    name: 'S&P/TSX Composite',                   category: 'Indices', exchange: 'TSX'     },
+  { symbol: 'IBEX35', name: 'IBEX 35',                              category: 'Indices', exchange: 'BME'     },
+  { symbol: 'AEX',    name: 'AEX Index',                            category: 'Indices', exchange: 'EURONEXT'},
+  { symbol: 'SMI',    name: 'Swiss Market Index',                   category: 'Indices', exchange: 'SIX'     },
+  { symbol: 'STOXX50E',name: 'Euro Stoxx 50',                       category: 'Indices', exchange: 'EUREX'   },
+  { symbol: 'SENSEX', name: 'BSE SENSEX',                           category: 'Indices', exchange: 'BSE'     },
+  { symbol: 'NIFTY',  name: 'NIFTY 50',                             category: 'Indices', exchange: 'NSE'     },
+
+  // ── Funds / ETFs ──────────────────────────────────────────────────────────
+  { symbol: 'SPY',   name: 'SPDR S&P 500 ETF Trust',              category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'QQQ',   name: 'Invesco QQQ Trust',                   category: 'Funds', exchange: 'NASDAQ' },
+  { symbol: 'VOO',   name: 'Vanguard S&P 500 ETF',               category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'VTI',   name: 'Vanguard Total Stock Market ETF',     category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'IWM',   name: 'iShares Russell 2000 ETF',           category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'GLD',   name: 'SPDR Gold Shares',                   category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'SLV',   name: 'iShares Silver Trust',               category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'TLT',   name: '20+ Year Treasury Bond ETF',         category: 'Funds', exchange: 'NASDAQ' },
+  { symbol: 'HYG',   name: 'iShares High Yield Corp Bond ETF',   category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'EEM',   name: 'iShares MSCI Emerging Markets ETF',  category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'EFA',   name: 'iShares MSCI EAFE ETF',              category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'XLF',   name: 'Financial Select Sector SPDR Fund',  category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'XLK',   name: 'Technology Select Sector SPDR Fund', category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'XLE',   name: 'Energy Select Sector SPDR Fund',     category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'XLV',   name: 'Health Care Select Sector SPDR',     category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'XLI',   name: 'Industrial Select Sector SPDR',      category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'XLY',   name: 'Consumer Discret. Select Sector',    category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'XLP',   name: 'Consumer Staples Select Sector',     category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'ARKK',  name: 'ARK Innovation ETF',                 category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'ARKW',  name: 'ARK Next Generation Internet ETF',   category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'ARKG',  name: 'ARK Genomic Revolution ETF',         category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'BITO',  name: 'ProShares Bitcoin Strategy ETF',     category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'DIA',   name: 'SPDR Dow Jones Industrial Avg ETF',  category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'VGT',   name: 'Vanguard Information Technology ETF',category: 'Funds', exchange: 'NYSE'   },
+  { symbol: 'VNQ',   name: 'Vanguard Real Estate ETF',           category: 'Funds', exchange: 'NYSE'   },
+
+  // ── Futures ───────────────────────────────────────────────────────────────
+  { symbol: 'ES',  name: 'E-mini S&P 500 Futures',          category: 'Futures', exchange: 'CME'   },
+  { symbol: 'NQ',  name: 'E-mini NASDAQ 100 Futures',       category: 'Futures', exchange: 'CME'   },
+  { symbol: 'YM',  name: 'E-mini Dow Futures',              category: 'Futures', exchange: 'CBOT'  },
+  { symbol: 'RTY', name: 'E-mini Russell 2000 Futures',     category: 'Futures', exchange: 'CME'   },
+  { symbol: 'GC',  name: 'Gold Futures',                    category: 'Futures', exchange: 'COMEX' },
+  { symbol: 'SI',  name: 'Silver Futures',                  category: 'Futures', exchange: 'COMEX' },
+  { symbol: 'CL',  name: 'Crude Oil WTI Futures',           category: 'Futures', exchange: 'NYMEX' },
+  { symbol: 'NG',  name: 'Natural Gas Futures',             category: 'Futures', exchange: 'NYMEX' },
+  { symbol: 'ZW',  name: 'Wheat Futures',                   category: 'Futures', exchange: 'CBOT'  },
+  { symbol: 'ZC',  name: 'Corn Futures',                    category: 'Futures', exchange: 'CBOT'  },
+  { symbol: 'ZS',  name: 'Soybean Futures',                 category: 'Futures', exchange: 'CBOT'  },
+  { symbol: 'HG',  name: 'Copper Futures',                  category: 'Futures', exchange: 'COMEX' },
+  { symbol: '6E',  name: 'Euro FX Futures',                 category: 'Futures', exchange: 'CME'   },
+  { symbol: '6J',  name: 'Japanese Yen Futures',            category: 'Futures', exchange: 'CME'   },
+  { symbol: '6B',  name: 'British Pound Futures',           category: 'Futures', exchange: 'CME'   },
+  { symbol: 'BTC', name: 'Bitcoin CME Futures',             category: 'Futures', exchange: 'CME'   },
+  { symbol: 'ETH', name: 'Ether CME Futures',               category: 'Futures', exchange: 'CME'   },
+  { symbol: 'VX',  name: 'CBOE Volatility Index Futures',   category: 'Futures', exchange: 'CFE'   },
+  { symbol: 'ZN',  name: '10-Year T-Note Futures',          category: 'Futures', exchange: 'CBOT'  },
+  { symbol: 'ZB',  name: '30-Year T-Bond Futures',          category: 'Futures', exchange: 'CBOT'  },
+
+  // ── Bonds ─────────────────────────────────────────────────────────────────
+  { symbol: 'TLT',  name: '20+ Year Treasury Bond ETF',           category: 'Bonds', exchange: 'NASDAQ' },
+  { symbol: 'IEF',  name: '7-10 Year Treasury ETF',               category: 'Bonds', exchange: 'NASDAQ' },
+  { symbol: 'SHY',  name: '1-3 Year Treasury ETF',                category: 'Bonds', exchange: 'NASDAQ' },
+  { symbol: 'AGG',  name: 'Core US Aggregate Bond ETF',           category: 'Bonds', exchange: 'NYSE'   },
+  { symbol: 'LQD',  name: 'Investment Grade Corp Bond ETF',       category: 'Bonds', exchange: 'NYSE'   },
+  { symbol: 'BND',  name: 'Vanguard Total Bond Market ETF',       category: 'Bonds', exchange: 'NASDAQ' },
+  { symbol: 'JNK',  name: 'SPDR Bloomberg High Yield Bond ETF',   category: 'Bonds', exchange: 'NYSE'   },
+  { symbol: 'MUB',  name: 'iShares National Muni Bond ETF',       category: 'Bonds', exchange: 'NYSE'   },
+  { symbol: 'TIPS', name: 'iShares TIPS Bond ETF',                category: 'Bonds', exchange: 'NYSE'   },
+  { symbol: 'EMB',  name: 'iShares JP Morgan USD Emerg Mkts Bond',category: 'Bonds', exchange: 'NYSE'   },
+
+  // ── Economy ───────────────────────────────────────────────────────────────
+  { symbol: 'DXY',    name: 'US Dollar Index',             category: 'Economy', exchange: 'ICE'   },
+  { symbol: 'VIX',    name: 'CBOE Volatility Index',       category: 'Economy', exchange: 'CBOE'  },
+  { symbol: 'TNX',    name: '10-Year Treasury Yield',      category: 'Economy', exchange: 'CBOE'  },
+  { symbol: 'TYX',    name: '30-Year Treasury Yield',      category: 'Economy', exchange: 'CBOE'  },
+  { symbol: 'IRX',    name: '13-Week Treasury Bill Rate',  category: 'Economy', exchange: 'CBOE'  },
+  { symbol: 'BTC.D',  name: 'Bitcoin Dominance',           category: 'Economy', exchange: 'CRYPTO'},
+  { symbol: 'TOTAL',  name: 'Total Crypto Market Cap',     category: 'Economy', exchange: 'CRYPTO'},
+  { symbol: 'TOTAL2', name: 'Total Crypto ex-BTC',         category: 'Economy', exchange: 'CRYPTO'},
+  { symbol: 'EURUSD', name: 'EUR/USD (Macro)',              category: 'Economy', exchange: 'FX'    },
+  { symbol: 'XAUUSD', name: 'Gold (Safe Haven)',            category: 'Economy', exchange: 'OANDA' },
+
+  // ── Options ───────────────────────────────────────────────────────────────
+  { symbol: 'SPY-OPT',  name: 'SPY Options',   category: 'Options', exchange: 'OPRA' },
+  { symbol: 'QQQ-OPT',  name: 'QQQ Options',   category: 'Options', exchange: 'OPRA' },
+  { symbol: 'AAPL-OPT', name: 'AAPL Options',  category: 'Options', exchange: 'OPRA' },
+  { symbol: 'TSLA-OPT', name: 'TSLA Options',  category: 'Options', exchange: 'OPRA' },
+  { symbol: 'NVDA-OPT', name: 'NVDA Options',  category: 'Options', exchange: 'OPRA' },
+  { symbol: 'AMD-OPT',  name: 'AMD Options',   category: 'Options', exchange: 'OPRA' },
+  { symbol: 'META-OPT', name: 'META Options',  category: 'Options', exchange: 'OPRA' },
+  { symbol: 'AMZN-OPT', name: 'AMZN Options',  category: 'Options', exchange: 'OPRA' },
+  { symbol: 'GOOGL-OPT',name: 'GOOGL Options', category: 'Options', exchange: 'OPRA' },
+  { symbol: 'MSFT-OPT', name: 'MSFT Options',  category: 'Options', exchange: 'OPRA' },
+  { symbol: 'VIX-OPT',  name: 'VIX Options',   category: 'Options', exchange: 'CBOE' },
+  { symbol: 'GLD-OPT',  name: 'GLD Options',   category: 'Options', exchange: 'OPRA' },
+  { symbol: 'IWM-OPT',  name: 'IWM Options',   category: 'Options', exchange: 'OPRA' },
+  { symbol: 'EEM-OPT',  name: 'EEM Options',   category: 'Options', exchange: 'OPRA' },
+  { symbol: 'TLT-OPT',  name: 'TLT Options',   category: 'Options', exchange: 'OPRA' },
+];
+
+const CATEGORIES = [
+  'All', 'Stocks', 'Forex', 'Crypto', 'Commodities',
+  'Indices', 'Funds', 'Futures', 'Bonds', 'Economy', 'Options',
+];
+
+// Category badge colours
+const CATEGORY_COLOURS: Record<string, string> = {
+  Stocks:      'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  Forex:       'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  Crypto:      'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  Commodities: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+  Indices:     'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  Funds:       'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
+  Futures:     'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  Bonds:       'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
+  Economy:     'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
+  Options:     'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
+};
+
+export default function MarketsPage() {
+  const navigate  = useNavigate();
+  const marketData = useMarketData();
+
+  const [searchQuery,    setSearchQuery]    = useState('');
+  const [activeCategory, setActiveCategory] = useState('All');
+  const [sortBy,         setSortBy]         = useState<'name' | 'price' | 'change'>('change');
+  const [viewMode,       setViewMode]       = useState<'list' | 'grid'>('list');
+
+  // Favourites persisted in localStorage
+  const [favorites, setFavorites] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('marketFavorites');
+      return saved ? new Set(JSON.parse(saved)) : new Set(['BTCUSD', 'ETHUSD', 'EURUSD', 'AAPL', 'TSLA', 'XAUUSD']);
+    } catch {
+      return new Set(['BTCUSD', 'ETHUSD', 'EURUSD', 'AAPL', 'TSLA', 'XAUUSD']);
+    }
+  });
+
+  const toggleFavorite = (symbol: string) => {
+    setFavorites(prev => {
+      const next = new Set(prev);
+      next.has(symbol) ? next.delete(symbol) : next.add(symbol);
+      localStorage.setItem('marketFavorites', JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  // Subscribe to all symbols once
+  useEffect(() => {
+    CATALOGUE.forEach(({ symbol }) => marketData.subscribeToSymbol(symbol));
+    return () => CATALOGUE.forEach(({ symbol }) => marketData.unsubscribeFromSymbol(symbol));
+  }, []);
+
+  // Build live assets list — re-derives whenever prices object reference updates
+  const allAssets: Asset[] = useMemo(() =>
+    CATALOGUE.map(def => {
+      const p = marketData.getPrice(def.symbol);
+      return {
+        ...def,
+        isFavorite: favorites.has(def.symbol),
+        price:     p?.price         ?? 0,
+        change24h: p?.changePercent ?? 0,
+        volume24h: p?.volume        ?? '—',
+        high24h:   p?.high          ?? 0,
+        low24h:    p?.low           ?? 0,
+      };
+    }),
+  [favorites, marketData.prices]);  // include prices so table re-renders on every tick
+
+  const filteredAssets = useMemo(() =>
+    allAssets
+      .filter(a => {
+        const q = searchQuery.toLowerCase();
+        const matchSearch = a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q);
+        const matchCat    = activeCategory === 'All' || a.category === activeCategory;
+        return matchSearch && matchCat;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'name')   return a.name.localeCompare(b.name);
+        if (sortBy === 'price')  return b.price - a.price;
+        if (sortBy === 'change') return Math.abs(b.change24h) - Math.abs(a.change24h);
+        return 0;
+      }),
+  [allAssets, searchQuery, activeCategory, sortBy]);
+
+  const getCategoryCount = (cat: string) =>
+    cat === 'All' ? CATALOGUE.length : CATALOGUE.filter(a => a.category === cat).length;
+
+  const fmtPrice = (n: number) =>
+    n === 0 ? '—' : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+
+  return (
+    <DashboardLayout>
+      <div className="bg-gray-50 dark:bg-slate-900 min-h-screen">
+
+        {/* ── Header ───────────────────────────────────────────────────── */}
+        <div className="bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 sticky top-0 z-20">
+          <div className="max-w-7xl mx-auto px-4 lg:px-8 py-5">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div>
+                <h1 className="text-3xl mb-1">Markets</h1>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">
+                  {CATALOGUE.length}+ instruments across {CATEGORIES.length - 1} asset classes — powered by TradingView
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Sort */}
+                <select
+                  value={sortBy}
+                  onChange={e => setSortBy(e.target.value as any)}
+                  className="text-sm border border-gray-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-gray-700 dark:text-gray-300 outline-none"
+                >
+                  <option value="change">Sort: 24h Change</option>
+                  <option value="price">Sort: Price</option>
+                  <option value="name">Sort: Name</option>
+                </select>
+                {/* View toggle */}
+                <button
+                  onClick={() => setViewMode(v => v === 'list' ? 'grid' : 'list')}
+                  className="p-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
+                  title={viewMode === 'list' ? 'Grid view' : 'List view'}
+                >
+                  {viewMode === 'list' ? <BarChart2 className="w-4 h-4" /> : <List className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Search */}
+            <div className="mt-4 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <Input
+                type="text"
+                placeholder="Search by name or symbol…"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="pl-9 h-10"
+              />
+            </div>
+
+            {/* Category tabs */}
+            <div className="mt-4 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
+                    activeCategory === cat
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
+                  }`}
+                >
+                  {cat} <span className="opacity-70">({getCategoryCount(cat)})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Asset table / grid ────────────────────────────────────────── */}
+        <div className="max-w-7xl mx-auto px-4 lg:px-8 py-6">
+
+          {filteredAssets.length === 0 ? (
+            <div className="text-center py-16">
+              <Search className="w-12 h-12 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
+              <p className="text-gray-500 dark:text-gray-400">No instruments match &quot;{searchQuery}&quot;</p>
+            </div>
+          ) : viewMode === 'list' ? (
+
+            /* ── List / Table ── */
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[700px]">
+                  <thead className="bg-gray-50 dark:bg-slate-700/50 border-b border-gray-200 dark:border-slate-700">
+                    <tr>
+                      <th className="text-left py-3 px-4 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide w-8"></th>
+                      <th className="text-left py-3 px-4 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Instrument</th>
+                      <th className="text-left py-3 px-4 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide hidden md:table-cell">Category</th>
+                      <th className="text-right py-3 px-4 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Price</th>
+                      <th className="text-right py-3 px-4 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">24h %</th>
+                      <th className="text-right py-3 px-4 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide hidden lg:table-cell">High</th>
+                      <th className="text-right py-3 px-4 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide hidden lg:table-cell">Low</th>
+                      <th className="text-right py-3 px-4 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide hidden xl:table-cell">Volume</th>
+                      <th className="text-right py-3 px-4 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-slate-700/50">
+                    {filteredAssets.map((asset, i) => {
+                      const pos = asset.change24h >= 0;
+                      return (
+                        <motion.tr
+                          key={`${asset.symbol}-${asset.exchange}-${i}`}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: Math.min(i * 0.01, 0.3) }}
+                          className="hover:bg-gray-50 dark:hover:bg-slate-700/40 cursor-pointer transition-colors"
+                          onClick={() => navigate(`/trading/${asset.symbol.replace(/\//g, '').replace(/-OPT$/, '')}`)}
+                        >
+                          {/* Star */}
+                          <td className="py-3 px-4">
+                            <button
+                              onClick={e => { e.stopPropagation(); toggleFavorite(asset.symbol); }}
+                              className={`transition-colors ${asset.isFavorite ? 'text-yellow-400' : 'text-gray-300 hover:text-yellow-400'}`}
+                            >
+                              <Star className={`w-4 h-4 ${asset.isFavorite ? 'fill-current' : ''}`} />
+                            </button>
+                          </td>
+
+                          {/* Instrument */}
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs shrink-0 ${CATEGORY_COLOURS[asset.category] ?? 'bg-gray-100 text-gray-600'}`}>
+                                {asset.symbol.slice(0, 2)}
+                              </div>
+                              <div>
+                                <div className="text-sm">{asset.symbol.replace(/-OPT$/, '')}</div>
+                                <div className="text-xs text-gray-400 truncate max-w-[180px]">{asset.name}</div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Category */}
+                          <td className="py-3 px-4 hidden md:table-cell">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${CATEGORY_COLOURS[asset.category] ?? 'bg-gray-100 text-gray-600'}`}>
+                              {asset.category}
+                            </span>
+                          </td>
+
+                          {/* Price */}
+                          <td className="py-3 px-4 text-right text-sm tabular-nums">
+                            ${fmtPrice(asset.price)}
+                          </td>
+
+                          {/* 24h % */}
+                          <td className={`py-3 px-4 text-right text-sm tabular-nums ${pos ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                            <div className="flex items-center justify-end gap-1">
+                              {pos ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                              {pos ? '+' : ''}{formatPercentage(asset.change24h)}
+                            </div>
+                          </td>
+
+                          {/* High */}
+                          <td className="py-3 px-4 text-right text-sm hidden lg:table-cell text-gray-500 dark:text-gray-400 tabular-nums">
+                            ${fmtPrice(asset.high24h)}
+                          </td>
+
+                          {/* Low */}
+                          <td className="py-3 px-4 text-right text-sm hidden lg:table-cell text-gray-500 dark:text-gray-400 tabular-nums">
+                            ${fmtPrice(asset.low24h)}
+                          </td>
+
+                          {/* Volume */}
+                          <td className="py-3 px-4 text-right text-sm hidden xl:table-cell text-gray-500 dark:text-gray-400">
+                            {asset.volume24h}
+                          </td>
+
+                          {/* Trade */}
+                          <td className="py-3 px-4 text-right">
+                            <Button
+                              size="sm"
+                              onClick={e => {
+                                e.stopPropagation();
+                                navigate(`/trading/${asset.symbol.replace(/\//g, '').replace(/-OPT$/, '')}`);
+                              }}
+                            >
+                              Trade
+                            </Button>
+                          </td>
+                        </motion.tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          ) : (
+
+            /* ── Grid ── */
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filteredAssets.map((asset, i) => {
+                const pos = asset.change24h >= 0;
+                return (
+                  <motion.div
+                    key={`${asset.symbol}-${asset.exchange}-${i}`}
+                    initial={{ opacity: 0, scale: 0.97 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: Math.min(i * 0.01, 0.3) }}
+                    className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm cursor-pointer hover:shadow-md transition-shadow border border-transparent hover:border-blue-200 dark:hover:border-blue-900"
+                    onClick={() => navigate(`/trading/${asset.symbol.replace(/\//g, '').replace(/-OPT$/, '')}`)}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-xs ${CATEGORY_COLOURS[asset.category] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {asset.symbol.slice(0, 2)}
+                        </div>
+                        <div>
+                          <div className="text-sm">{asset.symbol.replace(/-OPT$/, '')}</div>
+                          <div className="text-xs text-gray-400">{asset.exchange}</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); toggleFavorite(asset.symbol); }}
+                        className={`transition-colors ${asset.isFavorite ? 'text-yellow-400' : 'text-gray-300 hover:text-yellow-400'}`}
+                      >
+                        <Star className={`w-4 h-4 ${asset.isFavorite ? 'fill-current' : ''}`} />
+                      </button>
+                    </div>
+
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 truncate">{asset.name}</div>
+
+                    <div className="flex items-end justify-between">
+                      <div>
+                        <div className="text-lg tabular-nums">${fmtPrice(asset.price)}</div>
+                        <div className={`flex items-center gap-1 text-xs ${pos ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {pos ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                          {pos ? '+' : ''}{formatPercentage(asset.change24h)}
+                        </div>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${CATEGORY_COLOURS[asset.category] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {asset.category}
+                      </span>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Count footer */}
+          <p className="text-xs text-center text-gray-400 dark:text-gray-600 mt-6">
+            Showing {filteredAssets.length} of {CATALOGUE.length} instruments
+          </p>
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+}

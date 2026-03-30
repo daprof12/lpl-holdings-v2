@@ -1,0 +1,718 @@
+import { useState, useMemo } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
+import { Search, Trash2, Eye, Bell, BellOff, Plus, X, Filter, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '../ui/dialog';
+
+interface Notification {
+  id: string;
+  userId: string;
+  type: 'success' | 'error' | 'warning' | 'info';
+  title: string;
+  message: string;
+  timestamp: number;
+  read: boolean;
+  channels?: string[];
+}
+
+export default function NotificationManagement() {
+  const { users, addNotification } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState<'all' | 'success' | 'error' | 'warning' | 'info'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'read' | 'unread'>('all');
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+
+  // Create notification form
+  const [createForm, setCreateForm] = useState({
+    userId: '',
+    type: 'info' as 'success' | 'error' | 'warning' | 'info',
+    title: '',
+    message: '',
+    channels: ['in-app'],
+  });
+
+  // Get all notifications from localStorage
+  const allNotifications = useMemo(() => {
+    try {
+      const stored = localStorage.getItem('gross_notifications');
+      if (!stored) return [];
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // Apply filters
+  const filteredNotifications = useMemo(() => {
+    let notifications = [...allNotifications];
+
+    // Apply type filter
+    if (filterType !== 'all') {
+      notifications = notifications.filter(n => n.type === filterType);
+    }
+
+    // Apply status filter
+    if (filterStatus === 'read') {
+      notifications = notifications.filter(n => n.read);
+    } else if (filterStatus === 'unread') {
+      notifications = notifications.filter(n => !n.read);
+    }
+
+    // Apply user filter
+    if (selectedUserId) {
+      notifications = notifications.filter(n => n.userId === selectedUserId);
+    }
+
+    // Apply search query
+    if (searchQuery) {
+      notifications = notifications.filter(n => {
+        const user = users.find(u => u.id === n.userId);
+        const userName = user ? `${user.firstName} ${user.lastName}`.toLowerCase() : '';
+        const email = user?.email.toLowerCase() || '';
+        const query = searchQuery.toLowerCase();
+        
+        return (
+          userName.includes(query) ||
+          email.includes(query) ||
+          n.title.toLowerCase().includes(query) ||
+          n.message.toLowerCase().includes(query)
+        );
+      });
+    }
+
+    return notifications.sort((a, b) => b.timestamp - a.timestamp);
+  }, [allNotifications, filterType, filterStatus, selectedUserId, searchQuery, users]);
+
+  const handleCreateNotification = () => {
+    if (!createForm.userId) {
+      toast.error('Please select a user');
+      return;
+    }
+    if (!createForm.title.trim()) {
+      toast.error('Title is required');
+      return;
+    }
+    if (!createForm.message.trim()) {
+      toast.error('Message is required');
+      return;
+    }
+
+    try {
+      addNotification(createForm.userId, {
+        type: createForm.type,
+        title: createForm.title,
+        message: createForm.message,
+        channels: createForm.channels as any,
+      });
+      
+      toast.success('Notification created successfully');
+      setShowCreateDialog(false);
+      setCreateForm({
+        userId: '',
+        type: 'info',
+        title: '',
+        message: '',
+        channels: ['in-app'],
+      });
+    } catch (error) {
+      toast.error('Failed to create notification');
+    }
+  };
+
+  const handleDeleteNotification = (notificationId: string) => {
+    if (confirm('Are you sure you want to delete this notification? This cannot be undone.')) {
+      try {
+        const stored = localStorage.getItem('gross_notifications');
+        if (stored) {
+          const notifications = JSON.parse(stored);
+          const updated = notifications.filter((n: Notification) => n.id !== notificationId);
+          localStorage.setItem('gross_notifications', JSON.stringify(updated));
+          window.dispatchEvent(new Event('storage'));
+          toast.success('Notification deleted successfully');
+        }
+      } catch (error) {
+        toast.error('Failed to delete notification');
+      }
+    }
+  };
+
+  const handleDeleteAllNotifications = () => {
+    if (confirm('Are you sure you want to delete ALL notifications? This will permanently remove all notifications for all users.')) {
+      try {
+        localStorage.setItem('gross_notifications', JSON.stringify([]));
+        window.dispatchEvent(new Event('storage'));
+        toast.success('All notifications deleted successfully');
+      } catch (error) {
+        toast.error('Failed to delete notifications');
+      }
+    }
+  };
+
+  const handleMarkAsRead = (notificationId: string) => {
+    try {
+      const stored = localStorage.getItem('gross_notifications');
+      if (stored) {
+        const notifications = JSON.parse(stored);
+        const updated = notifications.map((n: Notification) =>
+          n.id === notificationId ? { ...n, read: true } : n
+        );
+        localStorage.setItem('gross_notifications', JSON.stringify(updated));
+        window.dispatchEvent(new Event('storage'));
+        toast.success('Marked as read');
+      }
+    } catch (error) {
+      toast.error('Failed to update notification');
+    }
+  };
+
+  const handleMarkAsUnread = (notificationId: string) => {
+    try {
+      const stored = localStorage.getItem('gross_notifications');
+      if (stored) {
+        const notifications = JSON.parse(stored);
+        const updated = notifications.map((n: Notification) =>
+          n.id === notificationId ? { ...n, read: false } : n
+        );
+        localStorage.setItem('gross_notifications', JSON.stringify(updated));
+        window.dispatchEvent(new Event('storage'));
+        toast.success('Marked as unread');
+      }
+    } catch (error) {
+      toast.error('Failed to update notification');
+    }
+  };
+
+  const handleViewDetails = (notification: Notification) => {
+    setSelectedNotification(notification);
+    setShowDetailsDialog(true);
+  };
+
+  const getUserName = (userId: string) => {
+    const user = users.find(u => u.id === userId);
+    return user ? `${user.firstName} ${user.lastName}` : 'Unknown User';
+  };
+
+  const getUserEmail = (userId: string) => {
+    const user = users.find(u => u.id === userId);
+    return user?.email || 'N/A';
+  };
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'success':
+        return <CheckCircle className="w-4 h-4" />;
+      case 'error':
+        return <AlertCircle className="w-4 h-4" />;
+      case 'warning':
+        return <AlertTriangle className="w-4 h-4" />;
+      case 'info':
+      default:
+        return <Info className="w-4 h-4" />;
+    }
+  };
+
+  const getTypeBadgeClass = (type: string) => {
+    switch (type) {
+      case 'success':
+        return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400';
+      case 'error':
+        return 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400';
+      case 'warning':
+        return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400';
+      case 'info':
+      default:
+        return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400';
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-3xl mb-2">Notification Management</h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            Manage all user notifications across the platform
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <Button
+            onClick={() => setShowCreateDialog(true)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <Plus className="w-4 h-4" />
+            Create Notification
+          </Button>
+          <Button
+            onClick={handleDeleteAllNotifications}
+            variant="outline"
+            className="flex items-center gap-2 text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete All
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+              <Bell className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Total</p>
+              <p className="text-2xl font-bold">{allNotifications.length}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
+              <BellOff className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Unread</p>
+              <p className="text-2xl font-bold">
+                {allNotifications.filter(n => !n.read).length}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
+              <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Read</p>
+              <p className="text-2xl font-bold">
+                {allNotifications.filter(n => n.read).length}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+              <Bell className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Today</p>
+              <p className="text-2xl font-bold">
+                {allNotifications.filter(n =>
+                  Date.now() - n.timestamp < 24 * 60 * 60 * 1000
+                ).length}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <Label>Search</Label>
+            <div className="relative mt-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by user, title, message..."
+                className="pl-10"
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Type</Label>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value as any)}
+              className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
+            >
+              <option value="all">All Types</option>
+              <option value="success">Success</option>
+              <option value="error">Error</option>
+              <option value="warning">Warning</option>
+              <option value="info">Info</option>
+            </select>
+          </div>
+          <div>
+            <Label>Status</Label>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value as any)}
+              className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
+            >
+              <option value="all">All Status</option>
+              <option value="read">Read</option>
+              <option value="unread">Unread</option>
+            </select>
+          </div>
+          <div>
+            <Label>User</Label>
+            <select
+              value={selectedUserId || ''}
+              onChange={(e) => setSelectedUserId(e.target.value || null)}
+              className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
+            >
+              <option value="">All Users</option>
+              {users.filter(u => u.role !== 'admin').map(user => (
+                <option key={user.id} value={user.id}>
+                  {user.firstName} {user.lastName}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {(searchQuery || filterType !== 'all' || filterStatus !== 'all' || selectedUserId) && (
+          <div className="flex items-center gap-2 mt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSearchQuery('');
+                setFilterType('all');
+                setFilterStatus('all');
+                setSelectedUserId(null);
+              }}
+              className="flex items-center gap-2"
+            >
+              <X className="w-4 h-4" />
+              Clear Filters
+            </Button>
+            <span className="text-sm text-gray-500">
+              Showing {filteredNotifications.length} notification(s)
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Notifications Table */}
+      <div className="bg-white dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 dark:bg-slate-700 sticky top-0 z-10">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">User</th>
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Type</th>
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Title</th>
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Message</th>
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Timestamp</th>
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+              {filteredNotifications.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                    No notifications found
+                  </td>
+                </tr>
+              ) : (
+                filteredNotifications.map((notification) => (
+                  <tr key={notification.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                    <td className="px-6 py-4">
+                      {notification.read ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                          <CheckCircle className="w-3 h-3" />
+                          Read
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
+                          <Bell className="w-3 h-3" />
+                          Unread
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div>
+                        <div className="font-medium">{getUserName(notification.userId)}</div>
+                        <div className="text-sm text-gray-500">{getUserEmail(notification.userId)}</div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getTypeBadgeClass(notification.type)}`}>
+                        {getTypeIcon(notification.type)}
+                        {notification.type.charAt(0).toUpperCase() + notification.type.slice(1)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="max-w-xs truncate font-medium">{notification.title}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="max-w-md truncate text-sm text-gray-600 dark:text-gray-400">
+                        {notification.message}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm">
+                        <div>{new Date(notification.timestamp).toLocaleDateString()}</div>
+                        <div className="text-xs text-gray-500">
+                          {new Date(notification.timestamp).toLocaleTimeString()}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleViewDetails(notification)}
+                          className="flex items-center gap-1.5"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          View
+                        </Button>
+                        {!notification.read ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleMarkAsRead(notification.id)}
+                            className="flex items-center gap-1.5"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            Read
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleMarkAsUnread(notification.id)}
+                            className="flex items-center gap-1.5"
+                          >
+                            <Bell className="w-3.5 h-3.5" />
+                            Unread
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteNotification(notification.id)}
+                          className="flex items-center gap-1.5 text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Create Notification Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Create New Notification</DialogTitle>
+            <DialogDescription>
+              Send a notification to a specific user
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="create-user">User <span className="text-red-500">*</span></Label>
+              <select
+                id="create-user"
+                value={createForm.userId}
+                onChange={(e) => setCreateForm({ ...createForm, userId: e.target.value })}
+                className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
+              >
+                <option value="">Select a user...</option>
+                {users.filter(u => u.role !== 'admin').map(user => (
+                  <option key={user.id} value={user.id}>
+                    {user.firstName} {user.lastName} ({user.email})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="create-type">Type</Label>
+              <select
+                id="create-type"
+                value={createForm.type}
+                onChange={(e) => setCreateForm({ ...createForm, type: e.target.value as any })}
+                className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
+              >
+                <option value="info">Info</option>
+                <option value="success">Success</option>
+                <option value="warning">Warning</option>
+                <option value="error">Error</option>
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="create-title">Title <span className="text-red-500">*</span></Label>
+              <Input
+                id="create-title"
+                value={createForm.title}
+                onChange={(e) => setCreateForm({ ...createForm, title: e.target.value })}
+                placeholder="Enter notification title"
+                className="mt-2"
+              />
+            </div>
+            <div>
+              <Label htmlFor="create-message">Message <span className="text-red-500">*</span></Label>
+              <textarea
+                id="create-message"
+                value={createForm.message}
+                onChange={(e) => setCreateForm({ ...createForm, message: e.target.value })}
+                placeholder="Enter notification message"
+                className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm min-h-[100px]"
+              />
+            </div>
+          </div>
+          <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-slate-700">
+            <Button
+              onClick={handleCreateNotification}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Create Notification
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowCreateDialog(false)}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Notification Details Dialog */}
+      <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Notification Details</DialogTitle>
+            <DialogDescription>
+              Detailed information about this notification
+            </DialogDescription>
+          </DialogHeader>
+          {selectedNotification && (
+            <div className="space-y-4">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <Label>User</Label>
+                  <p className="mt-1 font-medium">{getUserName(selectedNotification.userId)}</p>
+                  <p className="text-sm text-gray-500">{getUserEmail(selectedNotification.userId)}</p>
+                </div>
+                <div>
+                  <Label>Status</Label>
+                  <div className="mt-1">
+                    {selectedNotification.read ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                        <CheckCircle className="w-4 h-4" />
+                        Read
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
+                        <Bell className="w-4 h-4" />
+                        Unread
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <Label>Type</Label>
+                  <div className="mt-1">
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${getTypeBadgeClass(selectedNotification.type)}`}>
+                      {getTypeIcon(selectedNotification.type)}
+                      {selectedNotification.type.charAt(0).toUpperCase() + selectedNotification.type.slice(1)}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <Label>Channels</Label>
+                  <div className="mt-1 flex gap-2 flex-wrap">
+                    {(selectedNotification.channels || ['in-app']).map(channel => (
+                      <span key={channel} className="px-2 py-1 rounded text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                        {channel}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Title</Label>
+                  <p className="mt-1 font-medium">{selectedNotification.title}</p>
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Message</Label>
+                  <p className="mt-1 text-gray-700 dark:text-gray-300">{selectedNotification.message}</p>
+                </div>
+                <div>
+                  <Label>Date</Label>
+                  <p className="mt-1">{new Date(selectedNotification.timestamp).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <Label>Time</Label>
+                  <p className="mt-1">{new Date(selectedNotification.timestamp).toLocaleTimeString()}</p>
+                </div>
+              </div>
+              <div>
+                <Label>Notification ID</Label>
+                <code className="block mt-1 text-xs bg-gray-100 dark:bg-slate-700 px-3 py-2 rounded">
+                  {selectedNotification.id}
+                </code>
+              </div>
+            </div>
+          )}
+          <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-slate-700">
+            <Button
+              variant="outline"
+              onClick={() => setShowDetailsDialog(false)}
+              className="flex-1"
+            >
+              Close
+            </Button>
+            {selectedNotification && !selectedNotification.read && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  handleMarkAsRead(selectedNotification.id);
+                  setShowDetailsDialog(false);
+                }}
+                className="flex-1"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Mark as Read
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (selectedNotification) {
+                  handleDeleteNotification(selectedNotification.id);
+                  setShowDetailsDialog(false);
+                }
+              }}
+              className="flex-1 text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

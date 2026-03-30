@@ -1,0 +1,128 @@
+import { Wallet, TrendingUp, TrendingDown, DollarSign, PieChart, Activity } from 'lucide-react';
+import { motion } from 'motion/react';
+import { useTrading } from '../../contexts/TradingContext';
+import { formatPercentage } from '../../utils/formatNumber';
+
+export default function AccountSummary() {
+  const { liveAccount, tradingMode } = useTrading();
+
+  // Calculate margin level
+  const marginLevel = liveAccount.margin > 0 && liveAccount.equity > 0
+    ? (liveAccount.equity / liveAccount.margin) * 100
+    : 0;
+
+  // Determine if margin level is healthy
+  const marginStatus = marginLevel === 0 
+    ? 'N/A' 
+    : marginLevel > 200 
+      ? 'Healthy (>200%)' 
+      : marginLevel > 100 
+        ? 'Good (>100%)' 
+        : marginLevel > 50 
+          ? 'Warning (<100%)' 
+          : 'Critical (<50%)';
+
+  // Calculate total P/L
+  const totalPnL = liveAccount.realizedPnL + liveAccount.unrealizedPnL;
+  const isPnLPositive = totalPnL >= 0;
+
+  // Calculate P/L percentage (based on starting balance vs current equity)
+  const startingBalance = 0; // Both start at 0 now
+  const pnlPercentage = liveAccount.balance > 0 
+    ? formatPercentage((totalPnL / liveAccount.balance) * 100)
+    : '0.00%';
+
+  const cards = [
+    {
+      title: 'Total Balance',
+      value: `$${liveAccount.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      icon: Wallet,
+      color: 'from-blue-500 to-blue-600',
+      bgColor: 'bg-blue-50 dark:bg-blue-900/20',
+      iconColor: 'text-blue-600 dark:text-blue-400'
+    },
+    {
+      title: 'Equity',
+      value: `$${liveAccount.equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      icon: DollarSign,
+      color: 'from-purple-500 to-purple-600',
+      bgColor: 'bg-purple-50 dark:bg-purple-900/20',
+      iconColor: 'text-purple-600 dark:text-purple-400',
+      subtitle: `Balance + Unrealized P/L`
+    },
+    {
+      title: 'Margin Used',
+      value: `$${liveAccount.margin.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      icon: PieChart,
+      color: 'from-orange-500 to-orange-600',
+      bgColor: 'bg-orange-50 dark:bg-orange-900/20',
+      iconColor: 'text-orange-600 dark:text-orange-400'
+    },
+    {
+      title: 'Available Funds',
+      value: `$${liveAccount.availableFunds.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      icon: Activity,
+      color: 'from-green-500 to-green-600',
+      bgColor: 'bg-green-50 dark:bg-green-900/20',
+      iconColor: 'text-green-600 dark:text-green-400'
+    },
+    {
+      title: 'Margin Level',
+      value: marginLevel > 0 ? formatPercentage(marginLevel) : 'N/A',
+      icon: TrendingUp,
+      color: 'from-teal-500 to-teal-600',
+      bgColor: 'bg-teal-50 dark:bg-teal-900/20',
+      iconColor: 'text-teal-600 dark:text-teal-400',
+      subtitle: marginStatus
+    },
+    {
+      title: 'Total P/L',
+      value: `${isPnLPositive ? '+' : ''}$${totalPnL.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      icon: isPnLPositive ? TrendingUp : TrendingDown,
+      color: isPnLPositive ? 'from-green-500 to-emerald-600' : 'from-red-500 to-red-600',
+      bgColor: isPnLPositive ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20',
+      iconColor: isPnLPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+      subtitle: `${isPnLPositive ? '+' : ''}${pnlPercentage}`,
+      change: parseFloat(pnlPercentage)
+    }
+  ];
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+      {cards.map((card, index) => {
+        const Icon = card.icon;
+        
+        return (
+          <motion.div
+            key={card.title}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.1 }}
+            className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div className={`w-10 h-10 rounded-lg ${card.bgColor} flex items-center justify-center`}>
+                <Icon className={`w-5 h-5 ${card.iconColor}`} />
+              </div>
+            </div>
+            
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{card.title}</p>
+            <p className="text-2xl mb-1">{card.value}</p>
+            
+            {card.subtitle && (
+              <p className={`text-xs ${
+                card.change !== undefined 
+                  ? card.change >= 0 
+                    ? 'text-green-600 dark:text-green-400' 
+                    : 'text-red-600 dark:text-red-400'
+                  : 'text-gray-500 dark:text-gray-400'
+              }`}>
+                {card.subtitle}
+              </p>
+            )}
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
