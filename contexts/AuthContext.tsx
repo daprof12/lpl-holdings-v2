@@ -290,19 +290,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // ONLY sync current user across tabs if we are NOT in an isolated session
-      if (!isIsolated && e.key === 'gross_current_user' && e.newValue) {
-        try {
-          const newUser = JSON.parse(e.newValue);
-          if (newUser && (!currentUser || newUser.id !== currentUser.id)) {
-            setCurrentUser(newUser);
-          } else if (!newUser) {
-            setCurrentUser(null);
-          }
-        } catch (error) {
-          console.error('Cross-tab current user sync failed:', error);
-        }
-      }
+      // DE-SYNCHRONIZED IDENTITY: We no longer sync 'gross_current_user' across tabs 
+      // via the storage event listener. This allows an Admin and a User to be logged
+      // in simultaneously in different tabs of the same browser for testing.
+      // Shared data (users, notifications, etc.) still syncs via the 'gross_users' key above.
       if (e.key === 'gross_notifications' && e.newValue) {
         try {
           setNotifications(JSON.parse(e.newValue));
