@@ -1,29 +1,7 @@
 {
-  "cleanUrls": true,
-  "trailingSlash": true,
   "rewrites": [
     {
-      "source": "/login",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/dashboard/(.*)",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/admin/(.*)",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/register",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/to-platform/(.*)",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/((?!assets/|shared/|landing/).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
