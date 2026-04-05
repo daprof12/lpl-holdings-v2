@@ -28,13 +28,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 href += '/';
             }
             
-            if (href === '') href = '/index/';
+            if (href === '' || href === '/') href = '/landing/';
 
             link.setAttribute('href', href);
 
             // Active State
             const path = window.location.pathname;
-            if (href === path || (path === '/' && href === '/index/')) {
+            if (href === path || (path === '/' && href === '/landing/')) {
                 link.classList.add('eael-item-active');
             }
         });

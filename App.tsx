@@ -69,7 +69,9 @@ import ScrollToTop from './components/common/ScrollToTop';
 // Redirect component for the root route → static public landing page
 function DefaultRedirect() {
   useEffect(() => {
-    window.location.replace('/index/');
+    // Note: use /landing/ instead of /index/ to avoid Vercel's automatic 
+    // index-folder redirection which can cause infinite loops with the SPA.
+    window.location.replace('/landing/');
   }, []);
   return null;
 }

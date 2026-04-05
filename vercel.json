@@ -23,7 +23,7 @@
       "destination": "/index.html"
     },
     {
-      "source": "/((?!assets/|shared/|index/).*)",
+      "source": "/((?!assets/|shared/|landing/).*)",
       "destination": "/index.html"
     }
   ]
