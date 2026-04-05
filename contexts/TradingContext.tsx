@@ -384,14 +384,17 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     loadUserData();
   }, [auth.currentUser?.id]);
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount (now per-user)
   useEffect(() => {
-    const storedPaperPositions = localStorage.getItem('gross_paper_positions');
-    const storedPaperOrders = localStorage.getItem('gross_paper_orders');
-    const storedPaperHistory = localStorage.getItem('gross_paper_history');
-    const storedLivePositions = localStorage.getItem('gross_live_positions');
-    const storedLiveOrders = localStorage.getItem('gross_live_orders');
-    const storedLiveHistory = localStorage.getItem('gross_live_history');
+    const userId = auth.currentUser?.id;
+    if (!userId) return;
+
+    const storedPaperPositions = localStorage.getItem(`gross_paper_positions_${userId}`);
+    const storedPaperOrders = localStorage.getItem(`gross_paper_orders_${userId}`);
+    const storedPaperHistory = localStorage.getItem(`gross_paper_history_${userId}`);
+    const storedLivePositions = localStorage.getItem(`gross_live_positions_${userId}`);
+    const storedLiveOrders = localStorage.getItem(`gross_live_orders_${userId}`);
+    const storedLiveHistory = localStorage.getItem(`gross_live_history_${userId}`);
 
     if (storedPaperPositions) setPaperPositions(JSON.parse(storedPaperPositions));
     if (storedPaperOrders) setPaperOrders(JSON.parse(storedPaperOrders));
@@ -399,44 +402,44 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     if (storedLivePositions) setLivePositions(JSON.parse(storedLivePositions));
     if (storedLiveOrders) setLiveOrders(JSON.parse(storedLiveOrders));
     if (storedLiveHistory) setLiveHistory(JSON.parse(storedLiveHistory));
-  }, []);
+  }, [auth.currentUser?.id]); // Re-load when user changes (e.g. in same tab)
 
-  // Save to localStorage whenever data changes
+  // Save to localStorage whenever data changes (per-user)
   useEffect(() => {
-    if (paperPositions.length >= 0) {
-      localStorage.setItem('gross_paper_positions', JSON.stringify(paperPositions));
-    }
-  }, [paperPositions]);
-
-  useEffect(() => {
-    if (paperOrders.length >= 0) {
-      localStorage.setItem('gross_paper_orders', JSON.stringify(paperOrders));
-    }
-  }, [paperOrders]);
+    const userId = auth.currentUser?.id;
+    if (!userId) return;
+    localStorage.setItem(`gross_paper_positions_${userId}`, JSON.stringify(paperPositions));
+  }, [paperPositions, auth.currentUser?.id]);
 
   useEffect(() => {
-    if (paperHistory.length >= 0) {
-      localStorage.setItem('gross_paper_history', JSON.stringify(paperHistory));
-    }
-  }, [paperHistory]);
+    const userId = auth.currentUser?.id;
+    if (!userId) return;
+    localStorage.setItem(`gross_paper_orders_${userId}`, JSON.stringify(paperOrders));
+  }, [paperOrders, auth.currentUser?.id]);
 
   useEffect(() => {
-    if (livePositions.length >= 0) {
-      localStorage.setItem('gross_live_positions', JSON.stringify(livePositions));
-    }
-  }, [livePositions]);
+    const userId = auth.currentUser?.id;
+    if (!userId) return;
+    localStorage.setItem(`gross_paper_history_${userId}`, JSON.stringify(paperHistory));
+  }, [paperHistory, auth.currentUser?.id]);
 
   useEffect(() => {
-    if (liveOrders.length >= 0) {
-      localStorage.setItem('gross_live_orders', JSON.stringify(liveOrders));
-    }
-  }, [liveOrders]);
+    const userId = auth.currentUser?.id;
+    if (!userId) return;
+    localStorage.setItem(`gross_live_positions_${userId}`, JSON.stringify(livePositions));
+  }, [livePositions, auth.currentUser?.id]);
 
   useEffect(() => {
-    if (liveHistory.length >= 0) {
-      localStorage.setItem('gross_live_history', JSON.stringify(liveHistory));
-    }
-  }, [liveHistory]);
+    const userId = auth.currentUser?.id;
+    if (!userId) return;
+    localStorage.setItem(`gross_live_orders_${userId}`, JSON.stringify(liveOrders));
+  }, [liveOrders, auth.currentUser?.id]);
+
+  useEffect(() => {
+    const userId = auth.currentUser?.id;
+    if (!userId) return;
+    localStorage.setItem(`gross_live_history_${userId}`, JSON.stringify(liveHistory));
+  }, [liveHistory, auth.currentUser?.id]);
 
   // Lazy-init live account from per-user localStorage key when user is known.
   // This runs AFTER the save effect, so the ref guard prevents the initial
@@ -490,24 +493,25 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   // Listen for storage events to sync balance changes from admin in real-time
   useEffect(() => {
     const handleStorageChange = (e?: StorageEvent) => {
-      // If this is a real storage event, we can filter for specific keys to avoid unnecessary re-renders
-      if (e && e.key && !e.key.startsWith('gross_live_account') && !e.key.startsWith('gross_paper_account')) {
+      const currentUserId = auth.currentUser?.id;
+      if (!currentUserId) return;
+
+      // Only respond to events for THIS user's specific account keys
+      const liveKey = `gross_live_account_${currentUserId}`;
+      const paperKey = `gross_paper_account_${currentUserId}`;
+
+      if (e && e.key && e.key !== liveKey && e.key !== paperKey) {
         return;
       }
 
-      console.log('📬 Storage event received in TradingContext');
-      const userId = auth.currentUser?.id;
-      // Prefer per-user key, fall back to generic key
-      const liveKey = userId ? `gross_live_account_${userId}` : 'gross_live_account';
-      const paperKey = userId ? `gross_paper_account_${userId}` : 'gross_paper_account';
-
+      console.log('📬 Storage event received for user:', currentUserId);
       const rawLive = localStorage.getItem(liveKey);
       if (rawLive) {
         try {
           const parsed = JSON.parse(rawLive);
           setLiveAccount(parsed);
           isLiveAccountHydrated.current = true;
-          console.log(`✅ Live balance synced: $${parsed.balance}`);
+          console.log(`✅ Live balance synced for ${currentUserId}: $${parsed.balance}`);
         } catch { /* ignore */ }
       }
 

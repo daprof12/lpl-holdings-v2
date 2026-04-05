@@ -73,7 +73,7 @@ export const useTickets = () => {
 export const TicketProvider = ({ children }: { children: ReactNode }) => {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(false);
-  const { user } = useAuth();
+  const { currentUser } = useAuth();
 
   // ============================================
   // API FUNCTIONS - Database Integration
@@ -267,11 +267,11 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
    * Refresh tickets from database
    */
   const refreshTickets = async () => {
-    if (!user?.id) return;
+    if (!currentUser?.id) return;
     
     setLoading(true);
     try {
-      const dbTickets = await fetchTickets(user.id);
+      const dbTickets = await fetchTickets(currentUser.id);
       setTickets(dbTickets);
     } catch (error) {
       console.error('Error refreshing tickets:', error);
@@ -289,34 +289,41 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
    */
   useEffect(() => {
     const loadUserTickets = async () => {
-      if (user && user.id) {
-        console.log('🔄 Loading tickets for user:', user.id);
+      if (currentUser && currentUser.id) {
+        console.log('🔄 Loading tickets for user:', currentUser.id);
         await refreshTickets();
       }
     };
 
     loadUserTickets();
-  }, [user?.id]);
+  }, [currentUser?.id]);
 
-  // Load from localStorage (fallback)
+  // Load from localStorage (fallback, now per-user)
   useEffect(() => {
-    const storedTickets = localStorage.getItem('gross_tickets');
+    const userId = currentUser?.id;
+    if (!userId) return;
+
+    const storedTickets = localStorage.getItem(`gross_tickets_${userId}`);
     if (storedTickets) {
       setTickets(JSON.parse(storedTickets));
     }
-  }, []);
+  }, [currentUser?.id]);
 
-  // Save to localStorage
+  // Save to localStorage (per-user)
   useEffect(() => {
-    if (tickets.length > 0) {
-      localStorage.setItem('gross_tickets', JSON.stringify(tickets));
+    const userId = currentUser?.id;
+    if (userId && tickets.length > 0) {
+      localStorage.setItem(`gross_tickets_${userId}`, JSON.stringify(tickets));
     }
-  }, [tickets]);
+  }, [tickets, currentUser?.id]);
 
-  // Cross-tab sync via storage event
+  // Cross-tab sync via storage event (per-user)
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'gross_tickets' && e.newValue) {
+      const userId = currentUser?.id;
+      if (!userId) return;
+
+      if (e.key === `gross_tickets_${userId}` && e.newValue) {
         try {
           setTickets(JSON.parse(e.newValue));
         } catch (error) {

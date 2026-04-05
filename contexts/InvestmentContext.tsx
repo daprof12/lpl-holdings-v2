@@ -121,7 +121,7 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
   const [userInvestments, setUserInvestments] = useState<UserInvestment[]>([]);
   const [sellRequests, setSellRequests] = useState<SellRequest[]>([]);
   const [loading, setLoading] = useState(false);
-  const { user } = useAuth();
+  const { currentUser } = useAuth();
 
   // ============================================
   // API FUNCTIONS - Database Integration
@@ -274,11 +274,11 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
    * Refresh user investments from database
    */
   const refreshInvestments = async () => {
-    if (!user?.id) return;
+    if (!currentUser?.id) return;
     
     setLoading(true);
     try {
-      const investments = await fetchUserInvestments(user.id);
+      const investments = await fetchUserInvestments(currentUser.id);
       setUserInvestments(investments);
     } catch (error) {
       console.error('Error refreshing investments:', error);
@@ -303,33 +303,32 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     const loadUserData = async () => {
-      if (user && user.id) {
-        console.log('🔄 Loading investments for user:', user.id);
+      if (currentUser && currentUser.id) {
+        console.log('🔄 Loading investments for user:', currentUser.id);
         await refreshInvestments();
       }
     };
 
     loadUserData();
-  }, [user?.id]);
+  }, [currentUser?.id]);
 
   // Load data from localStorage on mount (fallback)
   useEffect(() => {
-    const loadData = () => {
-      try {
-        const storedOffers = localStorage.getItem('investmentOffers');
-        const storedInvestments = localStorage.getItem('userInvestments');
-        const storedRequests = localStorage.getItem('sellRequests');
+    const userId = currentUser?.id;
+    if (!userId) return;
 
-        if (storedOffers) setInvestmentOffers(JSON.parse(storedOffers));
-        if (storedInvestments) setUserInvestments(JSON.parse(storedInvestments));
-        if (storedRequests) setSellRequests(JSON.parse(storedRequests));
-      } catch (error) {
-        console.error('Failed to load investment data:', error);
-      }
-    };
+    try {
+      const storedOffers = localStorage.getItem('investmentOffers');
+      const storedInvestments = localStorage.getItem(`userInvestments_${userId}`);
+      const storedRequests = localStorage.getItem(`sellRequests_${userId}`);
 
-    loadData();
-  }, []);
+      if (storedOffers) setInvestmentOffers(JSON.parse(storedOffers));
+      if (storedInvestments) setUserInvestments(JSON.parse(storedInvestments));
+      if (storedRequests) setSellRequests(JSON.parse(storedRequests));
+    } catch (error) {
+      console.error('Failed to load investment data:', error);
+    }
+  }, [currentUser?.id]);
 
   // Save to localStorage whenever data changes
   useEffect(() => {
@@ -337,28 +336,37 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
   }, [investmentOffers]);
 
   useEffect(() => {
-    localStorage.setItem('userInvestments', JSON.stringify(userInvestments));
-  }, [userInvestments]);
+    const userId = currentUser?.id;
+    if (userId) {
+      localStorage.setItem(`userInvestments_${userId}`, JSON.stringify(userInvestments));
+    }
+  }, [userInvestments, currentUser?.id]);
 
   useEffect(() => {
-    localStorage.setItem('sellRequests', JSON.stringify(sellRequests));
-  }, [sellRequests]);
+    const userId = currentUser?.id;
+    if (userId) {
+      localStorage.setItem(`sellRequests_${userId}`, JSON.stringify(sellRequests));
+    }
+  }, [sellRequests, currentUser?.id]);
 
   // Cross-tab sync via storage event (fires when another tab modifies localStorage)
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
+      const userId = currentUser?.id;
+      if (!userId) return;
+
       try {
         if (e.key === 'investmentOffers' && e.newValue) {
           setInvestmentOffers(JSON.parse(e.newValue));
         }
-        if (e.key === 'userInvestments' && e.newValue) {
+        // ONLY sync user-specific data that belongs to THIS user
+        if (e.key === `userInvestments_${userId}` && e.newValue) {
           setUserInvestments(JSON.parse(e.newValue));
         }
-        if (e.key === 'sellRequests' && e.newValue) {
+        if (e.key === `sellRequests_${userId}` && e.newValue) {
           setSellRequests(JSON.parse(e.newValue));
         }
         if (e.key === 'investment_access' && e.newValue) {
-          // Dispatch custom event so InvestmentsPage picks it up
           window.dispatchEvent(new CustomEvent('investment_access_changed'));
         }
       } catch (error) {
