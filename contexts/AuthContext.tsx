@@ -547,33 +547,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = () => {
-    if (currentUser) {
-      // Mark user as offline before logging out
+    // 1. IMMEDIATE state update to ensure UI responsiveness
+    const lastUserId = currentUser?.id;
+    setCurrentUser(null);
+    localStorage.removeItem('gross_current_user');
+    sessionStorage.removeItem('gross_current_user');
+    sessionStorage.removeItem('gross_current_user_isolated');
+
+    // 2. Background updates (non-blocking)
+    if (lastUserId) {
+      const now = new Date();
       setUsers(prev =>
         prev.map(user =>
-          user.id === currentUser.id
-            ? { ...user, isOnline: false, lastActive: new Date() }
+          user.id === lastUserId
+            ? { ...user, isOnline: false, lastActive: now }
             : user
         )
       );
 
-      // Log activity
       const activity: UserActivity = {
         id: `activity-${Date.now()}`,
-        userId: currentUser.id,
+        userId: lastUserId,
         type: 'logout',
         action: 'User logged out',
-        timestamp: new Date(),
+        timestamp: now,
       };
-      setUserActivities(prev => [...prev, activity]);
       
-      // Save the updated activities immediately
-      localStorage.setItem('gross_user_activities', JSON.stringify([...userActivities, activity]));
+      setUserActivities(prev => {
+        const updated = [...prev, activity];
+        localStorage.setItem('gross_user_activities', JSON.stringify(updated));
+        return updated;
+      });
     }
-    
-    // Clear current user from both state and localStorage
-    setCurrentUser(null);
-    localStorage.removeItem('gross_current_user');
   };
 
   const signup = async (data: SignupData): Promise<boolean> => {

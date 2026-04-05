@@ -79,7 +79,7 @@ export default function AdminLogin() {
 
         {/* Login Card */}
         <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl p-8 min-h-[400px]">
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="popLayout">
             {currentUser ? (
               <motion.div
                 key="admin-already-logged-in"
@@ -97,18 +97,22 @@ export default function AdminLogin() {
                 
                 <div className="space-y-3">
                   <Button
-                    onClick={() => navigate(isAdmin ? '/admin' : '/dashboard')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(isAdmin ? '/admin' : '/dashboard');
+                    }}
                     className="w-full h-11 bg-blue-500 hover:bg-blue-600 text-white rounded font-semibold text-sm transition-all"
                   >
                     CONTINUE TO DASHBOARD
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       console.log('🔄 Admin switching account...');
                       logout();
                     }}
-                    className="w-full h-11 bg-transparent border border-slate-400 hover:bg-white text-slate-200 hover:text-black rounded font-semibold text-[13px] tracking-wider transition-all"
+                    className="w-full h-11 bg-transparent border border-slate-400 hover:bg-white text-slate-200 hover:text-black rounded font-semibold text-[13px] tracking-wider transition-colors relative z-10"
                   >
                     SIGN IN WITH ANOTHER ACCOUNT
                   </Button>

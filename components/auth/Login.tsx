@@ -153,6 +153,7 @@ export default function Login() {
   };
 
   const handleVerifyCode = async () => {
+    if (modalLoading) return;
     setModalError('');
 
     if (!recoveryCode) {
@@ -184,6 +185,7 @@ export default function Login() {
   };
 
   const handleSetNewPassword = async () => {
+    if (modalLoading) return;
     setModalError('');
 
     if (!newPassword) {
@@ -306,7 +308,7 @@ export default function Login() {
         </h1>
 
         {/* Already Signed In / Login Form Container */}
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="popLayout">
           {currentUser ? (
             <motion.div
               key="already-logged-in"
@@ -324,18 +326,22 @@ export default function Login() {
               
               <div className="space-y-3">
                 <button
-                  onClick={() => navigate(isAdmin ? '/admin' : '/dashboard')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(isAdmin ? '/admin' : '/dashboard');
+                  }}
                   className="w-full h-11 bg-blue-500 hover:bg-blue-600 text-white rounded font-semibold text-sm transition-all shadow-lg shadow-blue-500/20"
                 >
                   CONTINUE TO DASHBOARD
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     console.log('🔄 User switching account, logging out...');
                     logout();
                   }}
-                  className="w-full h-11 bg-transparent border border-gray-400 hover:bg-white text-gray-200 hover:text-black rounded font-semibold text-[13px] tracking-wider transition-all"
+                  className="w-full h-11 bg-transparent border border-gray-400 hover:bg-white text-gray-200 hover:text-black rounded font-semibold text-[13px] tracking-wider transition-colors relative z-10"
                 >
                   SIGN IN WITH ANOTHER ACCOUNT
                 </button>
