@@ -48,7 +48,14 @@ export default function ProtectedRoute({
 
   // If user is already logged in and tries to access login/register pages
   if (!requireAuth && currentUser) {
-    // Redirect based on user role
+    // If we're on the login page, let the Login component handle the choice 
+    // of whether to continue or switch accounts, rather than forcing a redirect.
+    // This allows users coming from the public landing page to see the login context.
+    if (window.location.pathname === '/login' || window.location.pathname === '/register' || window.location.pathname === '/admin/login') {
+      return <>{children}</>;
+    }
+
+    // Redirect based on user role for other non-auth routes
     if (isAdmin) {
       return <Navigate to="/admin" replace />;
     } else {

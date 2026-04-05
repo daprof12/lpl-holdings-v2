@@ -1,4 +1,4 @@
-import { Eye, EyeOff, RotateCcw, Globe, X } from 'lucide-react';
+import { Eye, EyeOff, RotateCcw, Globe, X, User } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -17,7 +17,7 @@ interface PasswordResetRequest {
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { login, currentUser, logout, isAdmin } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -305,8 +305,52 @@ export default function Login() {
           Sign in
         </h1>
 
-        {/* Login Form */}
-        <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Already Signed In / Login Form Container */}
+        <AnimatePresence mode="wait">
+          {currentUser ? (
+            <motion.div
+              key="already-logged-in"
+              initial={{ opacity: 0, y: 10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.98 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="mb-8 p-6 rounded-lg bg-blue-500/10 border border-blue-500/30 text-center"
+            >
+              <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <User className="w-8 h-8 text-blue-400" />
+              </div>
+              <p className="text-white font-medium mb-1">Already signed in as</p>
+              <p className="text-blue-400 text-sm mb-6 truncate">{currentUser.email}</p>
+              
+              <div className="space-y-3">
+                <button
+                  onClick={() => navigate(isAdmin ? '/admin' : '/dashboard')}
+                  className="w-full h-11 bg-blue-500 hover:bg-blue-600 text-white rounded font-semibold text-sm transition-all shadow-lg shadow-blue-500/20"
+                >
+                  CONTINUE TO DASHBOARD
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    console.log('🔄 User switching account, logging out...');
+                    logout();
+                  }}
+                  className="w-full h-11 bg-transparent border border-gray-400 hover:bg-white text-gray-200 hover:text-black rounded font-semibold text-[13px] tracking-wider transition-all"
+                >
+                  SIGN IN WITH ANOTHER ACCOUNT
+                </button>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.form
+              key="login-form"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+              onSubmit={handleSubmit} 
+              className="space-y-6"
+            >
+
           {/* Email Field */}
           <div>
             <label
@@ -414,7 +458,9 @@ export default function Login() {
               'SIGN IN'
             )}
           </button>
-        </form>
+            </motion.form>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Forgot Password Modal */}

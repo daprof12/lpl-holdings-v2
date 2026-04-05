@@ -459,32 +459,55 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ── Static assets: seed + random-walk tick ─────────────────────────────
-  const buildStaticPrice = useCallback((symbol: string): MarketPrice | null => {
-    const base = STATIC_BASE[symbol];
-    if (base === undefined) return null;
-
-    if (!staticWalkRef.current[symbol]) {
-      staticWalkRef.current[symbol] = base;
+  /**
+   * Build a simulated fallback price for any symbol (Stocks, Commodities, Indices, etc.)
+   * Uses a random-walk from a deterministic base to ensure it looks "live".
+   */
+  const buildStaticPrice = useCallback((symbol: string): MarketPrice => {
+    // Deterministic base price based on symbol string
+    let base = 100;
+    const hash = symbol.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    
+    // Assign some realistic bases
+    if (symbol.includes('AAPL')) base = 180;
+    else if (symbol.includes('TSLA')) base = 240;
+    else if (symbol.includes('MSFT')) base = 400;
+    else if (symbol.includes('GOOG')) base = 150;
+    else if (symbol.includes('AMZN')) base = 175;
+    else if (symbol.includes('NVDA')) base = 800;
+    else if (symbol.includes('SPX'))  base = 5100;
+    else if (symbol.includes('XAU'))  base = 2150; // Gold
+    else if (symbol.includes('XAG'))  base = 24;   // Silver
+    else if (symbol.includes('OIL'))  base = 78;   // Oil
+    else {
+      base = 10 + (hash % 1000); // Randomish base between 10 and 1010
     }
 
-    // Small drift: +-0.05% per tick (stocks/commodities/indices are less volatile per second)
-    const drift = (Math.random() - 0.5) * 0.001;
-    const price = staticWalkRef.current[symbol] * (1 + drift);
-    staticWalkRef.current[symbol] = price;
+    // Apply a micro random-walk (+-0.03%) to simulate live ticks
+    const prev = staticWalkRef.current[symbol] ?? base;
+    const drift = (Math.random() - 0.5) * 0.0006;
+    const price = prev * (1 + drift);
+    
+    // Keep it within a reasonable +-2% daily range of its "base"
+    const clampedPrice = Math.max(base * 0.98, Math.min(base * 1.02, price));
+    staticWalkRef.current[symbol] = clampedPrice;
 
-    const change        = price - base;
-    const changePercent = (change / base) * 100;
-    const { bid, ask }  = makeSpread(price, false, false);
+    const open   = base;
+    const change = clampedPrice - open;
+    const changePercent = (change / open) * 100;
+    
+    const isCrypto = symbol.includes('BTC') || symbol.includes('ETH'); // rough guess
+    const { bid, ask } = makeSpread(clampedPrice, false, isCrypto);
 
     return {
       symbol,
-      price,
+      price: clampedPrice,
       change,
       changePercent,
-      high: price * 1.005,
-      low:  price * 0.995,
-      open: base,
-      volume: formatVolume(Math.random() * 5e7),
+      high: base * 1.015,
+      low: base * 0.985,
+      open,
+      volume: formatVolume(500000 + (hash * 1000) % 2000000),
       bid,
       ask,
       lastUpdate: Date.now(),

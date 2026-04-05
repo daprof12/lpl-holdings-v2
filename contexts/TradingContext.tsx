@@ -445,10 +445,8 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     const userId = auth.currentUser?.id;
     if (!userId) return;
 
-    // Try per-user key first; fall back to generic key for backwards compatibility
-    const stored =
-      localStorage.getItem(`gross_live_account_${userId}`) ||
-      localStorage.getItem('gross_live_account');
+    // Always prioritize per-user key for explicit session isolation
+    const stored = localStorage.getItem(`gross_live_account_${userId}`);
 
     if (stored) {
       try {
@@ -503,7 +501,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       const liveKey = userId ? `gross_live_account_${userId}` : 'gross_live_account';
       const paperKey = userId ? `gross_paper_account_${userId}` : 'gross_paper_account';
 
-      const rawLive = localStorage.getItem(liveKey) || localStorage.getItem('gross_live_account');
+      const rawLive = localStorage.getItem(liveKey);
       if (rawLive) {
         try {
           const parsed = JSON.parse(rawLive);
@@ -513,7 +511,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
         } catch { /* ignore */ }
       }
 
-      const rawPaper = localStorage.getItem(paperKey) || localStorage.getItem('gross_paper_account');
+      const rawPaper = localStorage.getItem(paperKey);
       if (rawPaper) {
         try {
           setPaperAccount(JSON.parse(rawPaper));
@@ -629,28 +627,40 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Balance management
   const depositToTradingAccount = (amount: number, mode: 'paper' | 'live') => {
     if (mode === 'paper') {
-      setPaperAccount({ ...paperAccount, balance: paperAccount.balance + amount });
+      const newAcc = { ...paperAccount, balance: paperAccount.balance + amount };
+      setPaperAccount(newAcc);
     } else {
-      setLiveAccount({ ...liveAccount, balance: liveAccount.balance + amount });
+      const newBalance = liveAccount.balance + amount;
+      const newAcc = { ...liveAccount, balance: newBalance };
+      setLiveAccount(newAcc);
+      
+      // Update global user record
+      if (auth.currentUser) {
+        auth.updateUser(auth.currentUser.id, { balance: newBalance, liveBalance: newBalance });
+      }
     }
   };
 
   const withdrawFromTradingAccount = (amount: number, mode: 'paper' | 'live') => {
     if (mode === 'paper') {
-      if (paperAccount.balance >= amount) {
-        setPaperAccount({ ...paperAccount, balance: paperAccount.balance - amount });
-        return true;
-      }
+      if (paperAccount.balance < amount) return false;
+      const newAcc = { ...paperAccount, balance: paperAccount.balance - amount };
+      setPaperAccount(newAcc);
+      return true;
     } else {
-      if (liveAccount.balance >= amount) {
-        setLiveAccount({ ...liveAccount, balance: liveAccount.balance - amount });
-        return true;
+      if (liveAccount.balance < amount) return false;
+      const newBalance = liveAccount.balance - amount;
+      const newAcc = { ...liveAccount, balance: newBalance };
+      setLiveAccount(newAcc);
+      
+      // Update global user record
+      if (auth.currentUser) {
+        auth.updateUser(auth.currentUser.id, { balance: newBalance, liveBalance: newBalance });
       }
+      return true;
     }
-    return false;
   };
 
   // Subscribe to market data for all positions and update prices in real-time

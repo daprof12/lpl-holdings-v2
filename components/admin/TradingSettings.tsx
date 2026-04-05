@@ -171,7 +171,7 @@ export default function TradingSettings() {
       return;
     }
 
-    // Update the live account for this user
+    // Update the live account for this user specifically
     const liveAccount = {
       balance: balance,
       equity: balance,
@@ -182,7 +182,12 @@ export default function TradingSettings() {
       bonus: 0,
     };
 
+    localStorage.setItem(`gross_live_account_${selectedLiveUserId}`, JSON.stringify(liveAccount));
+    // Also update global key for legacy support, but ideally per-user key is used
     localStorage.setItem('gross_live_account', JSON.stringify(liveAccount));
+    
+    // Update AuthContext user object so it's reflected in users list
+    updateUser(selectedLiveUserId, { balance: balance, liveBalance: balance });
     
     // Trigger storage event
     window.dispatchEvent(new Event('storage'));
@@ -281,9 +286,16 @@ export default function TradingSettings() {
 
   // Helper function to get user balances
   const getUserBalances = (userId: string) => {
-    // Get wallet (live account) balance
-    const liveAccount = localStorage.getItem('gross_live_account');
-    const walletBalance = liveAccount ? JSON.parse(liveAccount).balance : 10000;
+    // Try per-user key first, fallback to AuthContext's users array
+    const storedLive = localStorage.getItem(`gross_live_account_${userId}`);
+    let walletBalance = 0;
+    
+    if (storedLive) {
+      walletBalance = JSON.parse(storedLive).balance;
+    } else {
+      const user = users.find(u => u.id === userId);
+      walletBalance = user?.balance ?? (user?.liveBalance ?? 0);
+    }
 
     // Get ECN and IPO balances
     const investmentBalances = localStorage.getItem(`investment_balances_${userId}`);
@@ -308,7 +320,7 @@ export default function TradingSettings() {
     const user = users.find(u => u.id === selectedUserForBalance);
     
     if (balanceType === 'wallet') {
-      // Update wallet (live account) balance
+      // Update per-user wallet account
       const liveAccount = {
         balance: amount,
         equity: amount,
@@ -318,7 +330,14 @@ export default function TradingSettings() {
         availableFunds: amount,
         bonus: 0,
       };
+      
+      localStorage.setItem(`gross_live_account_${selectedUserForBalance}`, JSON.stringify(liveAccount));
+      // For backwards compat and real-time triggers
       localStorage.setItem('gross_live_account', JSON.stringify(liveAccount));
+      
+      // Sync to main user record
+      updateUser(selectedUserForBalance, { balance: amount, liveBalance: amount });
+      
       window.dispatchEvent(new Event('storage'));
       toast.success(`Wallet balance updated to $${amount.toFixed(2)} for ${user?.email || 'user'}`);
       
@@ -333,7 +352,14 @@ export default function TradingSettings() {
       // Update ECN or IPO balance
       const balances = getUserBalances(selectedUserForBalance);
       balances[balanceType] = amount;
-      localStorage.setItem(`investment_balances_${selectedUserForBalance}`, JSON.stringify({ ecn: balances.ecn, ipo: balances.ipo, portfolio: balances.portfolio }));
+      localStorage.setItem(`investment_balances_${selectedUserForBalance}`, JSON.stringify({ 
+        ecn: balances.ecn, 
+        ipo: balances.ipo, 
+        portfolio: balances.portfolio 
+      }));
+      
+      // Also update portfolio/balance record in User if needed (usually it's separate)
+      
       window.dispatchEvent(new Event('storage'));
       toast.success(`${balanceType.toUpperCase()} balance updated to $${amount.toFixed(2)} for ${user?.email || 'user'}`);
       
@@ -382,7 +408,7 @@ export default function TradingSettings() {
     // Add to destination
     balances[transferTo] += amount;
 
-    // Update localStorage
+    // Update localStorage with per-user key
     if (transferFrom === 'wallet' || transferTo === 'wallet') {
       const liveAccount = {
         balance: balances.wallet,
@@ -393,7 +419,12 @@ export default function TradingSettings() {
         availableFunds: balances.wallet,
         bonus: 0,
       };
+      localStorage.setItem(`gross_live_account_${selectedUserForBalance}`, JSON.stringify(liveAccount));
+      // Fallback/Legacy
       localStorage.setItem('gross_live_account', JSON.stringify(liveAccount));
+      
+      // Update global user record
+      updateUser(selectedUserForBalance, { balance: balances.wallet, liveBalance: balances.wallet });
     }
 
     localStorage.setItem(`investment_balances_${selectedUserForBalance}`, JSON.stringify({ ecn: balances.ecn, ipo: balances.ipo, portfolio: balances.portfolio }));

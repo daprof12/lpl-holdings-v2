@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import { migrateBulkDataToSupabase } from '../utils/migrateToSupabase';
 
 export interface UserProfile {
   id: string;
@@ -75,6 +76,7 @@ interface AuthContextType {
   logout: () => void;
   signup: (data: SignupData) => Promise<boolean>;
   updateProfile: (userId: string, updates: Partial<UserProfile>) => void;
+  updateUser: (userId: string, updates: Partial<UserProfile>) => void;
   updatePassword: (userId: string, currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   deleteUser: (userId: string) => void;
   logActivity: (activity: Omit<UserActivity, 'id' | 'userId' | 'timestamp'>) => void;
@@ -369,6 +371,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       localStorage.setItem('gross_notifications', JSON.stringify(notifications));
     }
   }, [notifications]);
+
+  // ── Sync to Supabase Logic ──────────────────────────────────────────
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    // Clear any pending sync
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+
+    // Debounce sync to avoid spamming the API
+    syncTimeoutRef.current = setTimeout(async () => {
+      if (!isHydrated) return;
+      
+      console.log('🔄 Triggering auto-sync to Supabase...');
+      try {
+        await migrateBulkDataToSupabase();
+        console.log('✅ Supabase sync complete');
+      } catch (error) {
+        console.error('❌ Supabase sync failed:', error);
+      }
+    }, 10000); // 10s debounce
+
+    return () => {
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    };
+  }, [users, userActivities, walletTransactions, notifications, isHydrated]);
 
   // Activity tracking - Update user's lastActive timestamp
   const updateUserActivity = () => {
@@ -976,6 +1003,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     logout,
     signup,
     updateProfile,
+    updateUser: updateProfile,
     updatePassword,
     deleteUser,
     logActivity,

@@ -11,6 +11,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useTickets } from '../../contexts/TicketContext';
 import { Button } from '../ui/button';
 import NotificationCenter from '../notifications/NotificationCenter';
+import { LogoutModal } from '../ui/LogoutModal';
 
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -23,6 +24,7 @@ interface AdminLayoutProps {
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -77,14 +79,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   ];
 
   const handleLogout = () => {
-    if (confirm('Are you sure you want to logout?')) {
-      logout();
-      toast.success('Logged out successfully');
-      // Use a small delay to ensure state is cleared before navigation
-      setTimeout(() => {
-        navigate('/login');
-      }, 100);
-    }
+    setShowLogoutModal(true);
+  };
+
+  const confirmLogout = () => {
+    logout();
+    toast.success('Logged out successfully');
+    navigate('/login');
   };
 
   return (
@@ -272,6 +273,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           {children}
         </main>
       </div>
+
+      {/* Logout Confirmation Modal */}
+      <LogoutModal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={confirmLogout}
+      />
 
       {/* Mobile Overlay */}
       {sidebarOpen && (

@@ -7,13 +7,10 @@ document.addEventListener('DOMContentLoaded', () => {
         'lei-lookup': '/assets/5b0f36ab4ff7e17c45aabea09154c3f7ae6521e9377b9d67ec986c94b9634c51.svg'
     };
 
-    // 2. DOM Normalization (Links & Images)
-    const processContainer = (containerId) => {
-        const container = document.getElementById(containerId);
-        if (!container) return;
-
+    // 2. DOM Normalization (Links & Images) - Process the whole document
+    const processElements = (root = document) => {
         // Fix Links
-        container.querySelectorAll('a').forEach(link => {
+        root.querySelectorAll('a').forEach(link => {
             let href = link.getAttribute('href') || '';
             const text = link.innerText.trim().toLowerCase();
 
@@ -22,15 +19,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 href = href.replace(/https?:\/\/(www\.)?prucosecurities\.com/g, '');
             }
 
-            // Clean URL handling (ensure trailing slash)
-            if (href && !href.endsWith('/') && !href.includes('.') && !href.startsWith('#') && !href.startsWith('mailto:')) {
+            // Clean URL handling (ensure trailing slash for static pages, but NOT for SPA routes)
+            const isSPARoute = text === 'login' || text === 'start trading' || text === 'open web trading' || href.includes('/to-platform/');
+            
+            if (isSPARoute) {
+                href = '/login';
+            } else if (href && !href.endsWith('/') && !href.includes('.') && !href.startsWith('#') && !href.startsWith('mailto:') && !href.startsWith('tel:')) {
                 href += '/';
             }
+            
             if (href === '') href = '/index/';
-
-            // Intercept Login/CTA links
-            const isCTA = text === 'login' || text === 'start trading' || text === 'open web trading' || href.includes('/to-platform/');
-            if (isCTA) href = '/login';
 
             link.setAttribute('href', href);
 
@@ -42,20 +40,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Fix Broken Images
-        container.querySelectorAll('img').forEach(img => {
+        root.querySelectorAll('img').forEach(img => {
             const src = img.getAttribute('src') || '';
             for (const [key, localPath] of Object.entries(assetMap)) {
                 if (src.includes(key)) {
                     img.setAttribute('src', localPath);
-                    img.removeAttribute('srcset'); // Remove srcset to ensure local path is used
+                    img.removeAttribute('srcset');
                     break;
                 }
             }
         });
     };
 
-    processContainer('masthead');
-    processContainer('colophon');
+    // Run on whole body to catch buttons in main content
+    processElements(document.body);
 
     // 3. Attach Mobile Toggle to EXISTING Element
     const toggleBtn = document.querySelector('.eael-simple-menu-toggle');

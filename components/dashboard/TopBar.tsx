@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTrading } from '../../contexts/TradingContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { LogoutModal } from '../ui/LogoutModal';
 import NotificationCenter from '../notifications/NotificationCenter';
 import { formatPercentage, formatCurrency } from '../../utils/formatNumber';
 
@@ -13,6 +14,8 @@ interface TopBarProps {
 
 export default function TopBar({ onMenuClick }: TopBarProps) {
   const { currentUser, logout } = useAuth();
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isLoadingLogout, setIsLoadingLogout] = useState(false);
   const { liveAccount, tradingMode, setTradingMode } = useTrading();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
@@ -351,8 +354,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                     <button
                       onClick={() => {
                         setShowProfile(false);
-                        logout();
-                        navigate('/login');
+                        setShowLogoutModal(true);
                       }}
                       className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-sm text-red-600"
                     >
@@ -362,6 +364,18 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                 </div>
               </>
             )}
+
+            <LogoutModal
+              isOpen={showLogoutModal}
+              isLoading={isLoadingLogout}
+              onClose={() => setShowLogoutModal(false)}
+              onConfirm={() => {
+                console.log('🚪 Confirming logout...');
+                logout();
+                setShowLogoutModal(false);
+                navigate('/login');
+              }}
+            />
           </div>
         </div>
       </div>
