@@ -127,75 +127,77 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const storedActivities = localStorage.getItem('gross_user_activities');
     const storedPasswords = localStorage.getItem('gross_passwords');
 
-    if (storedUsers) {
-      const parsedUsers = JSON.parse(storedUsers);
-      // Migrate existing users to have liveBalance and paperBalance
-      const migratedUsers = parsedUsers.map((user: UserProfile) => ({
-        ...user,
-        liveBalance: user.liveBalance ?? 0,
-        paperBalance: user.paperBalance ?? (user.balance || 0), // Migrate old balance to paperBalance
-      }));
-      setUsers(migratedUsers);
-      // Save migrated data
-      localStorage.setItem('gross_users', JSON.stringify(migratedUsers));
-    } else {
-      // Create default admin account
-      const defaultAdmin: UserProfile = {
-        id: 'admin-001',
-        email: 'admin@gross.com',
-        firstName: 'Admin',
-        lastName: 'User',
-        createdAt: new Date(),
-        role: 'admin',
-        isVerified: true,
-        kycStatus: 'verified',
-        accountType: 'vip',
-        balance: 0,
-        liveBalance: 0,
-        paperBalance: 0,
-        // Empty array = user can see all admin-enabled deposit methods
-        enabledDepositMethods: [],
-        enabledWithdrawalMethods: [],
-        cryptoWallets: {},
-      };
-      setUsers([defaultAdmin]);
-      localStorage.setItem('gross_users', JSON.stringify([defaultAdmin]));
-      
-      // Store default admin password
-      const passwords = { 'admin@gross.com': 'admin123' };
-      localStorage.setItem('gross_passwords', JSON.stringify(passwords));
+    // 1. Load users
+    try {
+      if (storedUsers) {
+        const parsedUsers = JSON.parse(storedUsers);
+        const migratedUsers = parsedUsers.map((user: UserProfile) => ({
+          ...user,
+          liveBalance: user.liveBalance ?? 0,
+          paperBalance: user.paperBalance ?? (user.balance || 0),
+        }));
+        setUsers(migratedUsers);
+        localStorage.setItem('gross_users', JSON.stringify(migratedUsers));
+      } else {
+        const defaultAdmin: UserProfile = {
+          id: 'admin-001',
+          email: 'admin@gross.com',
+          firstName: 'Admin',
+          lastName: 'User',
+          createdAt: new Date(),
+          role: 'admin',
+          isVerified: true,
+          kycStatus: 'verified',
+          accountType: 'vip',
+          balance: 0,
+          liveBalance: 0,
+          paperBalance: 0,
+          enabledDepositMethods: [],
+          enabledWithdrawalMethods: [],
+          cryptoWallets: {},
+        };
+        setUsers([defaultAdmin]);
+        localStorage.setItem('gross_users', JSON.stringify([defaultAdmin]));
+        localStorage.setItem('gross_passwords', JSON.stringify({ 'admin@gross.com': 'admin123' }));
+      }
+    } catch (error) {
+      console.error('Failed to parse stored users:', error);
+      // Fallback to empty users if corrupted
     }
 
-    if (storedCurrentUser || sessionStorage.getItem('gross_current_user')) {
-      const parsedCurrentUser = JSON.parse(
-        sessionStorage.getItem('gross_current_user') || storedCurrentUser || 'null'
-      );
-      if (parsedCurrentUser) {
-        // Migrate current user if needed
-        const migratedCurrentUser = {
-          ...parsedCurrentUser,
-          liveBalance: parsedCurrentUser.liveBalance ?? 0,
-          paperBalance: parsedCurrentUser.paperBalance ?? (parsedCurrentUser.balance || 0),
-        };
-        setCurrentUser(migratedCurrentUser);
-        sessionStorage.setItem('gross_current_user', JSON.stringify(migratedCurrentUser));
+    // 2. Load current user
+    try {
+      const userSource = sessionStorage.getItem('gross_current_user') || storedCurrentUser;
+      if (userSource) {
+        const parsedCurrentUser = JSON.parse(userSource);
+        if (parsedCurrentUser) {
+          const migratedCurrentUser = {
+            ...parsedCurrentUser,
+            liveBalance: parsedCurrentUser.liveBalance ?? 0,
+            paperBalance: parsedCurrentUser.paperBalance ?? (parsedCurrentUser.balance || 0),
+          };
+          setCurrentUser(migratedCurrentUser);
+          sessionStorage.setItem('gross_current_user', JSON.stringify(migratedCurrentUser));
+        }
       }
+    } catch (error) {
+      console.error('Failed to parse current user:', error);
     }
     
-    if (storedActivities) {
-      setUserActivities(JSON.parse(storedActivities));
+    // 3. Load activities, transactions, notifications
+    try {
+      if (storedActivities) setUserActivities(JSON.parse(storedActivities));
+      
+      const storedTransactions = localStorage.getItem('gross_wallet_transactions');
+      if (storedTransactions) setWalletTransactions(JSON.parse(storedTransactions));
+
+      const storedNotifications = localStorage.getItem('gross_notifications');
+      if (storedNotifications) setNotifications(JSON.parse(storedNotifications));
+    } catch (error) {
+      console.error('Failed to parse supplemental data:', error);
     }
 
-    const storedTransactions = localStorage.getItem('gross_wallet_transactions');
-    if (storedTransactions) {
-      setWalletTransactions(JSON.parse(storedTransactions));
-    }
-
-    const storedNotifications = localStorage.getItem('gross_notifications');
-    if (storedNotifications) {
-      setNotifications(JSON.parse(storedNotifications));
-    }
-
+    // CRITICAL: Always mark as hydrated even if part of loading fails
     setIsHydrated(true);
 
     // ── Login As User support ──────────────────────────────────────────
