@@ -1,6 +1,7 @@
 import { Users, TrendingUp, Signal, CreditCard, Briefcase, Headphones, DollarSign, Activity, UserPlus, ArrowDownCircle, ArrowUpCircle, FileText, CheckCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import { useTransactions } from '../../contexts/TransactionProvider';
 import { formatCurrency } from '../../utils/formatNumber';
 
 export default function AdminDashboard() {
@@ -15,6 +16,7 @@ export default function AdminDashboard() {
     { label: 'Platform Health', value: '100%', change: '+0%', icon: Activity, color: 'cyan' },
   ]);
 
+  const { transactions } = useTransactions();
   const [recentActivity, setRecentActivity] = useState<Array<{
     type: string;
     message: string;
@@ -32,7 +34,6 @@ export default function AdminDashboard() {
     const subscriptions = JSON.parse(localStorage.getItem('gross_subscriptions') || '[]');
     const assets = JSON.parse(localStorage.getItem('gross_assets') || '[]');
     const tickets = JSON.parse(localStorage.getItem('gross_tickets') || '[]');
-    const transactions = JSON.parse(localStorage.getItem('gross_transactions') || '[]');
 
     // Calculate total users (excluding admin users to match User Management page)
     const totalUsers = users.filter((user: any) => user.role !== 'admin').length;
@@ -59,20 +60,20 @@ export default function AdminDashboard() {
     
     const monthlyRevenue = transactions
       .filter((tx: any) => {
-        const txDate = new Date(tx.date || tx.createdAt);
+        const txDate = new Date(tx.timestamp);
         return tx.type === 'deposit' && 
                tx.status === 'completed' && 
                txDate.getMonth() === currentMonth && 
                txDate.getFullYear() === currentYear;
       })
-      .reduce((sum: number, tx: any) => sum + (parseFloat(tx.amount) || 0), 0);
+      .reduce((sum: number, tx: any) => sum + (parseFloat(tx.amount as any) || 0), 0);
 
     // Calculate platform health (based on successful vs failed transactions)
     const recentTransactions = transactions.slice(-100); // Last 100 transactions
     const successfulTx = recentTransactions.filter((tx: any) => tx.status === 'completed').length;
     const platformHealth = recentTransactions.length > 0 
       ? ((successfulTx / recentTransactions.length) * 100).toFixed(1)
-      : 100;
+      : "100";
 
     // Calculate changes (comparing current data with some baseline logic)
     // For demo purposes, we'll calculate percentage based on growth indicators
@@ -271,7 +272,7 @@ export default function AdminDashboard() {
         icon: Activity
       }
     ]);
-  }, []);
+  }, [transactions]);
 
   const quickActions = [
     { label: 'Manage Users', href: '/admin/users', icon: Users, description: 'View and manage user accounts & portfolios' },

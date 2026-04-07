@@ -1,12 +1,14 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { supabase, getKV, setKV } from '../utils/supabase/client';
+import { publicAnonKey } from '../utils/supabase/info';
 
 // ============================================
 // API CONFIGURATION
 // ============================================
 
-const serverUrl = `https://${projectId}.supabase.co/functions/v1/make-server-5d4be467`;
+// serverUrl is imported from ../utils/supabase/client
+import { serverUrl } from '../utils/supabase/client';
 
 // ============================================
 // TYPES
@@ -312,61 +314,114 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
     loadUserData();
   }, [currentUser?.id]);
 
-  // Load data from localStorage on mount (fallback)
+  // Synchronize with database on mount
   useEffect(() => {
+    const loadAllDatabaseData = async () => {
+      try {
+        setLoading(true);
+        console.log('🔄 Loading investment data from database...');
+        
+        // Fetch investment offers
+        const dbOffers = await getKV('gross_investment_offers');
+        if (dbOffers) setInvestmentOffers(dbOffers);
+
+        // Fetch global user investments & sell requests (filtered by userId in state)
+        const dbUserInvestments = await getKV('gross_user_investments');
+        const dbSellRequests = await getKV('gross_sell_requests');
+
+        const userId = currentUser?.id;
+        const filterByUser = (items: any[]) => items && userId ? items.filter(item => item.userId === userId) : [];
+
+        if (dbUserInvestments) setUserInvestments(filterByUser(dbUserInvestments));
+        if (dbSellRequests) setSellRequests(filterByUser(dbSellRequests));
+
+        console.log('✅ Investment data synced with DB');
+      } catch (error) {
+        console.error('Failed to load investment data from database:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAllDatabaseData();
+  }, [currentUser?.id]);
+
+  // Real-time listener for investment data
+  useEffect(() => {
+    const channel = supabase
+      .channel('public:kv_store_investments')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'kv_store_5d4be467' 
+      }, (payload: any) => {
+        const { key, value } = payload.new;
+        const userId = currentUser?.id;
+        if (!userId) return;
+
+        const filterByUser = (items: any[]) => items ? items.filter(item => item.userId === userId) : [];
+
+        switch (key) {
+          case 'gross_investment_offers':
+            setInvestmentOffers(value || []);
+            break;
+          case 'gross_user_investments':
+            setUserInvestments(filterByUser(value));
+            break;
+          case 'gross_sell_requests':
+            setSellRequests(filterByUser(value));
+            break;
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser?.id]);
+
+  // Patch helper for global sets
+  const patchGlobalList = (key: string, items: any[]) => {
     const userId = currentUser?.id;
     if (!userId) return;
 
     try {
-      const storedOffers = localStorage.getItem('investmentOffers');
-      const storedInvestments = localStorage.getItem(`userInvestments_${userId}`);
-      const storedRequests = localStorage.getItem(`sellRequests_${userId}`);
-
-      if (storedOffers) setInvestmentOffers(JSON.parse(storedOffers));
-      if (storedInvestments) setUserInvestments(JSON.parse(storedInvestments));
-      if (storedRequests) setSellRequests(JSON.parse(storedRequests));
-    } catch (error) {
-      console.error('Failed to load investment data:', error);
+      const raw = localStorage.getItem(key);
+      const globalItems = raw ? JSON.parse(raw) : [];
+      const others = globalItems.filter((item: any) => item.userId !== userId);
+      const merged = [...items, ...others];
+      localStorage.setItem(key, JSON.stringify(merged));
+      window.dispatchEvent(new Event('storage'));
+    } catch (err) {
+      console.error('Patch error:', err);
     }
-  }, [currentUser?.id]);
+  };
 
-  // Save to localStorage whenever data changes
+  // Save base offers globally
   useEffect(() => {
-    localStorage.setItem('investmentOffers', JSON.stringify(investmentOffers));
+    if (investmentOffers.length > 0) {
+      localStorage.setItem('investmentOffers', JSON.stringify(investmentOffers));
+    }
   }, [investmentOffers]);
 
-  useEffect(() => {
-    const userId = currentUser?.id;
-    if (userId) {
-      localStorage.setItem(`userInvestments_${userId}`, JSON.stringify(userInvestments));
-    }
-  }, [userInvestments, currentUser?.id]);
-
-  useEffect(() => {
-    const userId = currentUser?.id;
-    if (userId) {
-      localStorage.setItem(`sellRequests_${userId}`, JSON.stringify(sellRequests));
-    }
-  }, [sellRequests, currentUser?.id]);
-
-  // Cross-tab sync via storage event (fires when another tab modifies localStorage)
+  // Cross-tab sync via storage event
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       const userId = currentUser?.id;
-      if (!userId) return;
+      if (!userId || !e.newValue) return;
 
       try {
-        if (e.key === 'investmentOffers' && e.newValue) {
+        if (e.key === 'investmentOffers') {
           setInvestmentOffers(JSON.parse(e.newValue));
         }
-        // ONLY sync user-specific data that belongs to THIS user
-        if (e.key === `userInvestments_${userId}` && e.newValue) {
-          setUserInvestments(JSON.parse(e.newValue));
-        }
-        if (e.key === `sellRequests_${userId}` && e.newValue) {
-          setSellRequests(JSON.parse(e.newValue));
-        }
-        if (e.key === 'investment_access' && e.newValue) {
+        
+        const items = JSON.parse(e.newValue);
+        const filtered = items.filter((item: any) => item.userId === userId || !item.userId);
+
+        if (e.key === 'userInvestments') setUserInvestments(filtered);
+        if (e.key === 'sellRequests') setSellRequests(filtered);
+        
+        if (e.key === 'investment_access') {
           window.dispatchEvent(new CustomEvent('investment_access_changed'));
         }
       } catch (error) {
@@ -375,10 +430,8 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
     };
 
     window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [currentUser?.id]);
 
   // Investment Offers Management
   const addInvestmentOffer = (offer: Omit<InvestmentOffer, 'id' | 'createdAt'>): string => {
@@ -416,7 +469,6 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
     .then(response => response.json())
     .then(created => {
       console.log('✅ Investment offer saved to database:', created.id);
-      // Update local state with database ID
       setInvestmentOffers(prev => 
         prev.map(o => o.id === newOffer.id ? { ...o, id: created.id } : o)
       );
@@ -425,23 +477,19 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
       console.error('❌ Failed to save investment offer to database:', error);
     });
     
-    // Update local state immediately for responsiveness
     setInvestmentOffers(prev => [...prev, newOffer]);
     return newOffer.id;
   };
 
   const updateInvestmentOffer = (id: string, updates: Partial<InvestmentOffer>): boolean => {
-    // Update local state immediately first
     setInvestmentOffers(prev => {
       const index = prev.findIndex(o => o.id === id);
       if (index === -1) return prev;
-      
       const updated = [...prev];
       updated[index] = { ...updated[index], ...updates };
       return updated;
     });
     
-    // Update in database (async, no await)
     fetch(`${serverUrl}/investment-offers/${id}`, {
       method: 'PUT',
       headers: {
@@ -466,32 +514,20 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
         market_price: updates.marketPrice
       })
     })
-    .then(() => {
-      console.log('✅ Investment offer updated in database:', id);
-    })
-    .catch(error => {
-      console.error('❌ Failed to update investment offer in database:', error);
-    });
+    .then(() => console.log('✅ Investment offer updated in database:', id))
+    .catch(error => console.error('❌ Failed to update investment offer in database:', error));
     
     return true;
   };
 
   const deleteInvestmentOffer = (id: string): boolean => {
-    // Delete from database
     fetch(`${serverUrl}/investment-offers/${id}`, {
       method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${publicAnonKey}`
-      }
+      headers: { 'Authorization': `Bearer ${publicAnonKey}` }
     })
-    .then(() => {
-      console.log('✅ Investment offer deleted from database:', id);
-    })
-    .catch(error => {
-      console.error('❌ Failed to delete investment offer from database:', error);
-    });
+    .then(() => console.log('✅ Investment offer deleted from database:', id))
+    .catch(error => console.error('❌ Failed to delete investment offer from database:', error));
     
-    // Update local state immediately
     setInvestmentOffers(prev => prev.filter(o => o.id !== id));
     return true;
   };
@@ -502,14 +538,22 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
 
   // User Investments Management
   const addUserInvestment = (investment: Omit<UserInvestment, 'id' | 'createdAt'>): string => {
+    const userId = currentUser?.id;
+    if (!userId) return '';
+
     const newInvestment: UserInvestment = {
       ...investment,
+      userId,
       id: `investment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       createdAt: Date.now(),
     };
-    setUserInvestments(prev => [...prev, newInvestment]);
     
-    // Update available units in the offer
+    setUserInvestments(prev => {
+      const next = [...prev, newInvestment];
+      patchGlobalList('userInvestments', next);
+      return next;
+    });
+    
     updateInvestmentOffer(investment.offerId, {
       availableUnits: (getInvestmentOffer(investment.offerId)?.availableUnits || 0) - investment.units,
     });
@@ -521,10 +565,10 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
     setUserInvestments(prev => {
       const index = prev.findIndex(i => i.id === id);
       if (index === -1) return prev;
-      
-      const updated = [...prev];
-      updated[index] = { ...updated[index], ...updates };
-      return updated;
+      const next = [...prev];
+      next[index] = { ...next[index], ...updates };
+      patchGlobalList('userInvestments', next);
+      return next;
     });
     return true;
   };
@@ -533,12 +577,15 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
     const investment = userInvestments.find(i => i.id === id);
     if (!investment) return false;
     
-    // Return units to the offer
     updateInvestmentOffer(investment.offerId, {
       availableUnits: (getInvestmentOffer(investment.offerId)?.availableUnits || 0) + investment.units,
     });
     
-    setUserInvestments(prev => prev.filter(i => i.id !== id));
+    setUserInvestments(prev => {
+      const next = prev.filter(i => i.id !== id);
+      patchGlobalList('userInvestments', next);
+      return next;
+    });
     return true;
   };
 
@@ -548,13 +595,22 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
 
   // Sell Requests Management
   const createSellRequest = (request: Omit<SellRequest, 'id' | 'createdAt' | 'status'>): string => {
+    const userId = currentUser?.id;
+    if (!userId) return '';
+
     const newRequest: SellRequest = {
       ...request,
+      userId,
       id: `sell-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       status: 'pending',
       createdAt: Date.now(),
     };
-    setSellRequests(prev => [...prev, newRequest]);
+    
+    setSellRequests(prev => {
+      const next = [...prev, newRequest];
+      patchGlobalList('sellRequests', next);
+      return next;
+    });
     return newRequest.id;
   };
 
@@ -562,10 +618,10 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
     setSellRequests(prev => {
       const index = prev.findIndex(r => r.id === id);
       if (index === -1) return prev;
-      
-      const updated = [...prev];
-      updated[index] = { ...updated[index], ...updates };
-      return updated;
+      const next = [...prev];
+      next[index] = { ...next[index], ...updates };
+      patchGlobalList('sellRequests', next);
+      return next;
     });
     return true;
   };
@@ -605,6 +661,7 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
     </InvestmentContext.Provider>
   );
 }
+
 
 export function useInvestments() {
   const context = useContext(InvestmentContext);

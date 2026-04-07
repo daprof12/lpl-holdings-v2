@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Asset Mapping (WordPress to Local Assets)
     const assetMap = {
-        'Logo-white-bg.png': '/assets/a5623bb6f620503b9182df0a84e99ac0d67b1705b48426902caa906dcf614a77.png',
+        'Logo-white-bg.png': '/logo.png',
         'u-s_securities_and_exchange_commission.png': '/assets/eafb7a5f7d4e7acce90d59065a61c9e2a322382f9ffda1155f3a128dd917f5c0.png',
         'brokercheck.png': '/assets/fdf0ef76e92534fac8ba069e1a53cf41d598a611c5e987685b7c1bffbb873fd9.png',
         'lei-lookup': '/assets/5b0f36ab4ff7e17c45aabea09154c3f7ae6521e9377b9d67ec986c94b9634c51.svg'
@@ -21,13 +21,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Clean URL handling (ensure trailing slash for static pages, but NOT for SPA routes)
             const isSPARoute = text === 'login' || text === 'start trading' || text === 'open web trading' || href.includes('/to-platform/');
-            
+
             if (isSPARoute) {
                 href = '/login';
             } else if (href && !href.endsWith('/') && !href.includes('.') && !href.startsWith('#') && !href.startsWith('mailto:') && !href.startsWith('tel:')) {
                 href += '/';
             }
-            
+
             if (href === '' || href === '/') href = '/landing/';
 
             link.setAttribute('href', href);
@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
         /* Logo Size Constraint */
         #header .hfe-site-logo-container img {
             width: auto !important;
-            max-width: 110px !important; /* Reduced from 140px */
+            max-width: 220px !important; /* Reduced from 140px */
             height: auto !important;
             display: block !important;
         }

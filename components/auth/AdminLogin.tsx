@@ -9,7 +9,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Checkbox } from '../ui/checkbox';
 import { toast } from 'sonner';
-import logoImage from 'figma:asset/3af257502fb25704e3d2cda04e668377af3daafa.png';
+const logoImage = "/logo.png";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
@@ -66,9 +66,8 @@ export default function AdminLogin() {
       >
         {/* Header */}
         <div className="text-center mb-8">
-          <a href="/index/" className="inline-flex items-center gap-3 mb-6">
-            <img src={logoImage} alt="LPL-Holdings" className="h-12 w-auto" />
-            <span className="text-2xl font-bold text-white">LPL-Holdings</span>
+          <a href="/landing/" className="inline-flex items-center gap-3 mb-6">
+            <img src={logoImage} alt="LPL-Premium" className="h-10 w-auto brightness-0 invert" />
           </a>
           <div className="flex items-center justify-center gap-2 mb-4">
             <Shield className="w-8 h-8 text-blue-400" />
@@ -94,7 +93,7 @@ export default function AdminLogin() {
                 </div>
                 <p className="text-white font-medium mb-1">Already signed in as</p>
                 <p className="text-blue-400 text-sm mb-6 truncate">{currentUser.email}</p>
-                
+
                 <div className="space-y-3">
                   <Button
                     onClick={(e) => {
@@ -124,7 +123,7 @@ export default function AdminLogin() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4 }}
-                onSubmit={handleSubmit} 
+                onSubmit={handleSubmit}
                 className="space-y-6"
               >
                 <>

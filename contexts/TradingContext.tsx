@@ -1,7 +1,8 @@
-import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback } from 'react';
 import { useMarketData } from './MarketDataContext';
 import { useAuth } from './AuthContext';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { supabase, getKV, setKV } from '../utils/supabase/client';
+import { publicAnonKey } from '../utils/supabase/info';
 
 // @refresh reset
 
@@ -9,34 +10,34 @@ import { projectId, publicAnonKey } from '../utils/supabase/info';
 // API CONFIGURATION
 // ============================================
 
-const serverUrl = `https://${projectId}.supabase.co/functions/v1/make-server-5d4be467`;
+// serverUrl is imported from ../utils/supabase/client
+import { serverUrl } from '../utils/supabase/client';
 
 // ============================================
 // TYPES
 // ============================================
 
-// Define types
 export interface Position {
   id: string;
-  userId: string; // Track which user owns this position
+  userId: string; // Required for global mapping
   symbol: string;
   side: 'buy' | 'sell';
   units: number;
   entryPrice: number;
   currentPrice: number;
+  leverage: number;
+  margin: number;
   stopLoss?: number;
   takeProfit?: number;
-  leverage: number;
   pnl: number;
-  margin: number;
   timestamp: Date;
+  status: 'open' | 'closed';
   mode: 'paper' | 'live';
-  status?: 'open' | 'closed'; // Add status for database
 }
 
 export interface Order {
   id: string;
-  userId: string; // Track which user owns this order
+  userId: string;
   symbol: string;
   side: 'buy' | 'sell';
   type: 'limit' | 'stop';
@@ -52,7 +53,7 @@ export interface Order {
 
 export interface HistoryItem {
   id: string;
-  userId: string; // Track which user owns this history item
+  userId: string;
   symbol: string;
   side: 'buy' | 'sell';
   type: 'market' | 'limit' | 'stop';
@@ -384,69 +385,132 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     loadUserData();
   }, [auth.currentUser?.id]);
 
-  // Load from localStorage on mount (now per-user)
+  // Load from DB as primary, localStorage as cache
   useEffect(() => {
     const userId = auth.currentUser?.id;
     if (!userId) return;
 
-    const storedPaperPositions = localStorage.getItem(`gross_paper_positions_${userId}`);
-    const storedPaperOrders = localStorage.getItem(`gross_paper_orders_${userId}`);
-    const storedPaperHistory = localStorage.getItem(`gross_paper_history_${userId}`);
-    const storedLivePositions = localStorage.getItem(`gross_live_positions_${userId}`);
-    const storedLiveOrders = localStorage.getItem(`gross_live_orders_${userId}`);
-    const storedLiveHistory = localStorage.getItem(`gross_live_history_${userId}`);
+    const loadData = async () => {
+      try {
+        console.log('🔄 Loading trading data from database for user:', userId);
+        
+        // Fetch specific account data
+        const paperAccountDb = await getKV(`gross_paper_account_${userId}`);
+        const liveAccountDb = await getKV(`gross_live_account_${userId}`);
+        
+        if (paperAccountDb) setPaperAccount(paperAccountDb);
+        if (liveAccountDb) setLiveAccount(liveAccountDb);
 
-    if (storedPaperPositions) setPaperPositions(JSON.parse(storedPaperPositions));
-    if (storedPaperOrders) setPaperOrders(JSON.parse(storedPaperOrders));
-    if (storedPaperHistory) setPaperHistory(JSON.parse(storedPaperHistory));
-    if (storedLivePositions) setLivePositions(JSON.parse(storedLivePositions));
-    if (storedLiveOrders) setLiveOrders(JSON.parse(storedLiveOrders));
-    if (storedLiveHistory) setLiveHistory(JSON.parse(storedLiveHistory));
-  }, [auth.currentUser?.id]); // Re-load when user changes (e.g. in same tab)
+        // Fetch global list of positions/orders/history
+        const paperPosDb = await getKV('gross_paper_positions');
+        const paperOrdDb = await getKV('gross_paper_orders');
+        const paperHisDb = await getKV('gross_paper_history');
+        const livePosDb  = await getKV('gross_live_positions');
+        const liveOrdDb  = await getKV('gross_live_orders');
+        const liveHisDb  = await getKV('gross_live_history');
 
-  // Save to localStorage whenever data changes (per-user)
+        const filterByUser = (items: any[]) => (items || []).filter(item => item.userId === userId);
+
+        if (paperPosDb) setPaperPositions(filterByUser(paperPosDb));
+        if (paperOrdDb) setPaperOrders(filterByUser(paperOrdDb));
+        if (paperHisDb) setPaperHistory(filterByUser(paperHisDb));
+        if (livePosDb)  setLivePositions(filterByUser(livePosDb));
+        if (liveOrdDb)  setLiveOrders(filterByUser(liveOrdDb));
+        if (liveHisDb)  setLiveHistory(filterByUser(liveHisDb));
+        
+        console.log('✅ Trading data loaded from DB');
+      } catch (err) {
+        console.error('Failed to load database trading data:', err);
+      }
+    };
+
+    loadData();
+  }, [auth.currentUser?.id]);
+
+  // Combined real-time subscription for global trading lists
   useEffect(() => {
+    const channel = supabase
+      .channel('public:kv_store_trading')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'kv_store_5d4be467' 
+      }, (payload: any) => {
+        const { key, value } = payload.new;
+        const userId = auth.currentUser?.id;
+        if (!userId) return;
+
+        const filterByUser = (items: any[]) => (items || []).filter(item => item.userId === userId);
+
+        switch (key) {
+          case `gross_paper_account_${userId}`: setPaperAccount(value); break;
+          case `gross_live_account_${userId}`:  setLiveAccount(value); break;
+          case 'gross_paper_positions': setPaperPositions(filterByUser(value)); break;
+          case 'gross_paper_orders':    setPaperOrders(filterByUser(value)); break;
+          case 'gross_paper_history':   setPaperHistory(filterByUser(value)); break;
+          case 'gross_live_positions':  setLivePositions(filterByUser(value)); break;
+          case 'gross_live_orders':     setLiveOrders(filterByUser(value)); break;
+          case 'gross_live_history':    setLiveHistory(filterByUser(value)); break;
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [auth.currentUser?.id]);
+
+  // Helper to update global localStorage lists without overwriting other users' data
+  const updateGlobalList = (key: string, updater: (items: any[]) => any[]) => {
     const userId = auth.currentUser?.id;
     if (!userId) return;
-    localStorage.setItem(`gross_paper_positions_${userId}`, JSON.stringify(paperPositions));
-  }, [paperPositions, auth.currentUser?.id]);
+    
+    try {
+      const raw = localStorage.getItem(key);
+      const items = raw ? JSON.parse(raw) : [];
+      // Pass the WHOLE list to updater, or handle merging here.
+      // Actually, it's easier to just handle it in the add/remove functions.
+    } catch (err) {
+      console.error(`Error updating global list ${key}:`, err);
+    }
+  };
 
+  // Cross-tab sync: listen for storage events on global keys and re-filter
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      const userId = auth.currentUser?.id;
+      if (!userId || !e.newValue) return;
+
+      try {
+        const items = JSON.parse(e.newValue);
+        const filtered = items.filter((item: any) => item.userId === userId || !item.userId);
+
+        if (e.key === 'gross_paper_positions') setPaperPositions(filtered);
+        if (e.key === 'gross_paper_orders') setPaperOrders(filtered);
+        if (e.key === 'gross_paper_history') setPaperHistory(filtered);
+        if (e.key === 'gross_live_positions') setLivePositions(filtered);
+        if (e.key === 'gross_live_orders') setLiveOrders(filtered);
+        if (e.key === 'gross_live_history') setLiveHistory(filtered);
+      } catch (err) {
+        console.error('Cross-tab sync error:', err);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [auth.currentUser?.id]);
+
+  // Account balance isolation is still per-user (correct for singletons)
   useEffect(() => {
     const userId = auth.currentUser?.id;
-    if (!userId) return;
-    localStorage.setItem(`gross_paper_orders_${userId}`, JSON.stringify(paperOrders));
-  }, [paperOrders, auth.currentUser?.id]);
+    if (!userId) {
+      isLiveAccountHydrated.current = false;
+      return;
+    }
 
-  useEffect(() => {
-    const userId = auth.currentUser?.id;
-    if (!userId) return;
-    localStorage.setItem(`gross_paper_history_${userId}`, JSON.stringify(paperHistory));
-  }, [paperHistory, auth.currentUser?.id]);
-
-  useEffect(() => {
-    const userId = auth.currentUser?.id;
-    if (!userId) return;
-    localStorage.setItem(`gross_live_positions_${userId}`, JSON.stringify(livePositions));
-  }, [livePositions, auth.currentUser?.id]);
-
-  useEffect(() => {
-    const userId = auth.currentUser?.id;
-    if (!userId) return;
-    localStorage.setItem(`gross_live_orders_${userId}`, JSON.stringify(liveOrders));
-  }, [liveOrders, auth.currentUser?.id]);
-
-  useEffect(() => {
-    const userId = auth.currentUser?.id;
-    if (!userId) return;
-    localStorage.setItem(`gross_live_history_${userId}`, JSON.stringify(liveHistory));
-  }, [liveHistory, auth.currentUser?.id]);
-
-  // Lazy-init live account from per-user localStorage key when user is known.
-  // This runs AFTER the save effect, so the ref guard prevents the initial
-  // zero-balance from ever being written before the stored value is loaded.
-  useEffect(() => {
-    const userId = auth.currentUser?.id;
-    if (!userId) return;
+    // Reset hydration state for the new user context
+    isLiveAccountHydrated.current = false;
+    pendingLiveHydration.current = false;
 
     // Always prioritize per-user key for explicit session isolation
     const stored = localStorage.getItem(`gross_live_account_${userId}`);
@@ -454,11 +518,11 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     if (stored) {
       try {
         setLiveAccount(JSON.parse(stored));
-        // Mark pending — the save effect must NOT run until React has processed
-        // the setLiveAccount call above.  We'll flip isLiveAccountHydrated in
-        // a separate effect that depends on [liveAccount].
         pendingLiveHydration.current = true;
-      } catch { /* ignore malformed data */ }
+      } catch { 
+        // fallback for malformed data
+        isLiveAccountHydrated.current = true;
+      }
     } else {
       // No stored data — nothing to overwrite, safe to allow saves immediately
       isLiveAccountHydrated.current = true;
@@ -485,10 +549,38 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const userId = auth.currentUser?.id;
     if (!isLiveAccountHydrated.current || !userId) return;
-    localStorage.setItem(`gross_live_account_${userId}`, JSON.stringify(liveAccount));
+    
+    // 1. Local cache
+    const liveKey = `gross_live_account_${userId}`;
+    localStorage.setItem(liveKey, JSON.stringify(liveAccount));
     // Keep the generic key in sync so the storage-event listener can still read it
     localStorage.setItem('gross_live_account', JSON.stringify(liveAccount));
+
+    // 2. Database Sync (Aggressive 1s debounce)
+    const timeout = setTimeout(() => {
+      setKV(liveKey, liveAccount);
+      console.log('✅ Live account synced to DB for user:', userId);
+    }, 1000);
+
+    return () => clearTimeout(timeout);
   }, [liveAccount, auth.currentUser?.id]);
+
+  // Similar sync for paper account
+  useEffect(() => {
+    const userId = auth.currentUser?.id;
+    if (!userId) return;
+
+    const paperKey = `gross_paper_account_${userId}`;
+    localStorage.setItem(paperKey, JSON.stringify(paperAccount));
+    localStorage.setItem('gross_paper_account', JSON.stringify(paperAccount));
+
+    const timeout = setTimeout(() => {
+      setKV(paperKey, paperAccount);
+      console.log('✅ Paper account synced to DB for user:', userId);
+    }, 1000);
+
+    return () => clearTimeout(timeout);
+  }, [paperAccount, auth.currentUser?.id]);
 
   // Listen for storage events to sync balance changes from admin in real-time
   useEffect(() => {
@@ -500,7 +592,9 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       const liveKey = `gross_live_account_${currentUserId}`;
       const paperKey = `gross_paper_account_${currentUserId}`;
 
-      if (e && e.key && e.key !== liveKey && e.key !== paperKey) {
+      // If it's a StorageEvent (from another tab), only react if it's our key.
+      // If it's a generic Event (from dispatchEvent), it won't have a 'key', so we always reload.
+      if (e && 'key' in e && e.key && e.key !== liveKey && e.key !== paperKey) {
         return;
       }
 
@@ -534,78 +628,133 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   const account = tradingMode === 'paper' ? paperAccount : liveAccount;
   const portfolioHistory = tradingMode === 'paper' ? paperPortfolioHistory : livePortfolioHistory;
 
+  // Helper to persist changes to the global list in a way that doesn't overwrite others
+  const patchGlobalList = useCallback((key: string, items: any[], mode: 'paper' | 'live') => {
+    const userId = auth.currentUser?.id;
+    if (!userId) return;
+
+    try {
+      // 1. Get current global state
+      const raw = localStorage.getItem(key);
+      const globalItems = raw ? JSON.parse(raw) : [];
+      
+      // 2. Filter out ALL items belonging to THIS user from the global list
+      const otherUsersItems = globalItems.filter((item: any) => item.userId !== userId);
+      
+      // 3. Merge this user's current LOCAL state (already filtered) into the global list
+      const merged = [...items, ...otherUsersItems];
+      
+      // 4. Save back to global key
+      localStorage.setItem(key, JSON.stringify(merged));
+      // 5. Important: storage event doesn't fire for the same window, so this ensures other tabs see it
+      window.dispatchEvent(new Event('storage'));
+    } catch (err) {
+      console.error(`Failed to patch global list ${key}:`, err);
+    }
+  }, [auth.currentUser?.id]);
+
   // Actions
   const addPosition = (position: Position) => {
-    // Get current market price for the symbol if available
+    const userId = auth.currentUser?.id;
+    if (!userId) return;
+
     const priceData = marketData.getPrice(position.symbol);
     const currentMarketPrice = priceData?.price || position.entryPrice;
     
-    // Ensure currentPrice is set to live market price
-    const positionWithPrice = {
+    const positionWithUserId: Position = {
       ...position,
+      userId,
       currentPrice: currentMarketPrice
     };
     
     if (tradingMode === 'paper') {
-      setPaperPositions([...paperPositions, positionWithPrice]);
+      const next = [...paperPositions, positionWithUserId];
+      setPaperPositions(next);
+      patchGlobalList('gross_paper_positions', next, 'paper');
     } else {
-      setLivePositions([...livePositions, positionWithPrice]);
+      const next = [...livePositions, positionWithUserId];
+      setLivePositions(next);
+      patchGlobalList('gross_live_positions', next, 'live');
     }
   };
 
   const removePosition = (positionId: string) => {
     if (tradingMode === 'paper') {
-      setPaperPositions(paperPositions.filter(p => p.id !== positionId));
+      const next = paperPositions.filter(p => p.id !== positionId);
+      setPaperPositions(next);
+      patchGlobalList('gross_paper_positions', next, 'paper');
     } else {
-      setLivePositions(livePositions.filter(p => p.id !== positionId));
+      const next = livePositions.filter(p => p.id !== positionId);
+      setLivePositions(next);
+      patchGlobalList('gross_live_positions', next, 'live');
     }
   };
 
   const updatePosition = (positionId: string, updates: Partial<Position>) => {
     if (tradingMode === 'paper') {
-      setPaperPositions(paperPositions.map(p => 
-        p.id === positionId ? { ...p, ...updates } : p
-      ));
+      const next = paperPositions.map(p => p.id === positionId ? { ...p, ...updates } : p);
+      setPaperPositions(next);
+      patchGlobalList('gross_paper_positions', next, 'paper');
     } else {
-      setLivePositions(livePositions.map(p => 
-        p.id === positionId ? { ...p, ...updates } : p
-      ));
+      const next = livePositions.map(p => p.id === positionId ? { ...p, ...updates } : p);
+      setLivePositions(next);
+      patchGlobalList('gross_live_positions', next, 'live');
     }
   };
 
   const addOrder = (order: Order) => {
+    const userId = auth.currentUser?.id;
+    if (!userId) return;
+
+    const orderWithUserId: Order = { ...order, userId };
     if (tradingMode === 'paper') {
-      setPaperOrders([...paperOrders, order]);
+      const next = [...paperOrders, orderWithUserId];
+      setPaperOrders(next);
+      patchGlobalList('gross_paper_orders', next, 'paper');
     } else {
-      setLiveOrders([...liveOrders, order]);
+      const next = [...liveOrders, orderWithUserId];
+      setLiveOrders(next);
+      patchGlobalList('gross_live_orders', next, 'live');
     }
   };
 
   const removeOrder = (orderId: string) => {
     if (tradingMode === 'paper') {
-      setPaperOrders(paperOrders.filter(o => o.id !== orderId));
+      const next = paperOrders.filter(o => o.id !== orderId);
+      setPaperOrders(next);
+      patchGlobalList('gross_paper_orders', next, 'paper');
     } else {
-      setLiveOrders(liveOrders.filter(o => o.id !== orderId));
+      const next = liveOrders.filter(o => o.id !== orderId);
+      setLiveOrders(next);
+      patchGlobalList('gross_live_orders', next, 'live');
     }
   };
 
   const updateOrder = (orderId: string, updates: Partial<Order>) => {
     if (tradingMode === 'paper') {
-      setPaperOrders(paperOrders.map(o => 
-        o.id === orderId ? { ...o, ...updates } : o
-      ));
+      const next = paperOrders.map(o => o.id === orderId ? { ...o, ...updates } : o);
+      setPaperOrders(next);
+      patchGlobalList('gross_paper_orders', next, 'paper');
     } else {
-      setLiveOrders(liveOrders.map(o => 
-        o.id === orderId ? { ...o, ...updates } : o
-      ));
+      const next = liveOrders.map(o => o.id === orderId ? { ...o, ...updates } : o);
+      setLiveOrders(next);
+      patchGlobalList('gross_live_orders', next, 'live');
     }
   };
 
   const addHistory = (item: HistoryItem) => {
+    const userId = auth.currentUser?.id;
+    if (!userId) return;
+
+    const itemWithUserId: HistoryItem = { ...item, userId };
     if (tradingMode === 'paper') {
-      setPaperHistory([item, ...paperHistory]);
+      const next = [itemWithUserId, ...paperHistory];
+      setPaperHistory(next);
+      patchGlobalList('gross_paper_history', next, 'paper');
     } else {
-      setLiveHistory([item, ...liveHistory]);
+      const next = [itemWithUserId, ...liveHistory];
+      setLiveHistory(next);
+      patchGlobalList('gross_live_history', next, 'live');
     }
   };
 

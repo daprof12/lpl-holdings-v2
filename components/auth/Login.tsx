@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
-import imgDefaultLogo from "figma:asset/636e2f836e77ac426649d6a64c07faf2f12ec20d.png";
+const imgDefaultLogo = "/logo.png";
 
 interface PasswordResetRequest {
   id: string;
@@ -290,12 +290,12 @@ export default function Login() {
         {/* Logo */}
         <div
           className="flex justify-center mb-8 cursor-pointer hover:opacity-80 transition-opacity"
-          onClick={() => window.location.href = '/index/'}
+          onClick={() => window.location.href = '/landing/'}
         >
           <img
             src={imgDefaultLogo}
-            alt="LPL-Holdings"
-            className="h-[60px] w-auto"
+            alt="LPL-Premium"
+            className="h-10 w-auto brightness-0 invert"
           />
         </div>
 
@@ -323,7 +323,7 @@ export default function Login() {
               </div>
               <p className="text-white font-medium mb-1">Already signed in as</p>
               <p className="text-blue-400 text-sm mb-6 truncate">{currentUser.email}</p>
-              
+
               <div className="space-y-3">
                 <button
                   onClick={(e) => {
@@ -353,117 +353,117 @@ export default function Login() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.1 }}
-              onSubmit={handleSubmit} 
+              onSubmit={handleSubmit}
               className="space-y-6"
             >
 
-          {/* Email Field */}
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-normal mb-2"
-              style={{ color: '#9ca3af' }}
-            >
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              placeholder=""
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full h-12 rounded border px-4 text-base focus:outline-none focus:ring-2 transition-all"
-              style={{
-                background: '#1a2332',
-                borderColor: '#3d4a5c',
-                color: '#ffffff'
-              }}
-            />
-          </div>
+              {/* Email Field */}
+              <div>
+                <label
+                  htmlFor="email"
+                  className="block text-sm font-normal mb-2"
+                  style={{ color: '#9ca3af' }}
+                >
+                  Email
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  placeholder=""
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full h-12 rounded border px-4 text-base focus:outline-none focus:ring-2 transition-all"
+                  style={{
+                    background: '#1a2332',
+                    borderColor: '#3d4a5c',
+                    color: '#ffffff'
+                  }}
+                />
+              </div>
 
-          {/* Password Field */}
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-normal mb-2"
-              style={{ color: '#9ca3af' }}
-            >
-              Password
-            </label>
-            <div className="relative">
-              <input
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                placeholder=""
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full h-12 rounded border px-4 pr-12 text-base focus:outline-none focus:ring-2 transition-all"
+              {/* Password Field */}
+              <div>
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-normal mb-2"
+                  style={{ color: '#9ca3af' }}
+                >
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder=""
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full h-12 rounded border px-4 pr-12 text-base focus:outline-none focus:ring-2 transition-all"
+                    style={{
+                      background: '#1a2332',
+                      borderColor: '#3d4a5c',
+                      color: '#ffffff'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
+                    style={{ color: '#9ca3af' }}
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Forgot Password Link */}
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  className="flex items-center gap-1.5 text-sm font-normal hover:underline transition-colors"
+                  style={{ color: '#4A9EFF' }}
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Forgot your password?
+                </button>
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div
+                  className="p-3 rounded text-sm font-medium"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    color: '#ef4444',
+                    border: '1px solid rgba(239, 68, 68, 0.3)'
+                  }}
+                >
+                  {error}
+                </div>
+              )}
+
+              {/* Sign In Button */}
+              <button
+                type="submit"
+                disabled={isLoading || !email || !password}
+                className={`w-full h-12 rounded font-semibold text-base transition-all uppercase tracking-wide ${isLoading || !email || !password
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'hover:opacity-90'
+                  }`}
                 style={{
-                  background: '#1a2332',
-                  borderColor: '#3d4a5c',
+                  background: '#4A9EFF',
                   color: '#ffffff'
                 }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
-                style={{ color: '#9ca3af' }}
               >
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                {isLoading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Loading...
+                  </div>
+                ) : (
+                  'SIGN IN'
+                )}
               </button>
-            </div>
-          </div>
-
-          {/* Forgot Password Link */}
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={handleForgotPassword}
-              className="flex items-center gap-1.5 text-sm font-normal hover:underline transition-colors"
-              style={{ color: '#4A9EFF' }}
-            >
-              <RotateCcw className="w-4 h-4" />
-              Forgot your password?
-            </button>
-          </div>
-
-          {/* Error Message */}
-          {error && (
-            <div
-              className="p-3 rounded text-sm font-medium"
-              style={{
-                background: 'rgba(239, 68, 68, 0.1)',
-                color: '#ef4444',
-                border: '1px solid rgba(239, 68, 68, 0.3)'
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          {/* Sign In Button */}
-          <button
-            type="submit"
-            disabled={isLoading || !email || !password}
-            className={`w-full h-12 rounded font-semibold text-base transition-all uppercase tracking-wide ${isLoading || !email || !password
-              ? 'opacity-50 cursor-not-allowed'
-              : 'hover:opacity-90'
-              }`}
-            style={{
-              background: '#4A9EFF',
-              color: '#ffffff'
-            }}
-          >
-            {isLoading ? (
-              <div className="flex items-center justify-center gap-2">
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Loading...
-              </div>
-            ) : (
-              'SIGN IN'
-            )}
-          </button>
             </motion.form>
           )}
         </AnimatePresence>

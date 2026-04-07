@@ -19,7 +19,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useNotifications } from '../../contexts/NotificationContext';
-import logoImage from 'figma:asset/3af257502fb25704e3d2cda04e668377af3daafa.png';
+const logoImage = "/logo.png";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -143,8 +143,8 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
           <Link to="/dashboard" className={`flex items-center gap-2 ${!isOpen && 'lg:justify-center lg:w-full'}`}>
             <img
               src={theme === 'light' ? logoImage : logoImage}
-              alt="Metabroker Pro"
-              className={`${isOpen ? 'h-7' : 'h-7 lg:h-8'}`}
+              alt="LPL Premium"
+              className={`${isOpen ? 'h-7' : 'h-7 lg:h-8'} ${theme === 'dark' ? 'brightness-0 invert' : ''}`}
             />
           </Link>
 

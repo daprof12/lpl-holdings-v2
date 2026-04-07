@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import logoImage from 'figma:asset/3af257502fb25704e3d2cda04e668377af3daafa.png';
+const logoImage = "/logo.png";
 import tradingViewLogo from 'figma:asset/a400f218ef6d3589669ef1349f01498d3fd3b2ea.png';
 
 // ── Live Trading Time widget ──────────────────────────────────────────────────
@@ -55,8 +55,7 @@ export default function Footer() {
           {/* Brand Column */}
           <div className="lg:col-span-2">
             <Link to="/" className="flex items-center gap-3 mb-6">
-              <img src={logoImage} alt="LPL-Holdings" className="h-12 w-auto" />
-              <span className="text-2xl font-bold text-white">LPL-Holdings</span>
+              <img src={logoImage} alt="LPL-Premium" className="h-12 w-auto" />
             </Link>
             <p className="text-gray-400 mb-6 max-w-sm">
               Automate your trading with AI-powered trading bots. Smart, simple, and profitable.
@@ -171,7 +170,7 @@ export default function Footer() {
         <div className="border-t border-gray-800 pt-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-gray-400 text-sm">
-              © {currentYear} LPL-Holdings. All rights reserved.
+              © {currentYear} LPL Premium. All rights reserved.
             </p>
             <div className="flex items-center gap-6">
               <Link to="/privacy" className="text-gray-400 hover:text-white text-sm transition-colors">

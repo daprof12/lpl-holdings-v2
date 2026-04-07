@@ -571,14 +571,19 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const subscribeToSymbol = useCallback((symbol: string) => {
-    if (subscribedRef.current.has(symbol)) return;
-    subscribedRef.current.add(symbol);
+    const isNew = !subscribedRef.current.has(symbol);
+    if (isNew) {
+      subscribedRef.current.add(symbol);
+      startTickInterval();
+    }
 
-    // Immediate fetch for new subscription only
-    fetchPriceRef.current?.(symbol);
-
-    // Ensure the single batched interval is running
-    startTickInterval();
+    // Always trigger immediate fetch if price is missing or older than 10 seconds
+    const currentPrice = pricesRef.current[symbol];
+    const isStale = !currentPrice || (Date.now() - currentPrice.lastUpdate > 10000);
+    
+    if (isNew || isStale) {
+      fetchPriceRef.current?.(symbol);
+    }
   }, [startTickInterval]);
 
   const unsubscribeFromSymbol = useCallback((symbol: string) => {

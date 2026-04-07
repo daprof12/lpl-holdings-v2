@@ -335,8 +335,15 @@ export default function CryptoDeposit({ walletType = 'live' }: { walletType?: 'l
             </div>
           </div>
           {amount && parseFloat(amount) > 0 && (
-            <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-              ≈ {cryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 8, maximumFractionDigits: 8 })} {selectedCrypto}
+            <div className="mt-2 text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
+              {currentPrice > 0 ? (
+                <>≈ {cryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 8, maximumFractionDigits: 8 })} {selectedCrypto}</>
+              ) : (
+                <span className="flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Fetching real-time price...
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -628,7 +635,14 @@ export default function CryptoDeposit({ walletType = 'live' }: { walletType?: 'l
                   <div className="pt-2 border-t border-blue-200 dark:border-blue-700 flex justify-between">
                     <span className="font-bold">Crypto to Send:</span>
                     <span className="font-bold text-lg">
-                      {cryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 8, maximumFractionDigits: 8 })} {selectedCrypto}
+                      {currentPrice > 0 ? (
+                        `${cryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 8, maximumFractionDigits: 8 })} ${selectedCrypto}`
+                      ) : (
+                        <span className="flex items-center gap-1 text-sm text-gray-400">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Fetching...
+                        </span>
+                      )}
                     </span>
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 pt-2">

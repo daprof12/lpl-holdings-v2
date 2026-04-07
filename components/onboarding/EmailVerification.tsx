@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Check, Mail } from 'lucide-react';
+import { Check, Mail, TrendingUp, CheckCircle2 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+const logoImage = "/logo.png";
 
 export default function EmailVerification() {
   const navigate = useNavigate();
@@ -116,12 +118,7 @@ export default function EmailVerification() {
         {/* Header */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-400 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-7 h-7 text-white" />
-            </div>
-            <span className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
-              Gross
-            </span>
+            <img src={logoImage} alt="LPL Premium" className="h-12 w-auto" />
           </Link>
           
           <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-4">

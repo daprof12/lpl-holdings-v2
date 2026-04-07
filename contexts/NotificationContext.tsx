@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from './AuthContext';
+import { supabase, getKV, setKV } from '../utils/supabase/client';
 
 // ============================================
 // TYPES
@@ -130,59 +131,94 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(CRM_KEY, JSON.stringify(crmMessages));
   }, [crmMessages]);
 
-  // Cross-tab sync via storage event
+  // Load from DB on mount
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === NOTIF_KEY && e.newValue) {
-        try {
-          const parsed = (JSON.parse(e.newValue) as any[]).map(n => ({
+    const loadFromDB = async () => {
+      try {
+        setLoading(true);
+        console.log('🔄 Loading notifications from database...');
+        
+        const dbNotifs = await getKV(NOTIF_KEY);
+        if (dbNotifs) {
+          const parsed = (dbNotifs as any[]).map(n => ({
             ...n,
             timestamp: new Date(n.timestamp),
           }));
           setNotifications(deduplicateById(parsed));
-        } catch (error) {
-          console.error('Cross-tab notifications sync failed:', error);
         }
-      }
-      if (e.key === CRM_KEY && e.newValue) {
-        try {
-          setCrmMessages(JSON.parse(e.newValue));
-        } catch (error) {
-          console.error('Cross-tab CRM messages sync failed:', error);
+
+        const dbCrm = await getKV(CRM_KEY);
+        if (dbCrm) {
+          const parsed = (dbCrm as any[]).map(m => ({
+            ...m,
+            createdAt:    new Date(m.createdAt),
+            sentAt:       m.sentAt       ? new Date(m.sentAt)       : undefined,
+            scheduledFor: m.scheduledFor ? new Date(m.scheduledFor) : undefined,
+          }));
+          setCrmMessages(parsed);
         }
+        
+        console.log('✅ Notifications loaded from DB');
+      } catch (error) {
+        console.error('Failed to load notifications from database:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
-    window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
+    loadFromDB();
   }, []);
 
-  // Same-tab sync: AuthContext also writes to gross_notifications,
-  // so poll for changes that happen within the same tab
+  // Real-time synchronization
   useEffect(() => {
-    const interval = setInterval(() => {
-      const fresh = loadNotifications();
-      setNotifications(prev => {
-        // Only update if localStorage has notifications we don't have
-        if (fresh.length !== prev.length) {
-          // Merge: keep our state but add any new ones from localStorage
-          const prevIds = new Set(prev.map(n => n.id));
-          const newOnes = fresh.filter(n => !prevIds.has(n.id));
-          if (newOnes.length > 0) {
-            return deduplicateById([...newOnes, ...prev]);
-          }
-          // If localStorage has fewer (deletions from other context), use localStorage
-          if (fresh.length < prev.length) {
-            return fresh;
+    const channel = supabase
+      .channel('public:kv_store_notifications')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'kv_store_5d4be467' 
+      }, (payload: any) => {
+        const { key, value } = payload.new;
+        
+        if (key === NOTIF_KEY) {
+          try {
+            const parsed = (value as any[]).map(n => ({
+              ...n,
+              timestamp: new Date(n.timestamp),
+            }));
+            setNotifications(deduplicateById(parsed));
+          } catch (err) {
+            console.error('Real-time notifs sync error:', err);
           }
         }
-        return prev;
-      });
-    }, 2000);
-    return () => clearInterval(interval);
+        
+        if (key === CRM_KEY) {
+          try {
+            const parsed = (value as any[]).map(m => ({
+              ...m,
+              createdAt:    new Date(m.createdAt),
+              sentAt:       m.sentAt       ? new Date(m.sentAt)       : undefined,
+              scheduledFor: m.scheduledFor ? new Date(m.scheduledFor) : undefined,
+            }));
+            setCrmMessages(parsed);
+          } catch (err) {
+            console.error('Real-time CRM sync error:', err);
+          }
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
+
+  // Sync to DB helper (Internal use)
+  useEffect(() => {
+    if (!loading && (notifications.length > 0 || crmMessages.length > 0)) {
+       // We can debounce this if needed, but for now we'll rely on the existing CRUD functions
+    }
+  }, [notifications, crmMessages, loading]);
 
   // When the logged-in user changes, re-read persisted notifications
   // (no network call – localStorage is the source of truth)
@@ -354,19 +390,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     toast.success('Message deleted');
   }, []);
 
-  const unreadCount = notifications.filter(n => {
-    if (!n.read) {
-      // Only count notifications meant for this user (or broadcast ones with no userId)
-      if (n.userId && n.userId !== currentUser?.id) return false;
-      return true;
-    }
-    return false;
-  }).length;
+  // Only show notifications for THIS user (or broadcast ones)
+  // Admin sees all
+  const isAdmin = currentUser?.role === 'admin';
+  const filteredNotifications = notifications.filter(n => {
+    if (isAdmin) return true;
+    if (!n.userId) return true; // Broadcast
+    return n.userId === currentUser?.id;
+  });
+
+  const unreadCount = filteredNotifications.filter(n => !n.read).length;
 
   return (
     <NotificationContext.Provider
       value={{
-        notifications,
+        notifications: filteredNotifications,
         unreadCount,
         loading,
         addNotification,

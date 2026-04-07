@@ -192,7 +192,9 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
     if (stored && currentUser) {
       try {
         const allMethods = JSON.parse(stored);
-        const userMethods = allMethods.filter((m: WithdrawalMethod) => m.userId === currentUser.id);
+        const userMethods = allMethods.filter((m: any) => 
+          m.userId === currentUser.id || m.userId === 'all-users'
+        );
         setWithdrawalMethods(userMethods);
       } catch (error) {
         console.error('Failed to load withdrawal methods:', error);
@@ -229,11 +231,11 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
       color: 'from-orange-500 to-orange-600'
     }] : []),
     ...((hasUserSpecificConfig ? userEnabledMethods.includes('e_wallet') : true) &&
-        withdrawalMethods.filter(m => m.type === 'paypal' || m.type === 'e_wallet').length > 0 ? [{
+        withdrawalMethods.filter(m => (m.type as string) === 'paypal' || (m.type as string) === 'e_wallet').length > 0 ? [{
       id: 'e_wallet' as const,
       name: 'E-Wallet',
       icon: DollarSign,
-      description: `${withdrawalMethods.filter(m => m.type === 'paypal' || m.type === 'e_wallet').length} e-wallet${withdrawalMethods.filter(m => m.type === 'paypal' || m.type === 'e_wallet').length > 1 ? 's' : ''} available`,
+      description: `${withdrawalMethods.filter(m => (m.type as string) === 'paypal' || (m.type as string) === 'e_wallet').length} e-wallet${withdrawalMethods.filter(m => (m.type as string) === 'paypal' || (m.type as string) === 'e_wallet').length > 1 ? 's' : ''} available`,
       fee: '2%',
       processingTime: '1-2 business days',
       minWithdraw: 25,
@@ -404,18 +406,18 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
     const txId = addTransaction({
       userId: currentUser.id,
       type: 'withdrawal',
-      method: selectedMethod!,
+      method: selectedMethod === 'e_wallet' ? 'paypal' : (selectedMethod as any),
       amount: withdrawAmount,
       currency: 'USD',
       usdEquivalent: withdrawAmount,
       status: 'pending',
       walletType,
       ...(selectedMethod === 'bank' && selectedWithdrawalMethod && {
-        bankName: selectedWithdrawalMethod.bankName,
-        accountNumber: selectedWithdrawalMethod.accountNumber,
+        bankName: (selectedWithdrawalMethod as any).bankName,
+        accountNumber: (selectedWithdrawalMethod as any).accountNumber,
       }),
       ...(selectedMethod === 'e_wallet' && selectedWithdrawalMethod && {
-        // Store PayPal email in a custom field if needed
+        paypalEmail: (selectedWithdrawalMethod as any).paypalEmail,
       }),
       ...(selectedMethod === 'crypto' && {
         walletAddress: customWithdrawalAddress,
@@ -479,7 +481,10 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
   };
 
   // Filter methods by type
-  const availableMethods = withdrawalMethods.filter(m => m.type === selectedMethod);
+  const availableMethods = withdrawalMethods.filter(m => {
+    if (selectedMethod === 'e_wallet') return (m.type as string) === 'e_wallet' || (m.type as string) === 'paypal';
+    return (m.type as string) === selectedMethod;
+  });
 
   if (!selectedMethod) {
     return (
@@ -602,16 +607,23 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
               <div className="grid md:grid-cols-3 gap-4">
                 {withdrawMethodTypes
                   .filter((method) => {
+                    const mId = method.id as string;
                     // Crypto uses admin-configured methods (no saved user method needed)
-                    if (method.id === 'crypto') return cryptoOptions.length > 0;
-                    const userMethodsCount = withdrawalMethods.filter(m => m.type === method.id).length;
+                    if (mId === 'crypto') return cryptoOptions.length > 0;
+                    const userMethodsCount = withdrawalMethods.filter(m => {
+                      if (mId === 'e_wallet') return (m.type as string) === 'e_wallet' || (m.type as string) === 'paypal';
+                      return (m.type as string) === mId;
+                    }).length;
                     return userMethodsCount > 0;
                   })
                   .map((method) => {
                   const isCrypto = method.id === 'crypto';
                   const userMethodsCount = isCrypto
                     ? cryptoOptions.length
-                    : withdrawalMethods.filter(m => m.type === method.id).length;
+                    : withdrawalMethods.filter(m => {
+                        if (method.id === 'e_wallet') return (m.type as string) === 'e_wallet' || (m.type as string) === 'paypal';
+                        return (m.type as string) === method.id;
+                      }).length;
                   
                   return (
                     <button
@@ -921,7 +933,14 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
                     <div className="flex justify-between items-center mb-1">
                       <span className="text-gray-600 dark:text-gray-400">You Will Receive:</span>
                       <span className="font-semibold text-green-600 dark:text-green-400">
-                        {cryptoAmount.toFixed(8)} {selectedCryptoType}
+                        {cryptoPrice > 0 ? (
+                          `${cryptoAmount.toFixed(8)} ${selectedCryptoType}`
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs text-gray-400">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Fetching real-time price...
+                          </span>
+                        )}
                       </span>
                     </div>
                     <div className="flex justify-between text-xs">
@@ -1038,7 +1057,14 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
                         <div className="flex justify-between items-center">
                           <span className="text-gray-600 dark:text-gray-400">You Will Receive:</span>
                           <span className="font-bold text-green-600 dark:text-green-400">
-                            {cryptoAmount.toFixed(8)} {selectedCryptoType}
+                            {cryptoPrice > 0 ? (
+                              `${cryptoAmount.toFixed(8)} ${selectedCryptoType}`
+                            ) : (
+                              <span className="flex items-center gap-1 text-sm text-gray-400">
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Fetching...
+                              </span>
+                            )}
                           </span>
                         </div>
                       </div>

@@ -167,14 +167,14 @@ document.addEventListener('DOMContentLoaded', () => {
 <p><a href="../trade/">Futures contracts</a></p><p><a href="../trade/">Raw Materials</a></p><p><a href="../trade/">Actions</a></p><p><a href="../trade/">Cryptocurrency CFDs</a></p><p><a href="../trade/">Indices</a></p> </div>
 </div>
 <div class="elementor-element elementor-element-a28bf22 elementor-widget elementor-widget-text-editor" data-e-type="widget" data-element_type="widget" data-id="a28bf22" data-widget_type="text-editor.default">
-<p>The company operates under the name: LPL-Holdings<br/>Legal address: 751 BROAD STREET<br/>NEWARK, NJ 07102-3777 UNITED STATES<br/>( CRD # 5685/SEC#:801-52208,8-16402 )</p> </div>
+<p>The company operates under the name: LPL-Holdings<br/>Legal address: 1055 LPL Way, Fort Mill, SC 29715 UNITED STATES<br/>( CRD # 6413 / SEC#: 801-52208, 8-16402 )</p> </div>
 <div class="elementor-element elementor-element-8145910 e-grid e-con-full e-con e-child" data-e-type="container" data-element_type="container" data-id="8145910">
 <div class="elementor-element elementor-element-d42d07a elementor-widget elementor-widget-image" data-e-type="widget" data-element_type="widget" data-id="d42d07a" data-widget_type="image.default">
-<a href="https://adviserinfo.sec.gov/firm/summary/5685">
+<a href="https://adviserinfo.sec.gov/firm/summary/6413">
 <img alt="" class="attachment-full size-full wp-image-3462" height="316" sizes="(max-width: 1248px) 100vw, 1248px" src="/assets/eafb7a5f7d4e7acce90d59065a61c9e2a322382f9ffda1155f3a128dd917f5c0.png" srcset="assets/eafb7a5f7d4e7acce90d59065a61c9e2a322382f9ffda1155f3a128dd917f5c0.png 1248w, assets/ef26f6b98d5a178958b1ea92b6a2285b6b39214034bca20f7f8eacea4ee51a5b.png 300w, https://lpl-holdings.com/wp-content/uploads/2025/11/u-s_securities_and_exchange_commission-1024x259.png 1024w, https://lpl-holdings.com/wp-content/uploads/2025/11/u-s_securities_and_exchange_commission-768x194.png 768w" width="1248"/> </a>
 </div>
 <div class="elementor-element elementor-element-3805845 elementor-widget elementor-widget-image" data-e-type="widget" data-element_type="widget" data-id="3805845" data-widget_type="image.default">
-<a href="https://brokercheck.finra.org/firm/summary/5685">
+<a href="https://brokercheck.finra.org/firm/summary/6413">
 <img alt="" class="attachment-full size-full wp-image-3437" height="135" src="/assets/fdf0ef76e92534fac8ba069e1a53cf41d598a611c5e987685b7c1bffbb873fd9.png" width="264"/> </a>
 </div>
 <div class="elementor-element elementor-element-1a64404 elementor-widget elementor-widget-image" data-e-type="widget" data-element_type="widget" data-id="1a64404" data-widget_type="image.default">

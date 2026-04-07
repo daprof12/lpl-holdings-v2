@@ -298,34 +298,48 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
     loadUserTickets();
   }, [currentUser?.id]);
 
-  // Load from localStorage (fallback, now per-user)
+  // Load data from localStorage on mount (Global keys, will filter in state)
   useEffect(() => {
     const userId = currentUser?.id;
-    if (!userId) return;
 
-    const storedTickets = localStorage.getItem(`gross_tickets_${userId}`);
-    if (storedTickets) {
-      setTickets(JSON.parse(storedTickets));
+    try {
+      const storedTickets = localStorage.getItem('gross_tickets');
+      if (storedTickets && userId) {
+        const items = JSON.parse(storedTickets);
+        setTickets(items.filter((t: any) => t.userId === userId || !t.userId));
+      }
+    } catch (error) {
+      console.error('Failed to load tickets:', error);
     }
   }, [currentUser?.id]);
 
-  // Save to localStorage (per-user)
-  useEffect(() => {
+  // Patch helper for global sets
+  const patchGlobalList = (key: string, items: any[]) => {
     const userId = currentUser?.id;
-    if (userId && tickets.length > 0) {
-      localStorage.setItem(`gross_tickets_${userId}`, JSON.stringify(tickets));
-    }
-  }, [tickets, currentUser?.id]);
+    if (!userId) return;
 
-  // Cross-tab sync via storage event (per-user)
+    try {
+      const raw = localStorage.getItem(key);
+      const globalItems = raw ? JSON.parse(raw) : [];
+      const others = globalItems.filter((item: any) => item.userId !== userId);
+      const merged = [...items, ...others];
+      localStorage.setItem(key, JSON.stringify(merged));
+      window.dispatchEvent(new Event('storage'));
+    } catch (err) {
+      console.error('Patch error:', err);
+    }
+  };
+
+  // Cross-tab sync via storage event (Global key with filtering)
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       const userId = currentUser?.id;
-      if (!userId) return;
+      if (!userId || !e.newValue) return;
 
-      if (e.key === `gross_tickets_${userId}` && e.newValue) {
+      if (e.key === 'gross_tickets') {
         try {
-          setTickets(JSON.parse(e.newValue));
+          const items = JSON.parse(e.newValue);
+          setTickets(items.filter((t: any) => t.userId === userId || !t.userId));
         } catch (error) {
           console.error('Cross-tab tickets sync failed:', error);
         }
@@ -333,10 +347,8 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
     };
 
     window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [currentUser?.id]);
 
   const createTicket = (data: {
     subject: string;
@@ -370,7 +382,11 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
       updatedAt: new Date(),
     };
 
-    setTickets(prev => [newTicket, ...prev]);
+    setTickets(prev => {
+      const next = [newTicket, ...prev];
+      patchGlobalList('gross_tickets', next);
+      return next;
+    });
     
     // Trigger notification event for admins
     window.dispatchEvent(new CustomEvent('ticket-created', { 
@@ -392,8 +408,8 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
     senderName: string,
     senderRole: 'user' | 'admin'
   ) => {
-    setTickets(prev =>
-      prev.map(ticket => {
+    setTickets(prev => {
+      const next = prev.map(ticket => {
         if (ticket.id === ticketId) {
           const newMessage: TicketMessage = {
             id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -419,17 +435,19 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
             ...ticket,
             messages: [...ticket.messages, newMessage],
             updatedAt: new Date(),
-            status: senderRole === 'admin' ? 'pending' : ticket.status,
+            status: senderRole === 'admin' ? 'pending' : ticket.status as any,
           };
         }
         return ticket;
-      })
-    );
+      });
+      patchGlobalList('gross_tickets', next);
+      return next;
+    });
   };
 
   const updateTicketStatus = (ticketId: string, status: Ticket['status']) => {
-    setTickets(prev =>
-      prev.map(ticket => {
+    setTickets(prev => {
+      const next = prev.map(ticket => {
         if (ticket.id === ticketId) {
           // Trigger notification event when status changes
           window.dispatchEvent(new CustomEvent('ticket-status-changed', { 
@@ -444,32 +462,42 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
           return { ...ticket, status, updatedAt: new Date() };
         }
         return ticket;
-      })
-    );
+      });
+      patchGlobalList('gross_tickets', next);
+      return next;
+    });
   };
 
   const updateTicketPriority = (ticketId: string, priority: Ticket['priority']) => {
-    setTickets(prev =>
-      prev.map(ticket =>
+    setTickets(prev => {
+      const next = prev.map(ticket =>
         ticket.id === ticketId
           ? { ...ticket, priority, updatedAt: new Date() }
           : ticket
-      )
-    );
+      );
+      patchGlobalList('gross_tickets', next);
+      return next;
+    });
   };
 
   const assignTicket = (ticketId: string, adminId: string) => {
-    setTickets(prev =>
-      prev.map(ticket =>
+    setTickets(prev => {
+      const next = prev.map(ticket =>
         ticket.id === ticketId
           ? { ...ticket, assignedTo: adminId, updatedAt: new Date() }
           : ticket
-      )
-    );
+      );
+      patchGlobalList('gross_tickets', next);
+      return next;
+    });
   };
 
   const deleteTicket = (ticketId: string) => {
-    setTickets(prev => prev.filter(ticket => ticket.id !== ticketId));
+    setTickets(prev => {
+      const next = prev.filter(ticket => ticket.id !== ticketId);
+      patchGlobalList('gross_tickets', next);
+      return next;
+    });
   };
 
   const getUserTickets = (userId: string) => {

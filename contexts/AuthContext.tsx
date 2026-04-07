@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { migrateBulkDataToSupabase } from '../utils/migrateToSupabase';
+import { supabase, getKV, setKV } from '../utils/supabase/client';
 
 export interface UserProfile {
   id: string;
@@ -127,43 +128,56 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const storedActivities = localStorage.getItem('gross_user_activities');
     const storedPasswords = localStorage.getItem('gross_passwords');
 
-    // 1. Load users
-    try {
-      if (storedUsers) {
-        const parsedUsers = JSON.parse(storedUsers);
-        const migratedUsers = parsedUsers.map((user: UserProfile) => ({
-          ...user,
-          liveBalance: user.liveBalance ?? 0,
-          paperBalance: user.paperBalance ?? (user.balance || 0),
-        }));
-        setUsers(migratedUsers);
-        localStorage.setItem('gross_users', JSON.stringify(migratedUsers));
-      } else {
-        const defaultAdmin: UserProfile = {
-          id: 'admin-001',
-          email: 'admin@gross.com',
-          firstName: 'Admin',
-          lastName: 'User',
-          createdAt: new Date(),
-          role: 'admin',
-          isVerified: true,
-          kycStatus: 'verified',
-          accountType: 'vip',
-          balance: 0,
-          liveBalance: 0,
-          paperBalance: 0,
-          enabledDepositMethods: [],
-          enabledWithdrawalMethods: [],
-          cryptoWallets: {},
-        };
-        setUsers([defaultAdmin]);
-        localStorage.setItem('gross_users', JSON.stringify([defaultAdmin]));
-        localStorage.setItem('gross_passwords', JSON.stringify({ 'admin@gross.com': 'admin123' }));
+    // Load from database as primary OR localStorage as cache
+    const loadInitialData = async () => {
+      try {
+        // Load users (from DB first, then fallback to local)
+        const dbUsers = await getKV('gross_users');
+        if (dbUsers) {
+          const migratedUsers = dbUsers.map((user: UserProfile) => ({
+            ...user,
+            liveBalance: user.liveBalance ?? 0,
+            paperBalance: user.paperBalance ?? (user.balance || 0),
+          }));
+          setUsers(migratedUsers);
+          localStorage.setItem('gross_users', JSON.stringify(migratedUsers));
+        } else if (storedUsers) {
+          const parsedUsers = JSON.parse(storedUsers);
+          const migratedUsers = parsedUsers.map((user: UserProfile) => ({
+            ...user,
+            liveBalance: user.liveBalance ?? 0,
+            paperBalance: user.paperBalance ?? (user.balance || 0),
+          }));
+          setUsers(migratedUsers);
+        } else {
+          // Default admin
+          const defaultAdmin: UserProfile = {
+            id: 'admin-001',
+            email: 'admin@gross.com',
+            firstName: 'Admin',
+            lastName: 'User',
+            createdAt: new Date(),
+            role: 'admin',
+            isVerified: true,
+            kycStatus: 'verified',
+            accountType: 'vip',
+            balance: 0,
+            liveBalance: 0,
+            paperBalance: 0,
+            enabledDepositMethods: [],
+            enabledWithdrawalMethods: [],
+            cryptoWallets: {},
+          };
+          setUsers([defaultAdmin]);
+          setKV('gross_users', [defaultAdmin]);
+          setKV('gross_passwords', { 'admin@gross.com': 'admin123' });
+        }
+      } catch (error) {
+        console.error('Failed to load users from database:', error);
       }
-    } catch (error) {
-      console.error('Failed to parse stored users:', error);
-      // Fallback to empty users if corrupted
-    }
+    };
+
+    loadInitialData();
 
     // 2. Load current user
     try {
@@ -184,18 +198,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.error('Failed to parse current user:', error);
     }
     
-    // 3. Load activities, transactions, notifications
-    try {
-      if (storedActivities) setUserActivities(JSON.parse(storedActivities));
-      
-      const storedTransactions = localStorage.getItem('gross_wallet_transactions');
-      if (storedTransactions) setWalletTransactions(JSON.parse(storedTransactions));
+    // 3. Load activities, transactions, notifications from DB/Local
+    const loadSupplementalData = async () => {
+      try {
+        const dbActivities = await getKV('gross_user_activities');
+        if (dbActivities) setUserActivities(dbActivities);
+        else if (storedActivities) setUserActivities(JSON.parse(storedActivities));
 
-      const storedNotifications = localStorage.getItem('gross_notifications');
-      if (storedNotifications) setNotifications(JSON.parse(storedNotifications));
-    } catch (error) {
-      console.error('Failed to parse supplemental data:', error);
-    }
+        const dbTransactions = await getKV('gross_wallet_transactions');
+        if (dbTransactions) setWalletTransactions(dbTransactions);
+        else {
+          const storedTransactions = localStorage.getItem('gross_wallet_transactions');
+          if (storedTransactions) setWalletTransactions(JSON.parse(storedTransactions));
+        }
+
+        const dbNotifications = await getKV('gross_notifications');
+        if (dbNotifications) setNotifications(dbNotifications);
+        else {
+          const storedNotifications = localStorage.getItem('gross_notifications');
+          if (storedNotifications) setNotifications(JSON.parse(storedNotifications));
+        }
+      } catch (error) {
+        console.error('Failed to parse supplemental data:', error);
+      }
+      setIsHydrated(true);
+    };
+
+    loadSupplementalData();
 
     // CRITICAL: Always mark as hydrated even if part of loading fails
     setIsHydrated(true);
@@ -318,8 +347,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     window.addEventListener('storage', handleStorageChange);
+
+    // ── DATABASE REALTIME SYNC ───────────────────────────────────────────
+    const channel = supabase
+      .channel('public:kv_store_5d4be467')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'kv_store_5d4be467' 
+      }, (payload: any) => {
+        const { key, value } = payload.new;
+        console.log('🔔 Database update received for key:', key);
+        
+        switch (key) {
+          case 'gross_users':
+            setUsers(value);
+            break;
+          case 'gross_notifications':
+            setNotifications(value);
+            break;
+          case 'gross_wallet_transactions':
+            setWalletTransactions(value);
+            break;
+          case 'gross_user_activities':
+            setUserActivities(value);
+            break;
+        }
+      })
+      .subscribe();
+
     return () => {
       window.removeEventListener('storage', handleStorageChange);
+      supabase.removeChannel(channel);
     };
   }, []);
 
@@ -372,18 +431,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Clear any pending sync
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
 
-    // Debounce sync to avoid spamming the API
+    // Skip initial sync to avoid redundant writes on load
+    if (!isHydrated) return;
+
+    // Debounce sync briefly to capture rapid changes
     syncTimeoutRef.current = setTimeout(async () => {
-      if (!isHydrated) return;
-      
       console.log('🔄 Triggering auto-sync to Supabase...');
       try {
-        await migrateBulkDataToSupabase();
+        // Use setKV directly for specialized keys for better reliability
+        await setKV('gross_users', users);
+        await setKV('gross_notifications', notifications);
+        await setKV('gross_wallet_transactions', walletTransactions);
+        await setKV('gross_user_activities', userActivities);
         console.log('✅ Supabase sync complete');
       } catch (error) {
         console.error('❌ Supabase sync failed:', error);
       }
-    }, 10000); // 10s debounce
+    }, 2000); // 2s snappy debounce
 
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);

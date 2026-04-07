@@ -119,6 +119,9 @@ export default function AdminInvestmentsPage() {
         localStorage.setItem(`investment_balances_${userId}`, JSON.stringify(newBalances));
       }
       
+      // Trigger storage event for real-time updates across contexts
+      window.dispatchEvent(new Event('storage'));
+      
       showSuccessToast('Sell request approved. User wallet credited with $' + formatCurrency(request.totalAmount));
     }
   };

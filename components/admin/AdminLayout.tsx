@@ -15,7 +15,7 @@ import { LogoutModal } from '../ui/LogoutModal';
 
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import logoImage from 'figma:asset/3af257502fb25704e3d2cda04e668377af3daafa.png';
+const logoImage = "/logo.png";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -100,8 +100,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           {/* Logo */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-slate-700">
             <Link to="/admin" className="flex items-center gap-2">
-              <img src={logoImage} alt="LPL-Holdings" className="h-10 w-auto" />
-              <span className="text-xl font-bold text-gray-900 dark:text-white">LPL-Holdings</span>
+              <img src={logoImage} alt="LPL-Premium" className={`h-10 w-auto ${theme === 'dark' ? 'brightness-0 invert' : ''}`} />
             </Link>
           </div>
 

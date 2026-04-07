@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { CheckCircle2, TrendingUp, Zap, Shield, Gift, ArrowRight } from 'lucide-react';
+import { CheckCircle2, TrendingUp, Zap, Shield, Gift, ArrowRight, X, Sparkles } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
+const logoImage = "/logo.png";
 
 export default function Welcome() {
   const navigate = useNavigate();
@@ -9,7 +12,7 @@ export default function Welcome() {
 
   const tutorialSteps = [
     {
-      title: 'Welcome to Gross Platform! 🎉',
+      title: 'Welcome to LPL Premium! 🎉',
       description: 'Your trading journey begins here. Let us show you around.',
       icon: <Zap className="w-12 h-12" />,
       color: 'from-blue-500 to-purple-500'
@@ -136,12 +139,7 @@ export default function Welcome() {
         >
           <div className="text-center mb-12">
             <Link to="/" className="inline-flex items-center gap-2 mb-8">
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-400 rounded-xl flex items-center justify-center">
-                <TrendingUp className="w-10 h-10 text-white" />
-              </div>
-              <span className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
-                Gross
-              </span>
+              <img src={logoImage} alt="LPL Premium" className="h-16 w-auto" />
             </Link>
 
             <motion.div

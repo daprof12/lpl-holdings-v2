@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ChevronDown, Menu, X, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import logoImage from 'figma:asset/3af257502fb25704e3d2cda04e668377af3daafa.png';
+const logoImage = "/logo.png";
 
 export default function Header() {
   const { currentUser, logout } = useAuth();
@@ -55,8 +55,7 @@ export default function Header() {
         <div className="flex items-center justify-between h-20">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3">
-            <img src={logoImage} alt="LPL-Holdings" className="h-12 w-auto" />
-            <span className="text-2xl font-bold text-white">LPL-Holdings</span>
+            <img src={logoImage} alt="LPL-Premium" className={`h-12 w-auto ${theme === 'dark' ? 'brightness-0 invert' : ''}`} />
           </Link>
 
           {/* Desktop Navigation */}

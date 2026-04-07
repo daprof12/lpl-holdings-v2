@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Shield, Copy, CheckCircle2, ChevronRight } from 'lucide-react';
+import { Shield, Copy, CheckCircle2, ChevronRight, Smartphone, Mail, TrendingUp } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { copyToClipboard } from '../../utils/helpers';
 import { showSuccessToast, showErrorToast } from '../common/ToastNotifications';
+const logoImage = "/logo.png";
 
 export default function TwoFactorSetup() {
   const navigate = useNavigate();
@@ -17,7 +19,7 @@ export default function TwoFactorSetup() {
 
   // Simulated QR code data
   const qrCodeSecret = 'JBSWY3DPEHPK3PXP';
-  const qrCodeUrl = `otpauth://totp/Gross:user@example.com?secret=${qrCodeSecret}&issuer=Gross`;
+  const qrCodeUrl = `otpauth://totp/LPLPremium:user@example.com?secret=${qrCodeSecret}&issuer=LPLPremium`;
 
   const handleMethodSelect = (selectedMethod: 'app' | 'sms' | 'email') => {
     setMethod(selectedMethod);
@@ -70,12 +72,7 @@ export default function TwoFactorSetup() {
       >
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-400 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-7 h-7 text-white" />
-            </div>
-            <span className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
-              Gross
-            </span>
+            <img src={logoImage} alt="LPL Premium" className="h-12 w-auto" />
           </Link>
           
           <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-4">

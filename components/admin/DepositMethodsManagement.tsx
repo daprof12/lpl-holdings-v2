@@ -193,12 +193,11 @@ export default function DepositMethodsManagement() {
 
   const resetForm = () => {
     setFormData({});
-    setMethodType('crypto');
   };
 
   const openAddDialog = (type: 'crypto' | 'bank' | 'card') => {
-    setMethodType(type);
     resetForm();
+    setMethodType(type);
     setShowAddDialog(true);
   };
 
@@ -785,15 +784,67 @@ export default function DepositMethodsManagement() {
             {methodType === 'bank' && (
               <>
                 <div>
+                  <Label>Bank Name</Label>
+                  <Input
+                    placeholder="JPMorgan Chase Bank"
+                    value={formData.bankName || ''}
+                    onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Account Name</Label>
+                  <Input
+                    placeholder="Company Name"
+                    value={formData.accountName || ''}
+                    onChange={(e) => setFormData({ ...formData, accountName: e.target.value })}
+                  />
+                </div>
+                <div>
                   <Label>Account Number</Label>
                   <Input
+                    placeholder="****1234"
                     value={formData.accountNumber || ''}
                     onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
                   />
                 </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <Label>Routing Number (Optional)</Label>
+                    <Input
+                      placeholder="021000021"
+                      value={formData.routingNumber || ''}
+                      onChange={(e) => setFormData({ ...formData, routingNumber: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>SWIFT Code (Optional)</Label>
+                    <Input
+                      placeholder="CHASUS33"
+                      value={formData.swiftCode || ''}
+                      onChange={(e) => setFormData({ ...formData, swiftCode: e.target.value })}
+                    />
+                  </div>
+                </div>
                 <div>
-                  <Label>Notes</Label>
+                  <Label>IBAN (Optional)</Label>
+                  <Input
+                    placeholder="DE89370400440532013000"
+                    value={formData.iban || ''}
+                    onChange={(e) => setFormData({ ...formData, iban: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Bank Address (Optional)</Label>
+                  <Input
+                    placeholder="270 Park Avenue, New York, NY"
+                    value={formData.bankAddress || ''}
+                    onChange={(e) => setFormData({ ...formData, bankAddress: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Notes (Optional)</Label>
                   <textarea
+                    placeholder="Processing time, instructions, etc."
                     value={formData.notes || ''}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 min-h-[80px]"
@@ -805,10 +856,45 @@ export default function DepositMethodsManagement() {
             {methodType === 'card' && (
               <>
                 <div>
+                  <Label>Processor Name</Label>
+                  <select
+                    value={formData.processorName || 'Stripe'}
+                    onChange={(e) => setFormData({ ...formData, processorName: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                  >
+                    <option value="Stripe">Stripe</option>
+                    <option value="PayPal">PayPal</option>
+                    <option value="Square">Square</option>
+                    <option value="Authorize.net">Authorize.net</option>
+                    <option value="Braintree">Braintree</option>
+                  </select>
+                </div>
+                <div>
+                  <Label>Processor Type</Label>
+                  <select
+                    value={formData.processorType || 'credit_card'}
+                    onChange={(e) => setFormData({ ...formData, processorType: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                  >
+                    <option value="credit_card">Credit Card</option>
+                    <option value="debit_card">Debit Card</option>
+                    <option value="both">Both Credit & Debit</option>
+                  </select>
+                </div>
+                <div>
                   <Label>Public Key / API Key</Label>
                   <Input
+                    placeholder="pk_live_XXXXXXXXXXXXXXXXXXXXXXXX"
                     value={formData.publicKey || ''}
                     onChange={(e) => setFormData({ ...formData, publicKey: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Merchant ID (Optional)</Label>
+                  <Input
+                    placeholder="merchant_XXXXXXXXXX"
+                    value={formData.merchantId || ''}
+                    onChange={(e) => setFormData({ ...formData, merchantId: e.target.value })}
                   />
                 </div>
                 <div>
@@ -816,13 +902,15 @@ export default function DepositMethodsManagement() {
                   <Input
                     type="number"
                     step="0.1"
+                    placeholder="2.9"
                     value={formData.processingFee || ''}
                     onChange={(e) => setFormData({ ...formData, processingFee: parseFloat(e.target.value) })}
                   />
                 </div>
                 <div>
-                  <Label>Notes</Label>
+                  <Label>Notes (Optional)</Label>
                   <textarea
+                    placeholder="Additional information"
                     value={formData.notes || ''}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 min-h-[80px]"
