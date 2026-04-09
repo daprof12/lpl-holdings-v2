@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from './AuthContext';
 import { supabase, getKV, setKV } from '../utils/supabase/client';
@@ -215,12 +215,39 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Sync to DB helper (Internal use)
+  // Sync to DB (Debounced)
+  const syncNotifsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const syncCrmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
-    if (!loading && (notifications.length > 0 || crmMessages.length > 0)) {
-       // We can debounce this if needed, but for now we'll rely on the existing CRUD functions
-    }
-  }, [notifications, crmMessages, loading]);
+    if (loading) return;
+    
+    if (syncNotifsTimeoutRef.current) clearTimeout(syncNotifsTimeoutRef.current);
+    
+    syncNotifsTimeoutRef.current = setTimeout(async () => {
+      try {
+        await setKV(NOTIF_KEY, notifications);
+        console.log('✅ Notifications synced to DB');
+      } catch (err) {
+        console.error('Failed to sync notifications:', err);
+      }
+    }, 2000);
+  }, [notifications]);
+
+  useEffect(() => {
+    if (loading) return;
+    
+    if (syncCrmTimeoutRef.current) clearTimeout(syncCrmTimeoutRef.current);
+    
+    syncCrmTimeoutRef.current = setTimeout(async () => {
+      try {
+        await setKV(CRM_KEY, crmMessages);
+        console.log('✅ CRM messages synced to DB');
+      } catch (err) {
+        console.error('Failed to sync CRM messages:', err);
+      }
+    }, 2000);
+  }, [crmMessages]);
 
   // When the logged-in user changes, re-read persisted notifications
   // (no network call – localStorage is the source of truth)

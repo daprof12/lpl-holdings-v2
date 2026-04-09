@@ -1,9 +1,10 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { useTrading } from './TradingContext';
 import { useAuth } from './AuthContext';
 import { useMarketData } from './MarketDataContext';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { toast } from 'sonner';
+import { setKV } from '../utils/supabase/client';
 
 // @refresh reset
 
@@ -311,10 +312,23 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // Save strategies to localStorage
+  // Sync strategies to Supabase KV (Debounced)
+  const syncStrategiesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     if (strategies.length >= 0) {
       localStorage.setItem('gross_autotrader_strategies', JSON.stringify(strategies));
+      
+      if (syncStrategiesTimeoutRef.current) clearTimeout(syncStrategiesTimeoutRef.current);
+      
+      syncStrategiesTimeoutRef.current = setTimeout(async () => {
+        try {
+          await setKV('gross_autotrader_strategies', strategies);
+          console.log('✅ Autotrader strategies synced to DB');
+        } catch (err) {
+          console.error('Failed to sync autotrader strategies:', err);
+        }
+      }, 3000);
     }
   }, [strategies]);
 

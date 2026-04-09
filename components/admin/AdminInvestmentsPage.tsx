@@ -211,6 +211,13 @@ export default function AdminInvestmentsPage() {
       
       // Trigger storage event for real-time updates across contexts
       window.dispatchEvent(new Event('storage'));
+
+      // Sync to database
+      const key = `investment_balances_${userId}`;
+      const finalBalances = JSON.parse(localStorage.getItem(key) || '{}');
+      import('../../utils/supabase/client').then(({ setKV }) => {
+        setKV(key, finalBalances);
+      });
       
       showSuccessToast('Sell request approved. User wallet credited with $' + formatCurrency(request.totalAmount));
     }

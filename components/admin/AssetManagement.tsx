@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Edit, Trash2, Search, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { setKV } from '../../utils/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -80,11 +81,22 @@ export default function AssetManagement() {
   // Load assets from localStorage (persisted) or initialAssets (default)
   const [assets, setAssets] = useState<AdminAsset[]>(loadPersistedAssets);
 
-  // Persist assets to localStorage on every change
+  // Persist assets to localStorage and Supabase KV on every change
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const persistAssets = useCallback((updated: AdminAsset[]) => {
     setAssets(updated);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+      syncTimeoutRef.current = setTimeout(async () => {
+        try {
+          await setKV(STORAGE_KEY, updated);
+          console.log('✅ Admin assets synced to DB');
+        } catch (err) {
+          console.error('Failed to sync assets:', err);
+        }
+      }, 3000);
     } catch {
       // storage full — silently fail
     }

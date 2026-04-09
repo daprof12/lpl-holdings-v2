@@ -24,6 +24,7 @@ import KYCVerification from './components/onboarding/KYCVerification';
 import TwoFactorSetup from './components/onboarding/TwoFactorSetup';
 import Welcome from './components/onboarding/Welcome';
 import Login from './components/auth/Login';
+import Signup from './components/auth/Signup';
 import AdminLogin from './components/auth/AdminLogin';
 
 // User Dashboard & Trading Components
@@ -102,8 +103,8 @@ export default function App() {
                                 <Route path="/" element={<DefaultRedirect />} />
 
                                 {/* ── Auth ─────────────────────────────────── */}
-                                <Route path="/signup" element={<Navigate to="/login?signup=true" replace />} />
-                                <Route path="/register" element={<Navigate to="/login?signup=true" replace />} />
+                                <Route path="/signup" element={<ProtectedRoute requireAuth={false}><Signup /></ProtectedRoute>} />
+                                <Route path="/register" element={<ProtectedRoute requireAuth={false}><Signup /></ProtectedRoute>} />
                                 <Route path="/login" element={<ProtectedRoute requireAuth={false}><Login /></ProtectedRoute>} />
 
                                 {/* ── Onboarding ───────────────────────────── */}

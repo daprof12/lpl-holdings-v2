@@ -17,6 +17,8 @@ import {
   SignalService,
 } from "./tableService.ts";
 
+import * as kv from "./kv_store.ts";
+
 import {
   MarketAssetService,
   PaymentMethodService,
@@ -56,6 +58,47 @@ app.use(
 
 app.get("/make-server-5d4be467/health", (c) => {
   return c.json({ status: "ok", database: "tables", version: "2.0" });
+});
+
+// ============================================
+// KV STORE COMPATIBILITY ENDPOINTS
+// ============================================
+
+// Get a value from the KV store
+app.get("/make-server-5d4be467/kv/:key", async (c) => {
+  try {
+    const key = c.req.param("key");
+    const value = await kv.get(key);
+    return c.json({ key, value });
+  } catch (error: any) {
+    console.error(`Error getting KV key ${c.req.param("key")}:`, error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Set a value in the KV store
+app.post("/make-server-5d4be467/kv/:key", async (c) => {
+  try {
+    const key = c.req.param("key");
+    const { value } = await c.req.json();
+    await kv.set(key, value);
+    return c.json({ success: true, key });
+  } catch (error: any) {
+    console.error(`Error setting KV key ${c.req.param("key")}:`, error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Delete a value from the KV store
+app.delete("/make-server-5d4be467/kv/:key", async (c) => {
+  try {
+    const key = c.req.param("key");
+    await kv.del(key);
+    return c.json({ success: true, key });
+  } catch (error: any) {
+    console.error(`Error deleting KV key ${c.req.param("key")}:`, error);
+    return c.json({ error: error.message }, 500);
+  }
 });
 
 // ============================================

@@ -105,6 +105,7 @@ interface SignupData {
   lastName?: string;
   phone?: string;
   country?: string;
+  role?: 'user' | 'admin';
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -145,6 +146,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           }));
           setUsers(migratedUsers);
           localStorage.setItem('gross_users', JSON.stringify(migratedUsers));
+
+          // Also load passwords from DB
+          const dbPasswords = await getKV('gross_passwords');
+          if (dbPasswords) {
+            localStorage.setItem('gross_passwords', JSON.stringify(dbPasswords));
+          }
         } else if (storedUsers) {
           const parsedUsers = JSON.parse(storedUsers);
           const migratedUsers = parsedUsers.map((user: UserProfile) => ({
@@ -174,7 +181,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           };
           setUsers([defaultAdmin]);
           setKV('gross_users', [defaultAdmin]);
-          setKV('gross_passwords', { 'admin@gross.com': 'admin123' });
+          const defaultPasswords = { 'admin@gross.com': 'admin123' };
+          setKV('gross_passwords', defaultPasswords);
+          localStorage.setItem('gross_passwords', JSON.stringify(defaultPasswords));
+          localStorage.setItem('gross_users', JSON.stringify([defaultAdmin]));
         }
       } catch (error) {
         console.error('Failed to load users from database:', error);
@@ -654,7 +664,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       phone: data.phone,
       country: data.country,
       createdAt: new Date(),
-      role: 'user',
+      role: data.role || 'user',
       isVerified: false,
       phoneVerified: false,
       kycStatus: 'pending',

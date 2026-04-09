@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase, getKV, setKV } from '../utils/supabase/client';
 import { publicAnonKey } from '../utils/supabase/info';
@@ -417,6 +417,33 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('investmentOffers', JSON.stringify(investmentOffers));
     }
   }, [investmentOffers]);
+
+  // ── Sync to Supabase Logic ──────────────────────────────────────────
+  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // Clear any pending sync
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+
+    // Debounce sync briefly to capture rapid changes
+    syncTimeoutRef.current = setTimeout(async () => {
+      console.log('🔄 Triggering investment auto-sync to Supabase...');
+      try {
+        await Promise.all([
+          setKV('gross_investment_offers', investmentOffers),
+          setKV('gross_user_investments', userInvestments),
+          setKV('gross_sell_requests', sellRequests)
+        ]);
+        console.log('✅ Investment Supabase sync complete');
+      } catch (error) {
+        console.error('❌ Investment Supabase sync failed:', error);
+      }
+    }, 2000); // 2 second debounce
+
+    return () => {
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    };
+  }, [investmentOffers, userInvestments, sellRequests]);
 
   // Cross-tab sync via storage event
   useEffect(() => {

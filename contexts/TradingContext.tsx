@@ -460,6 +460,69 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     };
   }, [auth.currentUser?.id]);
 
+  // Central Sync for Global Lists (Debounced)
+  const syncGlobalListsTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
+
+  const syncListToDB = useCallback((key: string, items: any[]) => {
+    if (syncGlobalListsTimeoutRef.current[key]) {
+      clearTimeout(syncGlobalListsTimeoutRef.current[key]);
+    }
+
+    syncGlobalListsTimeoutRef.current[key] = setTimeout(async () => {
+      try {
+        await setKV(key, items);
+        console.log(`✅ Global list ${key} synced to Supabase KV`);
+      } catch (error) {
+        console.error(`❌ Failed to sync global list ${key}:`, error);
+      }
+    }, 3000); // 3 second debounce to reduce write frequency
+  }, []);
+
+  // Monitor positions for changes and sync
+  useEffect(() => {
+    // Only the owner of a change or an admin should ideally push? 
+    // Actually, in this model, every client is a sync node.
+    if (paperPositions.length > 0) {
+      const allStr = localStorage.getItem('gross_paper_positions');
+      if (allStr) syncListToDB('gross_paper_positions', JSON.parse(allStr));
+    }
+  }, [paperPositions, syncListToDB]);
+
+  useEffect(() => {
+    if (livePositions.length > 0) {
+      const allStr = localStorage.getItem('gross_live_positions');
+      if (allStr) syncListToDB('gross_live_positions', JSON.parse(allStr));
+    }
+  }, [livePositions, syncListToDB]);
+
+  useEffect(() => {
+    if (paperHistory.length > 0) {
+      const allStr = localStorage.getItem('gross_paper_history');
+      if (allStr) syncListToDB('gross_paper_history', JSON.parse(allStr));
+    }
+  }, [paperHistory, syncListToDB]);
+
+  useEffect(() => {
+    if (liveHistory.length > 0) {
+      const allStr = localStorage.getItem('gross_live_history');
+      if (allStr) syncListToDB('gross_live_history', JSON.parse(allStr));
+    }
+  }, [liveHistory, syncListToDB]);
+
+  useEffect(() => {
+    if (paperOrders.length > 0) {
+      const allStr = localStorage.getItem('gross_paper_orders');
+      if (allStr) syncListToDB('gross_paper_orders', JSON.parse(allStr));
+    }
+  }, [paperOrders, syncListToDB]);
+
+  useEffect(() => {
+    if (liveOrders.length > 0) {
+      const allStr = localStorage.getItem('gross_live_orders');
+      if (allStr) syncListToDB('gross_live_orders', JSON.parse(allStr));
+    }
+  }, [liveOrders, syncListToDB]);
+
   // Helper to update global localStorage lists without overwriting other users' data
   const updateGlobalList = (key: string, updater: (items: any[]) => any[]) => {
     const userId = auth.currentUser?.id;

@@ -2,6 +2,8 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { toast } from 'sonner';
 import { useAuth } from './AuthContext';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { supabase, getKV, setKV } from '../utils/supabase/client';
+import { useRef } from 'react';
 
 // ============================================
 // API CONFIGURATION
@@ -74,6 +76,31 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(false);
   const { currentUser } = useAuth();
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync to Supabase KV Store (Debounced)
+  useEffect(() => {
+    if (tickets.length === 0) return;
+
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+    }
+
+    syncTimeoutRef.current = setTimeout(async () => {
+      try {
+        await setKV('gross_tickets', tickets);
+        console.log('✅ Tickets synced to Supabase KV');
+      } catch (error) {
+        console.error('❌ Failed to sync tickets to Supabase:', error);
+      }
+    }, 2000); // 2 second debounce
+
+    return () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+    };
+  }, [tickets]);
 
   // ============================================
   // API FUNCTIONS - Database Integration

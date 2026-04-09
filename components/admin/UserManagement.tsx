@@ -8,6 +8,7 @@ const SUBSCRIPTION_PLANS = [
   { value: 'Silver',   label: 'Silver',   minDeposit: 25_000,  badge: 'bg-slate-200 dark:bg-slate-600/50 text-slate-700 dark:text-slate-300' },
   { value: 'Gold',     label: 'Gold',     minDeposit: 50_000,  badge: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' },
   { value: 'Platinum', label: 'Platinum', minDeposit: 100_000, badge: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' },
+  { value: 'VIP',      label: 'VIP',      minDeposit: 250_000, badge: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50' },
 ];
 
 function planBadge(plan?: string) {

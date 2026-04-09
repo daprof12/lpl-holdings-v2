@@ -1,107 +1,75 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TrendingUp, TrendingDown, Signal, Clock, CheckCircle, XCircle, AlertCircle, Star, Target, Copy, ExternalLink, X } from 'lucide-react';
+import { TrendingUp, TrendingDown, Signal, Clock, CheckCircle, XCircle, AlertCircle, Star, Target, Copy, ExternalLink, X, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { formatCurrency } from '../../utils/formatNumber';
+import { getKV, supabase } from '../../utils/supabase/client';
+
+const STORAGE_KEY = 'gross_trading_signals';
 
 export default function SignalsFeed() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<'all' | 'active' | 'closed'>('all');
   const [selectedSignal, setSelectedSignal] = useState<any>(null);
+  const [signals, setSignals] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const signals = [
-    {
-      id: 1,
-      provider: 'AI Trend Master',
-      providerRating: 4.8,
-      asset: 'BTC/USD',
-      type: 'Long',
-      status: 'active',
-      entryPrice: 45650,
-      currentPrice: 45892,
-      takeProfit: [46500, 47200, 48000],
-      stopLoss: 45200,
-      timePosted: '2 hours ago',
-      pnl: 242,
-      pnlPercent: 0.53,
-      accuracy: 87,
-      timeframe: '4H',
-      confidence: 'High'
-    },
-    {
-      id: 2,
-      provider: 'Crypto Whale Alerts',
-      providerRating: 4.6,
-      asset: 'ETH/USD',
-      type: 'Long',
-      status: 'active',
-      entryPrice: 2450,
-      currentPrice: 2512,
-      takeProfit: [2550, 2620, 2700],
-      stopLoss: 2390,
-      timePosted: '5 hours ago',
-      pnl: 62,
-      pnlPercent: 2.53,
-      accuracy: 82,
-      timeframe: '1D',
-      confidence: 'High'
-    },
-    {
-      id: 3,
-      provider: 'Forex Pro Signals',
-      providerRating: 4.9,
-      asset: 'EUR/USD',
-      type: 'Short',
-      status: 'active',
-      entryPrice: 1.0890,
-      currentPrice: 1.0875,
-      takeProfit: [1.0850, 1.0820, 1.0780],
-      stopLoss: 1.0920,
-      timePosted: '1 hour ago',
-      pnl: 15,
-      pnlPercent: 0.14,
-      accuracy: 91,
-      timeframe: '1H',
-      confidence: 'Medium'
-    },
-    {
-      id: 4,
-      provider: 'Pattern Scanner AI',
-      providerRating: 4.7,
-      asset: 'AAPL',
-      type: 'Long',
-      status: 'closed',
-      entryPrice: 178.50,
-      currentPrice: 185.20,
-      takeProfit: [182, 186, 190],
-      stopLoss: 175,
-      timePosted: '2 days ago',
-      pnl: 670,
-      pnlPercent: 3.75,
-      accuracy: 85,
-      timeframe: '1D',
-      confidence: 'High'
-    },
-    {
-      id: 5,
-      provider: 'Scalping Master',
-      providerRating: 4.5,
-      asset: 'XRP/USD',
-      type: 'Short',
-      status: 'closed',
-      entryPrice: 0.62,
-      currentPrice: 0.68,
-      takeProfit: [0.59, 0.57, 0.55],
-      stopLoss: 0.64,
-      timePosted: '3 days ago',
-      pnl: -60,
-      pnlPercent: -9.68,
-      accuracy: 78,
-      timeframe: '15m',
-      confidence: 'Low'
+  useEffect(() => {
+    loadSignals();
+
+    // Listen for storage changes
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY) {
+        loadSignals();
+      }
+    };
+
+    // Real-time subscription to KV store for signals
+    const channel = supabase
+      .channel('public:kv_store_signals')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'kv_store_5d4be467',
+        filter: `key=eq.${STORAGE_KEY}`
+      }, (payload: any) => {
+        if (payload.new && payload.new.value) {
+          setSignals(payload.new.value);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(payload.new.value));
+        }
+      })
+      .subscribe();
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const loadSignals = async () => {
+    // 1. Local cache
+    const cached = localStorage.getItem(STORAGE_KEY);
+    if (cached) {
+      try {
+        setSignals(JSON.parse(cached));
+      } catch (e) {}
     }
-  ];
+
+    // 2. DB fetch
+    try {
+      const dbSignals = await getKV(STORAGE_KEY);
+      if (dbSignals) {
+        setSignals(dbSignals);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(dbSignals));
+      }
+    } catch (err) {
+      console.error('Failed to load signals from DB:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredSignals = signals.filter(signal => {
     if (filter === 'all') return true;

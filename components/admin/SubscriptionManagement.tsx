@@ -31,6 +31,7 @@ const TABLE_PLANS = [
   { name: 'Silver',   minDeposit: 25_000 },
   { name: 'Gold',     minDeposit: 50_000 },
   { name: 'Platinum', minDeposit: 100_000 },
+  { name: 'VIP',      minDeposit: 250_000 },
 ];
 
 const TABLE_FEATURES: { name: string; values: (boolean | string)[] }[] = [
@@ -61,6 +62,7 @@ function CellValue({ val }: { val: boolean | string }) {
 // ─── Plan badge colour helper ─────────────────────────────────────────────────
 function planBadgeClass(plan: string) {
   switch (plan) {
+    case 'VIP':      return 'bg-amber-900/40 text-amber-300 border border-amber-500/30';
     case 'Platinum': return 'bg-purple-900/30 text-purple-300';
     case 'Gold':     return 'bg-yellow-900/30 text-yellow-300';
     case 'Silver':   return 'bg-slate-700/50 text-slate-300';

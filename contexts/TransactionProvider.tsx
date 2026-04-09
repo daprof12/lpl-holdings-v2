@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { setKV } from '../utils/supabase/client';
+import { useRef } from 'react';
 
 // ============================================
 // API CONFIGURATION
@@ -91,6 +93,23 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(false);
   const { currentUser } = useAuth();
+  const syncTransactionsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync transactions to DB (Debounced)
+  useEffect(() => {
+    if (transactions.length > 0) {
+      if (syncTransactionsTimeoutRef.current) clearTimeout(syncTransactionsTimeoutRef.current);
+      
+      syncTransactionsTimeoutRef.current = setTimeout(async () => {
+        try {
+          await setKV('gross_transactions', transactions);
+          console.log('✅ Transactions synced to DB');
+        } catch (err) {
+          console.error('Failed to sync transactions:', err);
+        }
+      }, 3000);
+    }
+  }, [transactions]);
 
   // ============================================
   // API FUNCTIONS - Database Integration
@@ -398,6 +417,13 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
         timestamp: new Date(),
       });
       localStorage.setItem('gross_notifications', JSON.stringify(notifications));
+      window.dispatchEvent(new Event('storage'));
+      
+      // Sync investment balance to DB if it was a portfolio deposit
+      if (isPortfolio) {
+        const b = JSON.parse(localStorage.getItem(`investment_balances_${transaction.userId}`) || '{"portfolio":0}');
+        setKV(`investment_balances_${transaction.userId}`, b);
+      }
     }
   };
 
@@ -447,6 +473,13 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       timestamp: new Date(),
     });
     localStorage.setItem('gross_notifications', JSON.stringify(notifications));
+    window.dispatchEvent(new Event('storage'));
+    
+    // Sync investment balance to DB if it was a portfolio withdrawal rejection
+    if (transaction.type === 'withdrawal' && transaction.walletType === 'portfolio') {
+      const b = JSON.parse(localStorage.getItem(`investment_balances_${transaction.userId}`) || '{"portfolio":0}');
+      setKV(`investment_balances_${transaction.userId}`, b);
+    }
   };
 
   const deleteTransaction = async (id: string) => {

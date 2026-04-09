@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus, Edit, Trash2, TrendingUp, TrendingDown, Signal } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -10,6 +10,7 @@ import {
   DialogDescription,
 } from '../ui/dialog';
 import { formatCurrency } from '../../utils/formatNumber';
+import { setKV } from '../../utils/supabase/client';
 
 interface TradingSignal {
   id: string;
@@ -24,49 +25,79 @@ interface TradingSignal {
   subscribers: number;
 }
 
+const STORAGE_KEY = 'gross_trading_signals';
+
 export default function SignalManagement() {
   const [showDialog, setShowDialog] = useState(false);
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create');
   const [selectedSignal, setSelectedSignal] = useState<TradingSignal | null>(null);
 
-  const [signals, setSignals] = useState<TradingSignal[]>([
-    {
-      id: '1',
-      asset: 'BTCUSD',
-      type: 'buy',
-      entryPrice: 92000,
-      stopLoss: 90500,
-      takeProfit: 95000,
-      confidence: 85,
-      status: 'active',
-      createdAt: '2024-12-06 08:00:00',
-      subscribers: 1247,
-    },
-    {
-      id: '2',
-      asset: 'EURUSD',
-      type: 'sell',
-      entryPrice: 1.0560,
-      stopLoss: 1.0590,
-      takeProfit: 1.0500,
-      confidence: 72,
-      status: 'active',
-      createdAt: '2024-12-06 09:30:00',
-      subscribers: 892,
-    },
-    {
-      id: '3',
-      asset: 'AAPL',
-      type: 'buy',
-      entryPrice: 195.50,
-      stopLoss: 193.00,
-      takeProfit: 200.00,
-      confidence: 90,
-      status: 'hit',
-      createdAt: '2024-12-05 14:00:00',
-      subscribers: 2134,
-    },
-  ]);
+  const [signals, setSignals] = useState<TradingSignal[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load signals on mount
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      try {
+        setSignals(JSON.parse(stored));
+      } catch (e) {
+        console.error('Failed to parse signals:', e);
+      }
+    }
+    setLoading(false);
+  }, []);
+
+  // Debounced Sync to Supabase
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    if (loading) return;
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(signals));
+    
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    syncTimeoutRef.current = setTimeout(async () => {
+      try {
+        await setKV(STORAGE_KEY, signals);
+        console.log('✅ Trading signals synced to DB');
+      } catch (err) {
+        console.error('Failed to sync signals:', err);
+      }
+    }, 3000);
+  }, [signals, loading]);
+
+  // Initial dummy signals if list is empty (for demo)
+  useEffect(() => {
+    if (!loading && signals.length === 0) {
+      const initial = [
+        {
+          id: '1',
+          asset: 'BTCUSD',
+          type: 'buy' as const,
+          entryPrice: 92000,
+          stopLoss: 90500,
+          takeProfit: 95000,
+          confidence: 85,
+          status: 'active' as const,
+          createdAt: '2024-12-06 08:00:00',
+          subscribers: 1247,
+        },
+        {
+          id: '2',
+          asset: 'EURUSD',
+          type: 'sell' as const,
+          entryPrice: 1.0560,
+          stopLoss: 1.0590,
+          takeProfit: 1.0500,
+          confidence: 72,
+          status: 'active' as const,
+          createdAt: '2024-12-06 09:30:00',
+          subscribers: 892,
+        }
+      ];
+      setSignals(initial);
+    }
+  }, [loading, signals.length]);
 
   const [formData, setFormData] = useState({
     asset: '',

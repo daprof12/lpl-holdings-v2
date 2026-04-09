@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Mail, 
   MessageSquare, 
@@ -25,6 +25,7 @@ import {
 import { toast } from 'sonner';
 import { useTickets } from '../../contexts/TicketContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { setKV } from '../../utils/supabase/client';
 
 interface ContactSubmission {
   id: string;
@@ -61,6 +62,24 @@ export default function ContactSubmissions() {
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
+
+  // Debounced Sync to Supabase
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (submissions.length > 0) {
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+      
+      syncTimeoutRef.current = setTimeout(async () => {
+        try {
+          await setKV('gross_contact_submissions', submissions);
+          console.log('✅ Contact submissions synced to DB');
+        } catch (err) {
+          console.error('Failed to sync contact submissions:', err);
+        }
+      }, 3000);
+    }
+  }, [submissions]);
 
   // Filter submissions
   useEffect(() => {

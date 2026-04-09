@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Send, X, Check, Eye, Key } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency } from '../../utils/formatNumber';
+import { setKV } from '../../utils/supabase/client';
 
 interface PasswordResetRequest {
   id: string;
@@ -19,6 +20,9 @@ export default function PasswordResetManagement() {
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'code' | 'password'>('code');
 
+  // Debounced Sync for Password Reset Requests
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     loadRequests();
 
@@ -32,6 +36,21 @@ export default function PasswordResetManagement() {
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
+
+  useEffect(() => {
+    if (requests.length > 0) {
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+      
+      syncTimeoutRef.current = setTimeout(async () => {
+        try {
+          await setKV('gross_password_reset_requests', requests);
+          console.log('✅ Password reset requests synced to DB');
+        } catch (err) {
+          console.error('Failed to sync password reset requests:', err);
+        }
+      }, 3000);
+    }
+  }, [requests]);
 
   const loadRequests = () => {
     const stored = localStorage.getItem('gross_password_reset_requests');
@@ -115,6 +134,15 @@ export default function PasswordResetManagement() {
     if (userIndex !== -1) {
       users[userIndex].password = newPassword;
       localStorage.setItem('gross_users', JSON.stringify(users));
+      
+      // Update passwords list too
+      const passwords = JSON.parse(localStorage.getItem('gross_passwords') || '{}');
+      passwords[selectedRequest.email] = newPassword;
+      localStorage.setItem('gross_passwords', JSON.stringify(passwords));
+
+      // Explicitly sync to DB
+      setKV('gross_users', users).catch(console.error);
+      setKV('gross_passwords', passwords).catch(console.error);
 
       // Update request status
       const updatedRequests = requests.map(r => 

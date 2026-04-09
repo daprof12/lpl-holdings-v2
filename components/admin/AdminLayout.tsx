@@ -29,7 +29,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-  const { logout } = useAuth();
+  const { logout, currentUser } = useAuth();
   const { tickets } = useTickets();
 
   // Count tickets needing admin attention: open/pending tickets, or tickets where the last message is from a user
@@ -142,11 +142,17 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           <div className="p-4 border-t border-gray-200 dark:border-slate-700">
             <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 dark:bg-slate-700/50">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
-                <span className="text-white font-semibold">A</span>
+                <span className="text-white font-semibold">
+                  {currentUser?.firstName?.charAt(0) || 'A'}
+                </span>
               </div>
-              <div className="flex-1">
-                <div className="font-semibold text-sm">Admin User</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">admin@gross.com</div>
+              <div className="flex-1 overflow-hidden">
+                <div className="font-semibold text-sm truncate">
+                  {currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Admin User'}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                  {currentUser?.email || 'admin@gross.com'}
+                </div>
               </div>
             </div>
             <Button
@@ -213,11 +219,17 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                   className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
-                    <span className="text-white font-semibold text-sm">A</span>
+                    <span className="text-white font-semibold text-sm">
+                      {currentUser?.firstName?.charAt(0) || 'A'}
+                    </span>
                   </div>
                   <div className="hidden md:block text-left">
-                    <div className="text-sm font-semibold">Admin User</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">admin@gross.com</div>
+                    <div className="text-sm font-semibold">
+                      {currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Admin User'}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      {currentUser?.email || 'admin@gross.com'}
+                    </div>
                   </div>
                   <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
@@ -226,8 +238,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 {dropdownOpen && (
                   <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 py-1 z-50">
                     <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700">
-                      <div className="font-semibold text-sm">Admin User</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">admin@gross.com</div>
+                      <div className="font-semibold text-sm">
+                        {currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Admin User'}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {currentUser?.email || 'admin@gross.com'}
+                      </div>
                     </div>
                     
                     <Link
