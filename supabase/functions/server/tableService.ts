@@ -3,8 +3,8 @@
 // ============================================
 // This replaces the KV store with proper Supabase table operations
 
-import supabase from './supabaseClient.tsx';
-import { generateId, getCurrentTimestamp } from './storageUtils.tsx';
+import supabase from './supabaseClient.ts';
+import { generateId, getCurrentTimestamp } from './storageUtils.ts';
 import type {
   User,
   Deposit,

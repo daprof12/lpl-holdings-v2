@@ -4,7 +4,7 @@
 // Run this once to populate the database with demo data
 // This creates sample users, deposits, withdrawals, etc.
 
-import * as kv from './kv_store.tsx';
+import * as kv from './kv_store.ts';
 import {
   UserService,
   DepositService,
@@ -14,8 +14,8 @@ import {
   SignalService,
   SettingsService,
   PreferencesService,
-} from './dataService.tsx';
-import { generateId, getCurrentTimestamp } from './storageUtils.tsx';
+} from './dataService.ts';
+import { generateId, getCurrentTimestamp } from './storageUtils.ts';
 import type { User, Deposit, Withdrawal, Position, TradingSignal, AdminSettings } from '../../../types/database';
 
 /**

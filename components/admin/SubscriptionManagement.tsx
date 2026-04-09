@@ -85,21 +85,27 @@ export default function SubscriptionManagement() {
   // Build subscribers list from real users
   const subscribers = useMemo<Subscriber[]>(() => {
     return users
-      .filter(u => u.subscriptionPlan && u.role !== 'admin')
+      .filter(u => u.subscriptionPlan && u.subscriptionPlan !== '')
       .map(u => {
-        const plan = TABLE_PLANS.find(p => p.name === u.subscriptionPlan);
-        const startDate = new Date(u.createdAt);
+        // Find matching plan case-insensitively, fallback to whatever string is stored
+        const planObj = TABLE_PLANS.find(p => p.name.toLowerCase() === u.subscriptionPlan?.toLowerCase());
+        
+        // Ensure safe dates to prevent "Invalid Date" crashes
+        const validStartDate = u.createdAt ? new Date(u.createdAt) : new Date();
+        const startDate = isNaN(validStartDate.getTime()) ? new Date() : validStartDate;
+        
         const nextBilling = new Date(startDate);
         nextBilling.setMonth(nextBilling.getMonth() + 1);
+        
         return {
           id: u.id,
-          name: `${u.firstName} ${u.lastName}`,
+          name: `${u.firstName || 'Unknown'} ${u.lastName || 'User'}`,
           email: u.email,
-          plan: u.subscriptionPlan || 'Basic',
+          plan: planObj ? planObj.name : (u.subscriptionPlan || 'Basic'),
           status: 'active' as const,
           startDate: startDate.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-'),
           nextBilling: nextBilling.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-'),
-          amount: plan?.minDeposit ?? 0,
+          amount: planObj?.minDeposit ?? 0,
         };
       });
   }, [users]);

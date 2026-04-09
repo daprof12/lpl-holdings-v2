@@ -15,7 +15,7 @@ import {
   PositionService,
   NotificationService,
   SignalService,
-} from "./tableService.tsx";
+} from "./tableService.ts";
 
 import {
   MarketAssetService,
@@ -31,7 +31,7 @@ import {
   PriceAlertService,
   AdminSettingsService,
   TradeHistoryService,
-} from "./allTableServices.tsx";
+} from "./allTableServices.ts";
 
 const app = new Hono();
 

@@ -141,15 +141,15 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
   const handleApplyCalculatorData = (data: {
     orderType: 'buy' | 'sell';
     entryPrice: string;
-    volume: string;
+    units: string;
     stopLoss: string;
     takeProfit: string;
     leverage: string;
   }) => {
     setOrderSide(data.orderType);
     setLimitPrice(data.entryPrice);
-    setUnits(data.volume);
-    setVolume(data.volume);
+    setUnits(data.units);
+    setVolume(data.units);
     setStopLoss(data.stopLoss);
     setTakeProfit(data.takeProfit);
     setLeverage(data.leverage);

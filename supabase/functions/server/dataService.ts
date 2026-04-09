@@ -4,7 +4,7 @@
 // This file handles all database operations using Supabase KV store
 // Import this in your Hono routes to perform CRUD operations
 
-import * as kv from './kv_store.tsx';
+import * as kv from './kv_store.ts';
 import type {
   User,
   KYCDocument,
@@ -21,7 +21,7 @@ import type {
   PriceAlert,
 } from '../../../types/database';
 
-import { generateId, getCurrentTimestamp } from './storageUtils.tsx';
+import { generateId, getCurrentTimestamp } from './storageUtils.ts';
 
 // Import storage key helpers from utils (these are pure functions)
 const UserStorage = {

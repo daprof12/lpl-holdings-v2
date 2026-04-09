@@ -4,8 +4,8 @@
 // This file contains services for tables not in the basic tableService.tsx
 // Import these along with the basic services
 
-import supabase from './supabaseClient.tsx';
-import { generateId, getCurrentTimestamp } from './storageUtils.tsx';
+import supabase from './supabaseClient.ts';
+import { generateId, getCurrentTimestamp } from './storageUtils.ts';
 
 // ============================================
 // MARKET ASSETS SERVICE
