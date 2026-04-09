@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Edit2, Trash2, MoreVertical, TrendingDown, Clock, X, Upload, ImageIcon } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, MoreVertical, TrendingDown, Clock, X, Upload, ImageIcon, ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -46,7 +46,14 @@ export default function AdminInvestmentsPage() {
   
   // Separate search states for each tab
   const [historySearchTerm, setHistorySearchTerm] = useState('');
+  const [historyFilterType, setHistoryFilterType] = useState<'all' | 'IPO' | 'ECN'>('all');
+  const [historySortBy, setHistorySortBy] = useState<string>('startDate');
+  const [historySortOrder, setHistorySortOrder] = useState<'asc' | 'desc'>('desc');
   const [requestsSearchTerm, setRequestsSearchTerm] = useState('');
+  const [requestsFilterType, setRequestsFilterType] = useState<'all' | 'IPO' | 'ECN'>('all');
+  const [requestsFilterStatus, setRequestsFilterStatus] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [requestsSortBy, setRequestsSortBy] = useState<string>('createdAt');
+  const [requestsSortOrder, setRequestsSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const { 
     investmentOffers, 
@@ -85,6 +92,89 @@ export default function AdminInvestmentsPage() {
 
   // Get all sell requests
   const allSellRequests = getAllSellRequests();
+
+  // Filter & Sort History
+  const filteredHistory = userInvestments
+    .filter(inv => {
+      const userDetails = getUserDetails(inv.userId);
+      const matchesSearch = inv.offerName.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
+                           userDetails.name.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
+                           userDetails.email.toLowerCase().includes(historySearchTerm.toLowerCase());
+      const matchesType = historyFilterType === 'all' || inv.offerType === historyFilterType;
+      return matchesSearch && matchesType;
+    })
+    .sort((a, b) => {
+      let comparison = 0;
+      const field = historySortBy as keyof typeof a;
+      
+      if (field === 'startDate' || field === 'endDate' || field === 'createdAt') {
+        comparison = (a[field] as number) - (b[field] as number);
+      } else if (field === 'totalAmount' || field === 'units' || field === 'currentValue') {
+        comparison = (a[field] as number) - (b[field] as number);
+      } else if (field === 'userId') {
+        comparison = getUserDetails(a.userId).name.localeCompare(getUserDetails(b.userId).name);
+      } else if (typeof a[field] === 'string') {
+        comparison = (a[field] as string).localeCompare(b[field] as string);
+      }
+      
+      return historySortOrder === 'desc' ? -comparison : comparison;
+    });
+
+  const handleHistorySort = (field: string) => {
+    if (historySortBy === field) {
+      setHistorySortOrder(historySortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setHistorySortBy(field);
+      setHistorySortOrder('desc');
+    }
+  };
+
+  const SortIndicator = ({ field }: { field: string }) => {
+    if (historySortBy !== field) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-20" />;
+    return historySortOrder === 'desc' ? <ChevronDown className="w-3 h-3 ml-1" /> : <ChevronUp className="w-3 h-3 ml-1" />;
+  };
+
+  // Filter & Sort Requests
+  const filteredRequests = allSellRequests
+    .filter(req => {
+      const userDetails = getUserDetails(req.userId);
+      const matchesSearch = req.offerName.toLowerCase().includes(requestsSearchTerm.toLowerCase()) ||
+                           userDetails.name.toLowerCase().includes(requestsSearchTerm.toLowerCase()) ||
+                           userDetails.email.toLowerCase().includes(requestsSearchTerm.toLowerCase());
+      const matchesType = requestsFilterType === 'all' || req.offerType === requestsFilterType;
+      const matchesStatus = requestsFilterStatus === 'all' || req.status === requestsFilterStatus;
+      return matchesSearch && matchesType && matchesStatus;
+    })
+    .sort((a, b) => {
+      let comparison = 0;
+      const field = requestsSortBy as keyof typeof a;
+      
+      if (field === 'createdAt' || field === 'processedAt') {
+        comparison = (a[field] as number || 0) - (b[field] as number || 0);
+      } else if (field === 'totalAmount' || field === 'units') {
+        comparison = (a[field] as number) - (b[field] as number);
+      } else if (field === 'userId') {
+        comparison = getUserDetails(a.userId).name.localeCompare(getUserDetails(b.userId).name);
+      } else if (typeof a[field] === 'string') {
+        comparison = (a[field] as string).localeCompare(b[field] as string);
+      }
+      
+      return requestsSortOrder === 'desc' ? -comparison : comparison;
+    });
+
+  const handleRequestsSort = (field: string) => {
+    if (requestsSortBy === field) {
+      setRequestsSortOrder(requestsSortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setRequestsSortBy(field);
+      setRequestsSortOrder('desc');
+    }
+  };
+
+  const RequestSortIndicator = ({ field }: { field: string }) => {
+    if (requestsSortBy !== field) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-20" />;
+    return requestsSortOrder === 'desc' ? <ChevronDown className="w-3 h-3 ml-1" /> : <ChevronUp className="w-3 h-3 ml-1" />;
+  };
 
   const handleDelete = (id: string) => {
     if (confirm('Are you sure you want to delete this investment offer?')) {
@@ -415,25 +505,92 @@ export default function AdminInvestmentsPage() {
 
       {/* Investment History Tab */}
       {activeTab === 'history' && (
-        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
-          <h3 className="font-semibold mb-4">All User Investments</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 dark:bg-slate-700/50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">User</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Investment</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Units</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Amount</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Current Value</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Start Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">End Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-                {userInvestments.map((investment) => (
+        <div className="space-y-4">
+          {/* Toolbar */}
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+            <div className="flex flex-1 gap-3 w-full sm:w-auto">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Input
+                  placeholder="Search history by project or user..."
+                  value={historySearchTerm}
+                  onChange={(e) => setHistorySearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <select
+                value={historyFilterType}
+                onChange={(e) => setHistoryFilterType(e.target.value as any)}
+                className="px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800"
+              >
+                <option value="all">All Types</option>
+                <option value="IPO">IPO</option>
+                <option value="ECN">ECN</option>
+              </select>
+            </div>
+            <div className="text-sm text-gray-500">
+              Showing {filteredHistory.length} investment{filteredHistory.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 dark:bg-slate-700/50">
+                  <tr>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleHistorySort('userId')}
+                    >
+                      <div className="flex items-center">User <SortIndicator field="userId" /></div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleHistorySort('offerName')}
+                    >
+                      <div className="flex items-center">Investment <SortIndicator field="offerName" /></div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleHistorySort('units')}
+                    >
+                      <div className="flex items-center">Units <SortIndicator field="units" /></div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleHistorySort('totalAmount')}
+                    >
+                      <div className="flex items-center">Amount <SortIndicator field="totalAmount" /></div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleHistorySort('currentValue')}
+                    >
+                      <div className="flex items-center">Current Value <SortIndicator field="currentValue" /></div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleHistorySort('startDate')}
+                    >
+                      <div className="flex items-center">Start Date <SortIndicator field="startDate" /></div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleHistorySort('endDate')}
+                    >
+                      <div className="flex items-center">End Date <SortIndicator field="endDate" /></div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleHistorySort('status')}
+                    >
+                      <div className="flex items-center">Status <SortIndicator field="status" /></div>
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                  {filteredHistory.map((investment) => (
                   <tr key={investment.id}>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
@@ -491,10 +648,10 @@ export default function AdminInvestmentsPage() {
                     </td>
                   </tr>
                 ))}
-                {userInvestments.length === 0 && (
+                {filteredHistory.length === 0 && (
                   <tr>
                     <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
-                      No investments yet
+                      No matching investments found
                     </td>
                   </tr>
                 )}
@@ -502,91 +659,165 @@ export default function AdminInvestmentsPage() {
             </table>
           </div>
         </div>
+      </div>
       )}
 
       {/* Sell Requests Tab */}
       {activeTab === 'requests' && (
-        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
-          <h3 className="font-semibold mb-4">Sell Requests</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 dark:bg-slate-700/50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">User</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Investment</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Units</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Amount</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Wallet</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-                {allSellRequests.map((request) => (
-                  <tr key={request.id}>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold">{getUserDetails(request.userId).name}</span>
-                        <span className="text-sm text-gray-500 dark:text-gray-400">({getUserDetails(request.userId).email})</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 text-xs rounded ${
-                          request.offerType === 'IPO' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'
-                        }`}>
-                          {request.offerType}
-                        </span>
-                        {request.offerName}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">{request.units}</td>
-                    <td className="px-6 py-4 font-semibold">${formatCurrency(request.totalAmount)}</td>
-                    <td className="px-6 py-4 uppercase">{request.paymentWallet}</td>
-                    <td className="px-6 py-4">{new Date(request.createdAt).toLocaleDateString()}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 text-sm rounded-full capitalize ${
-                        request.status === 'approved'
-                          ? 'bg-green-100 text-green-600'
-                          : request.status === 'rejected'
-                          ? 'bg-red-100 text-red-600'
-                          : 'bg-yellow-100 text-yellow-600'
-                      }`}>
-                        {request.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {request.status === 'pending' && (
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => handleApproveSellRequest(request)}
-                            className="bg-green-600 hover:bg-green-700"
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleRejectSellRequest(request)}
-                          >
-                            Reject
-                          </Button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {allSellRequests.length === 0 && (
+        <div className="space-y-4">
+          {/* Toolbar */}
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+            <div className="flex flex-1 gap-3 w-full sm:w-auto">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Input
+                  placeholder="Search requests by project or user..."
+                  value={requestsSearchTerm}
+                  onChange={(e) => setRequestsSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <select
+                value={requestsFilterType}
+                onChange={(e) => setRequestsFilterType(e.target.value as any)}
+                className="px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800"
+              >
+                <option value="all">All Types</option>
+                <option value="IPO">IPO</option>
+                <option value="ECN">ECN</option>
+              </select>
+              <select
+                value={requestsFilterStatus}
+                onChange={(e) => setRequestsFilterStatus(e.target.value as any)}
+                className="px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800"
+              >
+                <option value="all">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+            <div className="text-sm text-gray-500">
+              Showing {filteredRequests.length} request{filteredRequests.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 dark:bg-slate-700/50">
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
-                      No sell requests yet
-                    </td>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleRequestsSort('userId')}
+                    >
+                      <div className="flex items-center">User <RequestSortIndicator field="userId" /></div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleRequestsSort('offerName')}
+                    >
+                      <div className="flex items-center">Investment <RequestSortIndicator field="offerName" /></div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleRequestsSort('units')}
+                    >
+                      <div className="flex items-center">Units <RequestSortIndicator field="units" /></div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleRequestsSort('totalAmount')}
+                    >
+                      <div className="flex items-center">Amount <RequestSortIndicator field="totalAmount" /></div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleRequestsSort('paymentWallet')}
+                    >
+                      <div className="flex items-center">Wallet <RequestSortIndicator field="paymentWallet" /></div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleRequestsSort('createdAt')}
+                    >
+                      <div className="flex items-center">Date <RequestSortIndicator field="createdAt" /></div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                      onClick={() => handleRequestsSort('status')}
+                    >
+                      <div className="flex items-center">Status <RequestSortIndicator field="status" /></div>
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                  {filteredRequests.map((request) => (
+                    <tr key={request.id}>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">{getUserDetails(request.userId).name}</span>
+                          <span className="text-sm text-gray-500 dark:text-gray-400">({getUserDetails(request.userId).email})</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-1 text-xs rounded ${
+                            request.offerType === 'IPO' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'
+                          }`}>
+                            {request.offerType}
+                          </span>
+                          {request.offerName}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">{request.units}</td>
+                      <td className="px-6 py-4 font-semibold">${formatCurrency(request.totalAmount)}</td>
+                      <td className="px-6 py-4 uppercase">{request.paymentWallet}</td>
+                      <td className="px-6 py-4">{new Date(request.createdAt).toLocaleDateString()}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1 text-sm rounded-full capitalize ${
+                          request.status === 'approved'
+                            ? 'bg-green-100 text-green-600'
+                            : request.status === 'rejected'
+                            ? 'bg-red-100 text-red-600'
+                            : 'bg-yellow-100 text-yellow-600'
+                        }`}>
+                          {request.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {request.status === 'pending' && (
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleApproveSellRequest(request)}
+                              className="bg-green-600 hover:bg-green-700"
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleRejectSellRequest(request)}
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredRequests.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                        No sell requests found
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

@@ -159,10 +159,10 @@ export default function UserManagement() {
   };
 
   const [addFundData, setAddFundData] = useState({
-    type: 'credit' as 'credit' | 'bonus',
+    type: 'credit' as 'credit' | 'bonus' | 'balance',
     amount: '',
     accountType: 'paper' as 'live' | 'paper',
-    balanceType: 'live' as 'live' | 'ipo' | 'ecn' | 'portfolio',
+    balanceType: 'live' as 'live' | 'balance' | 'ipo' | 'ecn' | 'portfolio',
   });
 
   const [formData, setFormData] = useState({
@@ -302,21 +302,22 @@ export default function UserManagement() {
     }
 
     let balanceLabel = '';
-    
+    let txnId = '';
+
     // Handle different balance types
     if (addFundData.balanceType === 'live') {
       // Add funds to live balance
-      addFundsToAccount(selectedUserId, amount, 'live', addFundData.type);
+      addFundsToAccount(selectedUserId, amount, 'live', addFundData.type as 'credit' | 'bonus');
       balanceLabel = 'Live Balance';
-      
+
       // Dispatch storage event so the user's tab reacts immediately
       window.dispatchEvent(new Event('storage'));
-      
+
       // Create transaction record (AuthContext – visible on admin side)
       addWalletTransaction({
         userId: selectedUserId,
         type: 'deposit',
-        method: addFundData.type === 'credit' ? 'Admin Credit' : 'Admin Bonus',
+        method: addFundData.type === 'credit' ? 'Admin Credit' : addFundData.type === 'bonus' ? 'Admin Bonus' : 'Admin Deposit',
         amount: amount,
         currency: 'USD',
         accountType: 'live',
@@ -324,13 +325,38 @@ export default function UserManagement() {
         details: { fundType: addFundData.type },
       });
 
-      // Also write to TransactionProvider's store so user sees it in their history
-      _syncTransactionToUserStore(selectedUserId, amount, addFundData.type, 'live');
+      // Also write to TransactionProvider's store; hidden from user until admin toggles on
+      txnId = _syncTransactionToUserStore(selectedUserId, amount, addFundData.type as 'credit' | 'bonus', 'live');
+    } else if (addFundData.balanceType === 'balance') {
+      // Add funds directly to wallet balance
+      const users = JSON.parse(localStorage.getItem('gross_users') || '[]');
+      const idx = users.findIndex((u: any) => u.id === selectedUserId);
+      if (idx !== -1) {
+        users[idx].balance = (users[idx].balance || 0) + amount;
+        users[idx].liveBalance = (users[idx].liveBalance || 0) + amount;
+        localStorage.setItem('gross_users', JSON.stringify(users));
+      }
+      balanceLabel = 'Wallet Balance';
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('usersUpdated'));
+
+      addWalletTransaction({
+        userId: selectedUserId,
+        type: 'deposit',
+        method: addFundData.type === 'credit' ? 'Admin Credit' : addFundData.type === 'bonus' ? 'Admin Bonus' : 'Admin Deposit',
+        amount: amount,
+        currency: 'USD',
+        accountType: 'live',
+        status: 'completed',
+        details: { fundType: addFundData.type, destination: 'wallet' },
+      });
+
+      txnId = _syncTransactionToUserStore(selectedUserId, amount, addFundData.type as 'credit' | 'bonus', 'wallet');
     } else if (addFundData.balanceType === 'ipo' || addFundData.balanceType === 'ecn' || addFundData.balanceType === 'portfolio') {
       // Handle IPO, ECN, and Portfolio balances
       const balances = localStorage.getItem(`investment_balances_${selectedUserId}`);
       const currentBalances = balances ? JSON.parse(balances) : { ipo: 0, ecn: 0, portfolio: 0 };
-      
+
       if (addFundData.balanceType === 'ipo') {
         currentBalances.ipo = (currentBalances.ipo || 0) + amount;
         balanceLabel = 'IPO Balance';
@@ -341,41 +367,36 @@ export default function UserManagement() {
         currentBalances.portfolio = (currentBalances.portfolio || 0) + amount;
         balanceLabel = 'Portfolio Balance';
       }
-      
+
       localStorage.setItem(`investment_balances_${selectedUserId}`, JSON.stringify(currentBalances));
-      // Dispatch storage event for real-time sync
       window.dispatchEvent(new Event('storage'));
-      
-      // Create transaction record for investment balances
+
       addWalletTransaction({
         userId: selectedUserId,
         type: 'deposit',
-        method: `Admin ${addFundData.type === 'credit' ? 'Credit' : 'Bonus'} (${addFundData.balanceType.toUpperCase()})`,
+        method: `Admin ${addFundData.type === 'credit' ? 'Credit' : addFundData.type === 'bonus' ? 'Bonus' : 'Deposit'} (${addFundData.balanceType.toUpperCase()})`,
         amount: amount,
         currency: 'USD',
         accountType: 'live',
         status: 'completed',
-        details: { 
-          fundType: addFundData.type,
-          balanceType: addFundData.balanceType 
-        },
+        details: { fundType: addFundData.type, balanceType: addFundData.balanceType },
       });
 
-      // Also write to TransactionProvider's store so user sees it in their history
-      _syncTransactionToUserStore(selectedUserId, amount, addFundData.type, addFundData.balanceType);
+      txnId = _syncTransactionToUserStore(selectedUserId, amount, addFundData.type as 'credit' | 'bonus', addFundData.balanceType);
     }
-    
-    // Create notification for user (two-arg signature: userId, notification)
+
+    // Create notification for user; hidden until admin enables visibility
     addNotification(selectedUserId, {
       type: 'success',
       title: 'Funds Added',
       message: `$${formatCurrency(amount)} ${addFundData.type} has been added to your ${balanceLabel} by admin.`,
       channels: ['in-app'],
+      relatedId: txnId,
     });
 
     toast.success(`Funds added to ${balanceLabel} successfully`);
     setShowAddFundDialog(false);
-    setAddFundData({ type: 'credit', amount: '', accountType: 'paper', balanceType: 'live' as 'live' | 'ipo' | 'ecn' | 'portfolio' });
+    setAddFundData({ type: 'credit', amount: '', accountType: 'paper', balanceType: 'live' as 'live' | 'balance' | 'ipo' | 'ecn' | 'portfolio' });
   };
 
   /**
@@ -387,7 +408,7 @@ export default function UserManagement() {
     amount: number,
     fundType: 'credit' | 'bonus',
     balanceType: string
-  ) => {
+  ): string => {
     try {
       const existing = JSON.parse(localStorage.getItem('transactions') || '[]');
       const txn = {
@@ -402,12 +423,15 @@ export default function UserManagement() {
         timestamp: Date.now(),
         completedAt: Date.now(),
         adminNotes: `Admin ${fundType} → ${balanceType.toUpperCase()}`,
+        isVisibleToUser: false,
       };
       existing.unshift(txn);
       localStorage.setItem('transactions', JSON.stringify(existing));
-      // Notify TransactionProvider listeners
+      localStorage.setItem('gross_transactions', JSON.stringify(existing));
       window.dispatchEvent(new CustomEvent('transactionsUpdated'));
-    } catch { /* non-critical */ }
+      window.dispatchEvent(new Event('storage'));
+      return txn.id;
+    } catch { return `tx_${Date.now()}`; }
   };
 
   const handleLoginAsUser = (userId: string, userName: string) => {
@@ -576,7 +600,7 @@ export default function UserManagement() {
 
       {/* Users Table */}
       <div className="bg-white dark:bg-slate-800 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto max-h-[700px] overflow-y-auto">
+        <div className={`overflow-x-auto max-h-[700px] overflow-y-auto transition-all duration-200 ${openDropdownId ? 'pb-56' : ''}`}>
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-slate-700 sticky top-0 z-10">
               <tr>
@@ -715,7 +739,7 @@ export default function UserManagement() {
                             className="fixed inset-0 z-10"
                             onClick={() => setOpenDropdownId(null)}
                           />
-                          <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 z-20">
+                          <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 z-50">
                             <div className="py-1">
                               <button
                                 className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2"
@@ -1456,11 +1480,12 @@ export default function UserManagement() {
                   >
                     <option value="credit">Credit (Must be repaid)</option>
                     <option value="bonus">Bonus (Free fund)</option>
+                    <option value="balance">Balance (Direct wallet deposit)</option>
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
-                    {addFundData.type === 'credit' 
-                      ? 'Credit funds need to be repaid back by the user' 
-                      : 'Bonus funds are free and do not need to be repaid'}
+                    {addFundData.type === 'credit' && 'Credit funds need to be repaid back by the user'}
+                    {addFundData.type === 'bonus' && 'Bonus funds are free and do not need to be repaid'}
+                    {addFundData.type === 'balance' && 'Balance is added directly to the selected account — no repayment required'}
                   </p>
                 </div>
                 <div>
@@ -1480,14 +1505,16 @@ export default function UserManagement() {
                     onChange={(e) => setAddFundData({ ...addFundData, balanceType: e.target.value as any })}
                     className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
                   >
-                    <option value="live">💰 Live Balance (Real Money)</option>
+                    <option value="live">💰 Live Balance (Trading Account)</option>
+                    <option value="balance">🏦 Wallet Balance (Main wallet)</option>
                     <option value="portfolio">💼 Portfolio Balance (Investment Portfolio)</option>
                     <option value="ipo">🏢 IPO Balance (Investment Funds)</option>
                     <option value="ecn">📊 ECN Balance (Trading Funds)</option>
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
-                    {addFundData.balanceType === 'live' && 'Live balance is real money that can be withdrawn'}
-                    {addFundData.balanceType === 'portfolio' && 'Portfolio balance is used for investments. Users can deposit/withdraw from wallet page.'}
+                    {addFundData.balanceType === 'live' && 'Adds to live trading account balance'}
+                    {addFundData.balanceType === 'balance' && 'Adds directly to the user\'s main wallet balance'}
+                    {addFundData.balanceType === 'portfolio' && 'Portfolio balance is used for investments'}
                     {addFundData.balanceType === 'ipo' && 'IPO balance is used for investment opportunities'}
                     {addFundData.balanceType === 'ecn' && 'ECN balance is used for ECN trading'}
                   </p>

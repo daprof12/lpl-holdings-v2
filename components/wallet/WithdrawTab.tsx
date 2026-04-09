@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { DollarSign, Wallet, Building2, Bitcoin, AlertCircle, ArrowRight } from 'lucide-react';
+import { DollarSign, Wallet, Building2, Bitcoin, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -36,6 +36,16 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
   const [customWithdrawalAddress, setCustomWithdrawalAddress] = useState<string>('');
   const [useCustomAddress, setUseCustomAddress] = useState<boolean>(false);
   const [adminCryptoMethods, setAdminCryptoMethods] = useState<DepositMethod[]>([]);
+
+  // PayPal/E-wallet state
+  const [paypalEmail, setPaypalEmail] = useState('');
+
+  // Bank state
+  const [bankName, setBankName] = useState('');
+  const [accountName, setAccountName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [routingNumber, setRoutingNumber] = useState('');
+  const [swiftCode, setSwiftCode] = useState('');
 
   // Confirmation modal state
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
@@ -364,10 +374,14 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
         showErrorToast(`Invalid ${selectedCryptoType} address format. ${hint}`);
         return;
       }
-    } else {
-      // Normal validation for saved methods (bank/e-wallet)
-      if (!selectedMethod || !selectedWithdrawalMethod) {
-        showErrorToast('Please select a withdrawal method');
+    } else if (selectedMethod === 'e_wallet') {
+      if (!paypalEmail || !paypalEmail.includes('@')) {
+        showErrorToast('Please enter a valid PayPal email');
+        return;
+      }
+    } else if (selectedMethod === 'bank') {
+      if (!bankName || !accountName || !accountNumber) {
+        showErrorToast('Please fill in all required bank details');
         return;
       }
     }
@@ -412,12 +426,15 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
       usdEquivalent: withdrawAmount,
       status: 'pending',
       walletType,
-      ...(selectedMethod === 'bank' && selectedWithdrawalMethod && {
-        bankName: (selectedWithdrawalMethod as any).bankName,
-        accountNumber: (selectedWithdrawalMethod as any).accountNumber,
+      ...(selectedMethod === 'bank' && {
+        bankName,
+        accountName,
+        accountNumber,
+        routingNumber,
+        swiftCode,
       }),
-      ...(selectedMethod === 'e_wallet' && selectedWithdrawalMethod && {
-        paypalEmail: (selectedWithdrawalMethod as any).paypalEmail,
+      ...(selectedMethod === 'e_wallet' && {
+        paypalEmail,
       }),
       ...(selectedMethod === 'crypto' && {
         walletAddress: customWithdrawalAddress,
@@ -834,43 +851,109 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
               </div>
             )}
           </>
-        ) : selectedMethod !== 'crypto' ? (
-          /* Non-crypto methods (Bank/E-wallet) */
-          <div className="mb-6">
-            <Label className="mb-3 block">Select Withdrawal Destination</Label>
-            <div className="space-y-3">
-              {availableMethods.map((method) => (
-                <button
-                  key={method.id}
-                  type="button"
-                  onClick={() => setSelectedWithdrawalMethod(method)}
-                  className={`w-full p-4 rounded-lg border-2 text-left transition-all ${
-                    selectedWithdrawalMethod?.id === method.id
-                      ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
-                      : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
-                  }`}
-                >
-                  {method.type === 'bank' && (
-                    <div>
-                      <div className="font-semibold">{method.bankName}</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">{method.accountHolderName}</div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">••••{method.accountNumber?.slice(-4) || method.iban?.slice(-4)}</div>
-                    </div>
-                  )}
-                  {method.type === 'paypal' && (
-                    <div>
-                      <div className="font-semibold">PayPal</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">{method.paypalEmail}</div>
-                    </div>
-                  )}
-                  {method.isDefault && (
-                    <span className="inline-block mt-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs rounded-full">
-                      Default
-                    </span>
-                  )}
-                </button>
-              ))}
+        ) : selectedMethod === 'e_wallet' ? (
+          /* PayPal / E-wallet fields */
+          <div className="space-y-4 mb-6">
+            <div>
+              <Label htmlFor="paypalEmail">Your PayPal Email</Label>
+              <Input
+                id="paypalEmail"
+                type="email"
+                placeholder="email@example.com"
+                value={paypalEmail}
+                onChange={(e) => setPaypalEmail(e.target.value)}
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">Funds will be sent to this PayPal account</p>
             </div>
+            {availableMethods.length > 0 && (
+              <div className="pt-2">
+                <p className="text-sm font-medium mb-2">Or select from saved accounts:</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {availableMethods.map(m => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => {
+                        setPaypalEmail((m as any).paypalEmail || '');
+                        setSelectedWithdrawalMethod(m);
+                      }}
+                      className={`text-xs p-2 rounded border text-left ${paypalEmail === (m as any).paypalEmail ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/10' : 'border-gray-200 dark:border-slate-700'}`}
+                    >
+                      {(m as any).paypalEmail}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : selectedMethod === 'bank' ? (
+          /* Bank Transfer fields */
+          <div className="space-y-4 mb-6">
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="bankName">Bank Name</Label>
+                <Input
+                  id="bankName"
+                  placeholder="e.g. JPMorgan Chase"
+                  value={bankName}
+                  onChange={(e) => setBankName(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="accountName">Account Holder Name</Label>
+                <Input
+                  id="accountName"
+                  placeholder="John Doe"
+                  value={accountName}
+                  onChange={(e) => setAccountName(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="accountNumber">Account Number / IBAN</Label>
+                <Input
+                  id="accountNumber"
+                  placeholder="Enter your account number"
+                  value={accountNumber}
+                  onChange={(e) => setAccountNumber(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="routingNumber">Routing / SWIFT (Optional)</Label>
+                <Input
+                  id="routingNumber"
+                  placeholder="e.g. 021000021"
+                  value={routingNumber}
+                  onChange={(e) => setRoutingNumber(e.target.value)}
+                />
+              </div>
+            </div>
+            {availableMethods.length > 0 && (
+              <div className="pt-2">
+                <p className="text-sm font-medium mb-2">Or select from saved accounts:</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {availableMethods.map(m => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => {
+                        setBankName((m as any).bankName || '');
+                        setAccountName((m as any).accountHolderName || '');
+                        setAccountNumber((m as any).accountNumber || (m as any).iban || '');
+                        setRoutingNumber((m as any).routingNumber || (m as any).swiftCode || '');
+                        setSelectedWithdrawalMethod(m);
+                      }}
+                      className={`text-xs p-2 rounded border text-left ${bankName === (m as any).bankName && accountNumber === ((m as any).accountNumber || (m as any).iban) ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/10' : 'border-gray-200 dark:border-slate-700'}`}
+                    >
+                      {(m as any).bankName} - ••••{((m as any).accountNumber || (m as any).iban || '').slice(-4)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : null}
 
@@ -1014,19 +1097,20 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
                   <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Destination Address</div>
                   <div className="font-mono text-xs break-all">{customWithdrawalAddress}</div>
                 </div>
-              ) : selectedWithdrawalMethod && (
+              ) : (
                 <div className="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
                   <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Destination</div>
-                  {selectedWithdrawalMethod.type === 'bank' && (
+                  {selectedMethod === 'bank' && (
                     <div>
-                      <div className="font-semibold">{selectedWithdrawalMethod.bankName}</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">••••{selectedWithdrawalMethod.accountNumber?.slice(-4)}</div>
+                      <div className="font-semibold">{bankName}</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">{accountName}</div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">••••{accountNumber.slice(-4)}</div>
                     </div>
                   )}
-                  {selectedWithdrawalMethod.type === 'paypal' && (
+                  {selectedMethod === 'e_wallet' && (
                     <div>
                       <div className="font-semibold">PayPal</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">{selectedWithdrawalMethod.paypalEmail}</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">{paypalEmail}</div>
                     </div>
                   )}
                 </div>

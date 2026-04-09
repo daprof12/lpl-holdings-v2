@@ -47,7 +47,7 @@ export default function ContactSubmissions() {
   const [replyMessage, setReplyMessage] = useState('');
   
   const { createTicket } = useTickets();
-  const { user } = useAuth();
+  const { currentUser } = useAuth();
 
   // Load submissions from localStorage
   useEffect(() => {
@@ -115,7 +115,7 @@ export default function ContactSubmissions() {
       category: 'other',
       priority: 'medium',
       message: `Original Message from ${selectedSubmission.name} (${selectedSubmission.email}):\n\n${selectedSubmission.message}\n\n---\n\nAdmin Reply:\n\n${replyMessage}`,
-      userId: user?.id || 'admin',
+      userId: currentUser?.id || 'admin',
       userEmail: selectedSubmission.email,
       userName: selectedSubmission.name
     });

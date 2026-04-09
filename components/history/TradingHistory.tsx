@@ -94,7 +94,10 @@ export default function TradingHistory() {
     });
 
   // Get real transactions from TransactionProvider (same store admin manages)
-  const userTransactions = currentUser ? getUserTransactions(currentUser.id) : [];
+  // Only show transactions admin has made visible (isVisibleToUser !== false)
+  const userTransactions = currentUser
+    ? getUserTransactions(currentUser.id).filter((t: any) => t.isVisibleToUser !== false)
+    : [];
   const transactions: Transaction[] = userTransactions.map(t => ({
     id: t.id,
     type: t.type === 'deposit' ? 'Deposit' : 'Withdrawal',

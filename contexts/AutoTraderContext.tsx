@@ -109,7 +109,7 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
   const [strategies, setStrategies] = useState<StrategyConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const { addPosition, account, tradingMode } = useTrading();
-  const { currentUser, user } = useAuth();
+  const { currentUser } = useAuth();
   const marketData = useMarketData();
 
   // ============================================
@@ -265,11 +265,11 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
    * Refresh strategies from database
    */
   const refreshStrategies = async () => {
-    if (!user?.id) return;
+    if (!currentUser?.id) return;
     
     setLoading(true);
     try {
-      const dbStrategies = await fetchStrategies(user.id);
+      const dbStrategies = await fetchStrategies(currentUser.id);
       setStrategies(dbStrategies);
     } catch (error) {
       console.error('Error refreshing strategies:', error);
@@ -287,14 +287,14 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
    */
   useEffect(() => {
     const loadUserStrategies = async () => {
-      if (user && user.id) {
-        console.log('🔄 Loading auto-trader strategies for user:', user.id);
+      if (currentUser && currentUser.id) {
+        console.log('🔄 Loading auto-trader strategies for user:', currentUser.id);
         await refreshStrategies();
       }
     };
 
     loadUserStrategies();
-  }, [user?.id]);
+  }, [currentUser?.id]);
 
   // Load strategies from localStorage (fallback)
   useEffect(() => {

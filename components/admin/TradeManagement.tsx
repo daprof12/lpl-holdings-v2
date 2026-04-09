@@ -44,6 +44,7 @@ interface Trade {
   stopLoss?: number;
   takeProfit?: number;
   mode: 'paper' | 'live';
+  userId: string;
 }
 
 // Helper function to determine asset category
@@ -144,6 +145,7 @@ export default function TradeManagement() {
     stopLoss: pos.stopLoss,
     takeProfit: pos.takeProfit,
     mode: pos.mode,
+    userId: pos.userId,
   }));
 
   // Map history to Trade format (closed trades only)
@@ -165,6 +167,7 @@ export default function TradeManagement() {
       openedAt: new Date(h.timestamp).toISOString().replace('T', ' ').substring(0, 19),
       closedAt: new Date(h.timestamp).toISOString().replace('T', ' ').substring(0, 19),
       mode: h.mode,
+      userId: h.userId,
     }));
 
   const trades = [...openTrades, ...closedTrades];
@@ -249,21 +252,30 @@ export default function TradeManagement() {
 
   const handleForcClose = (tradeId: string) => {
     if (window.confirm('Are you sure you want to force close this trade?')) {
-      // Find the position
-      const position = allPositions.find(p => p.id === tradeId);
+      // Find the position in the GLOBAL list, not just admin's
+      const isPaper = modeFilter === 'paper' || (modeFilter === 'all' && allPaperPositions.find((p: any) => p.id === tradeId));
+      const positionsKey = isPaper ? 'gross_paper_positions' : 'gross_live_positions';
+      const currentPositions = JSON.parse(localStorage.getItem(positionsKey) || '[]');
+      const position = currentPositions.find((p: any) => p.id === tradeId);
+
       if (position) {
+        const userId = position.userId;
         // Calculate P&L
         const priceDiff = position.side === 'buy' 
           ? position.currentPrice - position.entryPrice 
           : position.entryPrice - position.currentPrice;
         const pnl = priceDiff * position.units * position.leverage;
 
-        // Remove from positions
-        removePosition(position.id);
+        // 1. Remove from positions
+        const updatedPositions = currentPositions.filter((p: any) => p.id !== tradeId);
+        localStorage.setItem(positionsKey, JSON.stringify(updatedPositions));
 
-        // Add to history
-        addHistory({
+        // 2. Add to history
+        const historyKey = isPaper ? 'gross_paper_history' : 'gross_live_history';
+        const currentHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
+        const newHistoryItem = {
           id: position.id,
+          userId: position.userId,
           symbol: position.symbol,
           side: position.side,
           type: 'market',
@@ -274,25 +286,36 @@ export default function TradeManagement() {
           timestamp: new Date(),
           status: 'closed',
           mode: position.mode
-        });
+        };
+        localStorage.setItem(historyKey, JSON.stringify([newHistoryItem, ...currentHistory]));
 
-        // Compute remaining unrealized P&L and margin from other open positions
-        const remainingPositions = allPositions.filter(p => p.id !== position.id);
-        const remainingUnrealizedPnL = remainingPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
-        const remainingMargin = remainingPositions.reduce((sum, p) => sum + (p.margin || 0), 0);
-        const newBalance = account.balance + pnl;
-        const newEquity = newBalance + remainingUnrealizedPnL;
+        // 3. Update the user's specific account
+        const accountKey = isPaper ? `gross_paper_account_${userId}` : `gross_live_account_${userId}`;
+        const storedAccount = localStorage.getItem(accountKey);
+        if (storedAccount) {
+          const userAccount = JSON.parse(storedAccount);
+          
+          // Compute remaining unrealized P&L and margin from other open positions for THIS user
+          const userPositions = updatedPositions.filter((p: any) => p.userId === userId);
+          const remainingUnrealizedPnL = userPositions.reduce((sum: number, p: any) => sum + (p.pnl || 0), 0);
+          const remainingMargin = userPositions.reduce((sum: number, p: any) => sum + (p.margin || 0), 0);
+          const newBalance = userAccount.balance + pnl;
+          const newEquity = newBalance + remainingUnrealizedPnL;
 
-        // Update account
-        updateAccount({
-          balance: newBalance,
-          equity: newEquity,
-          realizedPnL: account.realizedPnL + pnl,
-          unrealizedPnL: remainingUnrealizedPnL,
-          margin: remainingMargin,
-          availableFunds: newEquity - remainingMargin,
-        });
+          const updatedAccount = {
+            ...userAccount,
+            balance: newBalance,
+            equity: newEquity,
+            realizedPnL: (userAccount.realizedPnL || 0) + pnl,
+            unrealizedPnL: remainingUnrealizedPnL,
+            margin: remainingMargin,
+            availableFunds: newEquity - remainingMargin,
+          };
+          localStorage.setItem(accountKey, JSON.stringify(updatedAccount));
+        }
 
+        // Trigger storage event for cross-tab sync
+        window.dispatchEvent(new Event('storage'));
         toast.success('Trade force closed successfully');
       } else {
         toast.error('Position not found');
@@ -302,9 +325,14 @@ export default function TradeManagement() {
 
   const handleDelete = (tradeId: string) => {
     if (window.confirm('Are you sure you want to permanently delete this trade record? This action cannot be undone.')) {
-      // Check if it's an open position
-      const position = allPositions.find(p => p.id === tradeId);
-      const historyItem = combinedHistory.find(h => h.id === tradeId);
+      // Check if it's an open position in GLOBAL list
+      const allPaperPos = JSON.parse(localStorage.getItem('gross_paper_positions') || '[]');
+      const allLivePos = JSON.parse(localStorage.getItem('gross_live_positions') || '[]');
+      const position = [...allPaperPos, ...allLivePos].find(p => p.id === tradeId);
+      
+      const allPaperHis = JSON.parse(localStorage.getItem('gross_paper_history') || '[]');
+      const allLiveHis = JSON.parse(localStorage.getItem('gross_live_history') || '[]');
+      const historyItem = [...allPaperHis, ...allLiveHis].find(h => h.id === tradeId);
       
       if (position) {
         // ===== DELETE OPEN POSITION =====
@@ -365,9 +393,14 @@ export default function TradeManagement() {
       return;
     }
 
-    // Find if it's an open position or closed trade
-    const position = allPositions.find(p => p.id === selectedTrade.id);
-    const historyItem = combinedHistory.find(h => h.id === selectedTrade.id);
+    // Find if it's an open position or closed trade in GLOBAL lists
+    const allPaperPos = JSON.parse(localStorage.getItem('gross_paper_positions') || '[]');
+    const allLivePos = JSON.parse(localStorage.getItem('gross_live_positions') || '[]');
+    const position = [...allPaperPos, ...allLivePos].find(p => p.id === selectedTrade.id);
+    
+    const allPaperHis = JSON.parse(localStorage.getItem('gross_paper_history') || '[]');
+    const allLiveHis = JSON.parse(localStorage.getItem('gross_live_history') || '[]');
+    const historyItem = [...allPaperHis, ...allLiveHis].find(h => h.id === selectedTrade.id);
     
     // Determine trade type
     const tradeType = selectedTrade.type === 'long' ? 'long' : 'short';
@@ -382,17 +415,26 @@ export default function TradeManagement() {
     
     if (position && selectedTrade.status === 'open') {
       // ===== EDITING AN OPEN POSITION =====
+      const userId = position.userId;
+      const isPaper = position.mode === 'paper';
+      const positionsKey = isPaper ? 'gross_paper_positions' : 'gross_live_positions';
+      const currentPositions = JSON.parse(localStorage.getItem(positionsKey) || '[]');
+      
       const oldMargin = position.margin;
       const oldPnL = position.pnl;
 
       // If status changed to closed, close the position
       if (formData.status === 'closed') {
-        // Remove from positions
-        removePosition(position.id);
+        // 1. Remove from positions
+        const updatedPositions = currentPositions.filter((p: any) => p.id !== position.id);
+        localStorage.setItem(positionsKey, JSON.stringify(updatedPositions));
 
-        // Add to history with updated values
-        addHistory({
+        // 2. Add to history
+        const historyKey = isPaper ? 'gross_paper_history' : 'gross_live_history';
+        const currentHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
+        const newHistoryItem = {
           id: position.id,
+          userId: userId,
           symbol: formData.asset,
           side: tradeSide,
           type: 'market',
@@ -403,46 +445,72 @@ export default function TradeManagement() {
           timestamp: formData.closedAt ? new Date(formData.closedAt) : new Date(),
           status: 'closed',
           mode: position.mode
-        });
+        };
+        localStorage.setItem(historyKey, JSON.stringify([newHistoryItem, ...currentHistory]));
 
-        // Update account balance
-        updateAccount({
-          balance: account.balance + newPnL,
-          equity: account.equity - oldPnL + newPnL - newMargin,
-          realizedPnL: account.realizedPnL + newPnL,
-          margin: account.margin - oldMargin,
-          availableFunds: account.availableFunds + oldMargin + newPnL,
-          unrealizedPnL: account.unrealizedPnL - oldPnL
-        });
+        // 3. Update the user's specific account
+        const accountKey = isPaper ? `gross_paper_account_${userId}` : `gross_live_account_${userId}`;
+        const storedAccount = localStorage.getItem(accountKey);
+        if (storedAccount) {
+          const userAccount = JSON.parse(storedAccount);
+          const userPositions = updatedPositions.filter((p: any) => p.userId === userId);
+          const remainingUnrealizedPnL = userPositions.reduce((sum: number, p: any) => sum + (p.pnl || 0), 0);
+          const remainingMargin = userPositions.reduce((sum: number, p: any) => sum + (p.margin || 0), 0);
+          
+          const updatedAccount = {
+            ...userAccount,
+            balance: (userAccount.balance || 0) + newPnL,
+            equity: (userAccount.equity || 0) - oldPnL + newPnL - oldMargin,
+            realizedPnL: (userAccount.realizedPnL || 0) + newPnL,
+            margin: remainingMargin,
+            availableFunds: (userAccount.availableFunds || 0) + oldMargin + newPnL,
+            unrealizedPnL: remainingUnrealizedPnL
+          };
+          localStorage.setItem(accountKey, JSON.stringify(updatedAccount));
+        }
       } else {
         // Update the position with new values (still open)
-        const updatedPosition = {
-          symbol: formData.asset,
-          entryPrice: newEntryPrice,
-          currentPrice: newCurrentPrice,
-          units: newQuantity,
-          leverage: newLeverage,
-          stopLoss: newStopLoss,
-          takeProfit: newTakeProfit,
-          pnl: newPnL,
-          margin: newMargin,
-          timestamp: formData.openedAt ? new Date(formData.openedAt) : position.timestamp,
-        };
+        const updatedPositions = currentPositions.map((p: any) => {
+          if (p.id === position.id) {
+            return {
+              ...p,
+              symbol: formData.asset,
+              entryPrice: newEntryPrice,
+              currentPrice: newCurrentPrice,
+              units: newQuantity,
+              leverage: newLeverage,
+              stopLoss: newStopLoss,
+              takeProfit: newTakeProfit,
+              pnl: newPnL,
+              margin: newMargin,
+              timestamp: formData.openedAt ? new Date(formData.openedAt).getTime() : p.timestamp,
+            };
+          }
+          return p;
+        });
 
-        updatePosition(position.id, updatedPosition);
+        localStorage.setItem(positionsKey, JSON.stringify(updatedPositions));
 
         // Update account with adjusted margin and unrealized P&L
-        const marginDiff = newMargin - oldMargin;
-        const pnlDiff = newPnL - oldPnL;
+        const accountKey = isPaper ? `gross_paper_account_${userId}` : `gross_live_account_${userId}`;
+        const storedAccount = localStorage.getItem(accountKey);
+        if (storedAccount) {
+          const userAccount = JSON.parse(storedAccount);
+          const marginDiff = newMargin - oldMargin;
+          const pnlDiff = newPnL - oldPnL;
 
-        updateAccount({
-          equity: account.equity + pnlDiff,
-          unrealizedPnL: account.unrealizedPnL + pnlDiff,
-          margin: account.margin + marginDiff,
-          availableFunds: account.availableFunds - marginDiff
-        });
+          const updatedAccount = {
+            ...userAccount,
+            equity: (userAccount.equity || 0) + pnlDiff,
+            unrealizedPnL: (userAccount.unrealizedPnL || 0) + pnlDiff,
+            margin: (userAccount.margin || 0) + marginDiff,
+            availableFunds: (userAccount.availableFunds || 0) - marginDiff
+          };
+          localStorage.setItem(accountKey, JSON.stringify(updatedAccount));
+        }
       }
-
+      
+      window.dispatchEvent(new Event('storage'));
       toast.success('Trade updated successfully!');
     } else if (historyItem && selectedTrade.status === 'closed') {
       // ===== EDITING A CLOSED TRADE IN HISTORY =====
@@ -484,7 +552,7 @@ export default function TradeManagement() {
 
       // If status changed to open, reopen the trade as a position
       if (formData.status === 'open') {
-        // Remove from history
+        // 1. Remove from history
         const filteredHistory = targetHistory.filter((h: any) => h.id !== selectedTrade.id);
         localStorage.setItem(historyKey, JSON.stringify(filteredHistory));
         
@@ -494,7 +562,26 @@ export default function TradeManagement() {
           setLiveHistory(filteredHistory);
         }
 
-        // Add as new position
+        // 2. Update user's specific account
+        const accountKey = isPaperTrade ? `gross_paper_account_${historyItem.userId}` : `gross_live_account_${historyItem.userId}`;
+        const storedAccount = localStorage.getItem(accountKey);
+        if (storedAccount) {
+          const userAccount = JSON.parse(storedAccount);
+          const oldPnL = historyItem.pnl || 0;
+          
+          const updatedAccount = {
+            ...userAccount,
+            balance: (userAccount.balance || 0) - oldPnL, // Reverse realized P&L
+            equity: (userAccount.equity || 0) - oldPnL + newPnL, // Switch to new unrealized P&L
+            realizedPnL: (userAccount.realizedPnL || 0) - oldPnL,
+            unrealizedPnL: (userAccount.unrealizedPnL || 0) + newPnL,
+            margin: (userAccount.margin || 0) + newMargin,
+            availableFunds: (userAccount.availableFunds || 0) - newMargin
+          };
+          localStorage.setItem(accountKey, JSON.stringify(updatedAccount));
+        }
+
+        // 3. Add as new position
         const newPosition = {
           id: selectedTrade.id,
           userId: historyItem.userId,
@@ -508,11 +595,11 @@ export default function TradeManagement() {
           takeProfit: newTakeProfit,
           pnl: newPnL,
           margin: newMargin,
-          timestamp: formData.openedAt ? new Date(formData.openedAt) : historyItem.timestamp,
+          timestamp: formData.openedAt ? new Date(formData.openedAt).getTime() : historyItem.timestamp,
           mode: historyItem.mode,
         };
 
-        // Add to positions
+        // 4. Add to positions
         const positionsKey = isPaperTrade ? 'gross_paper_positions' : 'gross_live_positions';
         const currentPositions = JSON.parse(localStorage.getItem(positionsKey) || '[]');
         currentPositions.push(newPosition);

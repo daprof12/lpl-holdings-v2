@@ -307,12 +307,16 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
     const loadUserData = async () => {
       if (currentUser && currentUser.id) {
         console.log('🔄 Loading investments for user:', currentUser.id);
-        await refreshInvestments();
+        // If admin, we'll rely on the global KV load for all user data
+        // but for compatibility we still call this if needed.
+        if (currentUser.role !== 'admin') {
+          await refreshInvestments();
+        }
       }
     };
 
     loadUserData();
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.role]);
 
   // Synchronize with database on mount
   useEffect(() => {
@@ -330,7 +334,12 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
         const dbSellRequests = await getKV('gross_sell_requests');
 
         const userId = currentUser?.id;
-        const filterByUser = (items: any[]) => items && userId ? items.filter(item => item.userId === userId) : [];
+        const isAdmin = currentUser?.role === 'admin';
+        const filterByUser = (items: any[]) => {
+          if (!items) return [];
+          if (isAdmin) return items;
+          return userId ? items.filter(item => item.userId === userId) : [];
+        };
 
         if (dbUserInvestments) setUserInvestments(filterByUser(dbUserInvestments));
         if (dbSellRequests) setSellRequests(filterByUser(dbSellRequests));
@@ -357,9 +366,14 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
       }, (payload: any) => {
         const { key, value } = payload.new;
         const userId = currentUser?.id;
+        const isAdmin = currentUser?.role === 'admin';
         if (!userId) return;
 
-        const filterByUser = (items: any[]) => items ? items.filter(item => item.userId === userId) : [];
+        const filterByUser = (items: any[]) => {
+          if (!items) return [];
+          if (isAdmin) return items;
+          return items.filter(item => item.userId === userId);
+        };
 
         switch (key) {
           case 'gross_investment_offers':
@@ -416,7 +430,8 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
         }
         
         const items = JSON.parse(e.newValue);
-        const filtered = items.filter((item: any) => item.userId === userId || !item.userId);
+        const isAdmin = currentUser?.role === 'admin';
+        const filtered = items.filter((item: any) => isAdmin || item.userId === userId || !item.userId);
 
         if (e.key === 'userInvestments') setUserInvestments(filtered);
         if (e.key === 'sellRequests') setSellRequests(filtered);

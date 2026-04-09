@@ -54,6 +54,7 @@ export interface WalletTransaction {
   timestamp: Date;
   processedAt?: Date;
   notes?: string;
+  isVisibleToUser?: boolean;
 }
 
 export interface Notification {
@@ -65,6 +66,9 @@ export interface Notification {
   read: boolean;
   timestamp: Date;
   link?: string;
+  isVisibleToUser?: boolean;
+  relatedId?: string; // e.g. transactionId
+  channels?: string[];
 }
 
 interface AuthContextType {
@@ -425,7 +429,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [notifications]);
 
   // ── Sync to Supabase Logic ──────────────────────────────────────────
-  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     // Clear any pending sync
@@ -476,19 +480,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Update activity on page load
     updateUserActivity();
 
-    // Update activity on user interactions
-    const handleActivity = () => updateUserActivity();
-    
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
-    events.forEach(event => window.addEventListener(event, handleActivity));
-
     // Heartbeat to keep updating while user is active
     const heartbeat = setInterval(() => {
       updateUserActivity();
-    }, 30000); // Update every 30 seconds
+    }, 60000); // Relaxed to 60 seconds to prevent rapid global syncs
 
     return () => {
-      events.forEach(event => window.removeEventListener(event, handleActivity));
       clearInterval(heartbeat);
     };
   }, [currentUser?.id]);
@@ -680,6 +677,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const updatedUsers = [...storedUsers, newUser];
     setUsers(updatedUsers);
     localStorage.setItem('gross_users', JSON.stringify(updatedUsers));
+    
+    // Explicitly forcefully sync to DB so a quick page refresh doesn't wipe them via getKV restore
+    setKV('gross_users', updatedUsers).catch(console.error);
+    setKV('gross_passwords', storedPasswords).catch(console.error);
 
     // Log activity
     const activity: UserActivity = {
@@ -699,11 +700,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateProfile = (userId: string, updates: Partial<UserProfile>) => {
-    setUsers(prev => 
-      prev.map(user => 
+    setUsers(prev => {
+      const updated = prev.map(user => 
         user.id === userId ? { ...user, ...updates } : user
-      )
-    );
+      );
+      // Explicit forceful sync
+      setKV('gross_users', updated).catch(console.error);
+      return updated;
+    });
 
     if (currentUser?.id === userId) {
       setCurrentUser(prev => prev ? { ...prev, ...updates } : null);
@@ -850,6 +854,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       userName: user.firstName + ' ' + user.lastName,
       userEmail: user.email,
       timestamp: new Date(),
+      isVisibleToUser: transaction.isVisibleToUser ?? false,
     };
 
     setWalletTransactions(prev => [...prev, newTransaction]);
@@ -869,7 +874,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return walletTransactions.filter(transaction => transaction.userId === userId);
   };
 
-  const addFundsToUser = (userId: string, amount: number, type: 'credit' | 'bonus') => {
+  const addFundsToUser = (userId: string, amount: number, type: 'credit' | 'bonus' | 'balance') => {
     setUsers(prev => 
       prev.map(user => 
         user.id === userId ? { ...user, balance: user.balance + amount } : user
@@ -885,14 +890,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       id: `activity-${Date.now()}`,
       userId: userId,
       type: 'deposit',
-      action: type === 'credit' ? 'Credit added' : 'Bonus added',
+      action: type === 'credit' ? 'Credit added' : type === 'bonus' ? 'Bonus added' : 'Balance added',
       details: { amount, type },
       timestamp: new Date(),
     };
     setUserActivities(prev => [...prev, activity]);
   };
 
-  const addFundsToAccount = (userId: string, amount: number, accountType: 'live' | 'paper', type: 'credit' | 'bonus') => {
+  const addFundsToAccount = (userId: string, amount: number, accountType: 'live' | 'paper', type: 'credit' | 'bonus' | 'balance') => {
     setUsers(prev => 
       prev.map(user => {
         if (user.id !== userId) return user;
@@ -1038,6 +1043,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       userId: userId,
       timestamp: new Date(),
       read: false,
+      isVisibleToUser: notification.isVisibleToUser ?? false, // Default to hidden
     };
 
     setNotifications(prev => [...prev, newNotification]);

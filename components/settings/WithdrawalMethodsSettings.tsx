@@ -40,7 +40,7 @@ export interface WithdrawalMethod {
 }
 
 export default function WithdrawalMethodsSettings() {
-  const { user } = useAuth();
+  const { currentUser } = useAuth();
   const [withdrawalMethods, setWithdrawalMethods] = useState<WithdrawalMethod[]>([]);
   const [platformWithdrawalInfo, setPlatformWithdrawalInfo] = useState<PlatformWithdrawalInfo[]>([]);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -57,13 +57,13 @@ export default function WithdrawalMethodsSettings() {
     if (stored) {
       try {
         const allMethods = JSON.parse(stored);
-        const userMethods = allMethods.filter((m: WithdrawalMethod) => m.userId === user?.id);
+        const userMethods = allMethods.filter((m: WithdrawalMethod) => m.userId === currentUser?.id);
         setWithdrawalMethods(userMethods);
       } catch (error) {
         console.error('Failed to load withdrawal methods:', error);
       }
     }
-  }, [user]);
+  }, [currentUser]);
 
   // Load platform withdrawal info
   useEffect(() => {
@@ -93,7 +93,7 @@ export default function WithdrawalMethodsSettings() {
     const allMethods = stored ? JSON.parse(stored) : [];
     
     // Remove current user's methods and add updated ones
-    const otherUserMethods = allMethods.filter((m: WithdrawalMethod) => m.userId !== user?.id);
+    const otherUserMethods = allMethods.filter((m: WithdrawalMethod) => m.userId !== currentUser?.id);
     const updatedMethods = [...otherUserMethods, ...methods];
     
     localStorage.setItem('withdrawalMethods', JSON.stringify(updatedMethods));
@@ -101,11 +101,11 @@ export default function WithdrawalMethodsSettings() {
   };
 
   const handleAddMethod = () => {
-    if (!user) return;
+    if (!currentUser) return;
 
     const newMethod: WithdrawalMethod = {
       id: `wm_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      userId: user.id,
+      userId: currentUser.id,
       type: methodType,
       isDefault: withdrawalMethods.length === 0,
       ...formData,

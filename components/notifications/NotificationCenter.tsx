@@ -103,6 +103,9 @@ export default function NotificationCenter() {
     // Filter by user (if user-specific notification)
     if (notif.userId && notif.userId !== currentUser?.id) return false;
     
+    // Visibility check - skip if explicitly hidden by admin
+    if (notif.isVisibleToUser === false) return false;
+
     // Filter by read status
     if (filter === 'unread' && notif.read) return false;
     
@@ -112,6 +115,7 @@ export default function NotificationCenter() {
   // Count of all notifications visible to current user (for the "All" tab label)
   const userVisibleCount = notifications.filter(notif => {
     if (notif.userId && notif.userId !== currentUser?.id) return false;
+    if (notif.isVisibleToUser === false) return false;
     return true;
   }).length;
 

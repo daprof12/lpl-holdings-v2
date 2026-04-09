@@ -142,9 +142,9 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200 dark:border-slate-700">
           <Link to="/dashboard" className={`flex items-center gap-2 ${!isOpen && 'lg:justify-center lg:w-full'}`}>
             <img
-              src={theme === 'light' ? logoImage : logoImage}
+              src={isOpen ? logoImage : "/assets/favicon.png"}
               alt="LPL Premium"
-              className={`${isOpen ? 'h-7' : 'h-7 lg:h-8'} ${theme === 'dark' ? 'brightness-0 invert' : ''}`}
+              className={`${isOpen ? 'h-7' : 'h-8'} ${theme === 'dark' ? 'brightness-0 invert' : ''}`}
             />
           </Link>
 

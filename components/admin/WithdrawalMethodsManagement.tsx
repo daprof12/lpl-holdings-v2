@@ -516,9 +516,18 @@ export default function WithdrawalMethodsManagement() {
           <DialogHeader>
             <DialogTitle>Add Withdrawal Method</DialogTitle>
             <DialogDescription>
-              Add a new withdrawal method with comprehensive configuration
+              Add a new withdrawal method category or template. Platform-wide methods appear as options for all users to provide their own specific details.
             </DialogDescription>
           </DialogHeader>
+
+          <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 mb-4">
+            <div className="flex gap-2 text-xs text-amber-700 dark:text-amber-300">
+              <Info className="w-4 h-4 flex-shrink-0" />
+              <p>
+                <strong>Tip:</strong> Users are usually responsible for providing their own specific withdrawal details (like PayPal email or bank info) during the withdrawal process. Use this tool mainly to define the <strong>types</strong> of withdrawals allowed, their fees, and limits.
+              </p>
+            </div>
+          </div>
           
           <div className="space-y-4">
             {/* Apply to all users checkbox */}
@@ -627,22 +636,23 @@ export default function WithdrawalMethodsManagement() {
 
             {/* Bank-specific fields */}
             {formData.type === 'bank' && (
-              <>
-                <div>
-                  <Label>Bank Name</Label>
-                  <Input
-                    value={formData.bankName || ''}
-                    onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>Account Holder Name</Label>
-                  <Input
-                    value={formData.accountHolderName || ''}
-                    onChange={(e) => setFormData({ ...formData, accountHolderName: e.target.value })}
-                  />
-                </div>
+              <div className="space-y-4 border-t pt-4">
+                <h4 className="font-semibold text-sm">Default Bank Details (Optional Template)</h4>
                 <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <Label>Bank Name</Label>
+                    <Input
+                      value={formData.bankName || ''}
+                      onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>Account Holder Name</Label>
+                    <Input
+                      value={formData.accountHolderName || ''}
+                      onChange={(e) => setFormData({ ...formData, accountHolderName: e.target.value })}
+                    />
+                  </div>
                   <div>
                     <Label>Account Number</Label>
                     <Input
@@ -658,18 +668,21 @@ export default function WithdrawalMethodsManagement() {
                     />
                   </div>
                 </div>
-              </>
+              </div>
             )}
 
             {/* PayPal-specific fields */}
             {formData.type === 'paypal' && (
-              <div>
-                <Label>PayPal Email</Label>
-                <Input
-                  type="email"
-                  value={formData.paypalEmail || ''}
-                  onChange={(e) => setFormData({ ...formData, paypalEmail: e.target.value })}
-                />
+              <div className="space-y-4 border-t pt-4">
+                <h4 className="font-semibold text-sm">Default PayPal Email (Optional Template)</h4>
+                <div>
+                  <Label>PayPal Email</Label>
+                  <Input
+                    type="email"
+                    value={formData.paypalEmail || ''}
+                    onChange={(e) => setFormData({ ...formData, paypalEmail: e.target.value })}
+                  />
+                </div>
               </div>
             )}
 

@@ -34,15 +34,15 @@
   },
   "excluded": [
     {
-      "url": "https://lpl-finex.net/wp-content/uploads/elementor/google-fonts/css/inter.css?ver=1754913432",
+      "url": "https://prucosecurities.com//wp-content/uploads/elementor/google-fonts/css/inter.css?ver=1754913432",
       "reason": "cross_origin_blocked"
     },
     {
-      "url": "https://lpl-finex.net/wp-content/uploads/elementor/google-fonts/css/nunitosans.css?ver=1754550682",
+      "url": "https://prucosecurities.com//wp-content/uploads/elementor/google-fonts/css/nunitosans.css?ver=1754550682",
       "reason": "cross_origin_blocked"
     },
     {
-      "url": "https://lpl-finex.net/wp-content/uploads/elementor/google-fonts/css/plusjakartasans.css?ver=1754569651",
+      "url": "https://prucosecurities.com//wp-content/uploads/elementor/google-fonts/css/plusjakartasans.css?ver=1754569651",
       "reason": "cross_origin_blocked"
     },
     {

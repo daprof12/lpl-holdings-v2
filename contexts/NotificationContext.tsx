@@ -19,6 +19,8 @@ export interface Notification {
   read: boolean;
   userId?: string; // If undefined, broadcast to all users
   channels: NotificationChannel[];
+  isVisibleToUser?: boolean; // Admin-controlled visibility flag (default: false for user-targeted)
+  relatedId?: string;         // Linked transaction ID
   metadata?: {
     ticketId?: string;
     promoCode?: string;
@@ -247,6 +249,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         id,
         timestamp: new Date(),
         read: false,
+        // User-targeted notifications are hidden by default until admin enables them
+        isVisibleToUser: notification.isVisibleToUser ?? (notification.userId ? false : true),
       };
 
       setNotifications(prev => {
@@ -395,8 +399,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const isAdmin = currentUser?.role === 'admin';
   const filteredNotifications = notifications.filter(n => {
     if (isAdmin) return true;
-    if (!n.userId) return true; // Broadcast
-    return n.userId === currentUser?.id;
+    if (!n.userId) return true; // Broadcast (always show)
+    if (n.userId !== currentUser?.id) return false;
+    // Hide user-targeted notifications unless admin has toggled them visible
+    if (n.isVisibleToUser === false) return false;
+    return true;
   });
 
   const unreadCount = filteredNotifications.filter(n => !n.read).length;

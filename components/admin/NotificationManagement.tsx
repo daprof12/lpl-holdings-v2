@@ -22,6 +22,8 @@ interface Notification {
   timestamp: number;
   read: boolean;
   channels?: string[];
+  isVisibleToUser?: boolean;
+  relatedId?: string;
 }
 
 export default function NotificationManagement() {
@@ -198,6 +200,42 @@ export default function NotificationManagement() {
   const handleViewDetails = (notification: Notification) => {
     setSelectedNotification(notification);
     setShowDetailsDialog(true);
+  };
+
+  const handleToggleVisibility = (notificationId: string) => {
+    try {
+      const stored = localStorage.getItem('gross_notifications');
+      if (stored) {
+        const notifications = JSON.parse(stored);
+        const notification = notifications.find((n: Notification) => n.id === notificationId);
+        if (!notification) return;
+
+        const newVisibility = !notification.isVisibleToUser;
+        const updated = notifications.map((n: Notification) =>
+          n.id === notificationId ? { ...n, isVisibleToUser: newVisibility } : n
+        );
+        localStorage.setItem('gross_notifications', JSON.stringify(updated));
+
+        // Also toggle related transaction if it exists
+        if (notification.relatedId) {
+          const storedTxns = localStorage.getItem('transactions');
+          if (storedTxns) {
+            const txns = JSON.parse(storedTxns);
+            const updatedTxns = txns.map((t: any) =>
+              t.id === notification.relatedId ? { ...t, isVisibleToUser: newVisibility } : t
+            );
+            localStorage.setItem('transactions', JSON.stringify(updatedTxns));
+            localStorage.setItem('gross_transactions', JSON.stringify(updatedTxns));
+            window.dispatchEvent(new CustomEvent('transactionsUpdated'));
+          }
+        }
+
+        window.dispatchEvent(new Event('storage'));
+        toast.success(newVisibility ? 'Notification is now visible to user' : 'Notification is now hidden from user');
+      }
+    } catch (error) {
+      toast.error('Failed to update visibility');
+    }
   };
 
   const getUserName = (userId: string) => {
@@ -471,6 +509,35 @@ export default function NotificationManagement() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
+                        {/* Toggle switch */}
+                        <label
+                          className="flex items-center gap-1.5 cursor-pointer select-none group"
+                          title={notification.isVisibleToUser ? 'Visible to User – click to hide' : 'Hidden from User – click to show'}
+                        >
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={!!notification.isVisibleToUser}
+                            onClick={() => handleToggleVisibility(notification.id)}
+                            className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent
+                              transition-all duration-200 ease-in-out
+                              focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500
+                              hover:scale-110 active:scale-95
+                              ${notification.isVisibleToUser
+                                ? 'bg-green-500 hover:bg-green-600'
+                                : 'bg-gray-300 dark:bg-slate-600 hover:bg-gray-400 dark:hover:bg-slate-500'
+                              }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0
+                                transition-transform duration-200 ease-in-out
+                                ${notification.isVisibleToUser ? 'translate-x-4' : 'translate-x-0'}`}
+                            />
+                          </button>
+                          <span className={`text-xs font-medium transition-colors ${notification.isVisibleToUser ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                            {notification.isVisibleToUser ? 'On' : 'Off'}
+                          </span>
+                        </label>
                         <Button
                           variant="outline"
                           size="sm"
