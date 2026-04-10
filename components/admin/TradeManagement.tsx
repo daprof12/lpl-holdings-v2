@@ -117,19 +117,70 @@ export default function TradeManagement() {
     return user ? user.email : 'Unknown User';
   };
 
-  // Get ALL positions from both paper and live modes for admin view
+  // State for trades
+  const [dbOpenTrades, setDbOpenTrades] = useState<Trade[]>([]);
+  const [dbClosedTrades, setDbClosedTrades] = useState<Trade[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load trades from database on mount
+  useEffect(() => {
+    const loadAllTrades = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch(`${serverUrl}/positions/all`, {
+          headers: { 'Authorization': `Bearer ${publicAnonKey}` }
+        });
+        if (response.ok) {
+          const dbPos = await response.json();
+          setDbOpenTrades(dbPos.map((pos: any) => ({
+            id: pos.id,
+            user: getUserEmail(pos.user_id),
+            asset: pos.symbol,
+            category: getAssetCategory(pos.symbol),
+            type: pos.type === 'buy' ? 'long' : 'short',
+            entryPrice: parseFloat(pos.entry_price),
+            currentPrice: parseFloat(pos.current_price || pos.entry_price),
+            quantity: parseFloat(pos.amount),
+            leverage: pos.leverage || 1,
+            margin: (parseFloat(pos.amount) * parseFloat(pos.entry_price)) / (pos.leverage || 1),
+            pnl: parseFloat(pos.profit || 0),
+            status: 'open',
+            openedAt: new Date(pos.created_at).toISOString().replace('T', ' ').substring(0, 19),
+            mode: 'live',
+            userId: pos.user_id,
+          })));
+        }
+        const hResponse = await fetch(`${serverUrl}/trade-history/all`, {
+          headers: { 'Authorization': `Bearer ${publicAnonKey}` }
+        });
+        if (hResponse.ok) {
+          const dbHis = await hResponse.json();
+          setDbClosedTrades(dbHis.map((h: any) => ({
+            id: h.id,
+            user: getUserEmail(h.user_id),
+            asset: h.symbol,
+            category: getAssetCategory(h.symbol),
+            type: h.type === 'buy' ? 'long' : 'short',
+            entryPrice: parseFloat(h.entry_price),
+            currentPrice: parseFloat(h.exit_price || h.entry_price),
+            quantity: parseFloat(h.amount),
+            leverage: 1,
+            margin: 0,
+            pnl: parseFloat(h.profit || 0),
+            status: 'closed',
+            openedAt: new Date(h.created_at).toISOString().replace('T', ' ').substring(0, 19),
+            closedAt: new Date(h.closed_at || h.created_at).toISOString().replace('T', ' ').substring(0, 19),
+            mode: 'live',
+            userId: h.user_id,
+          })));
+        }
+      } catch (err) { console.error(err); } finally { setIsLoading(false); }
+    };
+    loadAllTrades();
+  }, [users]);
+
   const allPaperPositions = JSON.parse(localStorage.getItem('gross_paper_positions') || '[]');
-  const allLivePositions = JSON.parse(localStorage.getItem('gross_live_positions') || '[]');
-  const combinedPositions = [...allPaperPositions, ...allLivePositions];
-
-  // Get ALL history from both paper and live modes for admin view
-  const allPaperHistory = JSON.parse(localStorage.getItem('gross_paper_history') || '[]');
-  const allLiveHistory = JSON.parse(localStorage.getItem('gross_live_history') || '[]');
-  const combinedHistory = [...allPaperHistory, ...allLiveHistory];
-
-  // Combine positions and history to show all trades
-  // Map positions to Trade format
-  const openTrades: Trade[] = combinedPositions.map((pos: any) => ({
+  const openPaperTrades: Trade[] = allPaperPositions.map((pos: any) => ({
     id: pos.id,
     user: getUserEmail(pos.userId),
     asset: pos.symbol,
@@ -143,35 +194,31 @@ export default function TradeManagement() {
     pnl: pos.pnl,
     status: 'open' as const,
     openedAt: new Date(pos.timestamp).toISOString().replace('T', ' ').substring(0, 19),
-    stopLoss: pos.stopLoss,
-    takeProfit: pos.takeProfit,
     mode: pos.mode,
     userId: pos.userId,
   }));
 
-  // Map history to Trade format (closed trades only)
-  const closedTrades: Trade[] = combinedHistory
-    .filter((h: any) => h.status === 'closed')
-    .map((h: any) => ({
-      id: h.id,
-      user: getUserEmail(h.userId),
-      asset: h.symbol,
-      category: getAssetCategory(h.symbol),
-      type: h.side === 'buy' ? 'long' : 'short',
-      entryPrice: h.entryPrice || h.price,
-      currentPrice: h.price,
-      quantity: h.units,
-      leverage: 1, // History doesn't store leverage
-      margin: 0, // History doesn't store margin
-      pnl: h.pnl || 0,
-      status: 'closed' as const,
-      openedAt: new Date(h.timestamp).toISOString().replace('T', ' ').substring(0, 19),
-      closedAt: new Date(h.timestamp).toISOString().replace('T', ' ').substring(0, 19),
-      mode: h.mode,
-      userId: h.userId,
-    }));
+  const allPaperHistory = JSON.parse(localStorage.getItem('gross_paper_history') || '[]');
+  const closedPaperTrades: Trade[] = allPaperHistory.filter((h: any) => h.status === 'closed').map((h: any) => ({
+    id: h.id,
+    user: getUserEmail(h.userId),
+    asset: h.symbol,
+    category: getAssetCategory(h.symbol),
+    type: h.side === 'buy' ? 'long' : 'short',
+    entryPrice: h.entryPrice || h.price,
+    currentPrice: h.price,
+    quantity: h.units,
+    leverage: 1,
+    margin: 0,
+    pnl: h.pnl || 0,
+    status: 'closed' as const,
+    openedAt: new Date(h.timestamp).toISOString().replace('T', ' ').substring(0, 19),
+    closedAt: new Date(h.timestamp).toISOString().replace('T', ' ').substring(0, 19),
+    mode: h.mode,
+    userId: h.userId,
+  }));
 
-  const trades = [...openTrades, ...closedTrades];
+  const trades = [...dbOpenTrades, ...dbClosedTrades, ...openPaperTrades, ...closedPaperTrades];
 
   const [formData, setFormData] = useState({
     asset: '',

@@ -361,71 +361,77 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   // ============================================
 
   /**
-   * Load live positions and history from database when user is authenticated
+   * Load all trading data (positions, history, account) from database or KV store
    */
-  useEffect(() => {
-    const loadUserData = async () => {
-      if (auth.currentUser && auth.currentUser.id) {
-        console.log('🔄 Loading trading data for user:', auth.currentUser.id);
-        
-        // Fetch live positions from database
-        const dbPositions = await fetchPositionsFromDatabase(auth.currentUser.id);
-        if (dbPositions.length > 0) {
-          setLivePositions(dbPositions);
-        }
-
-        // Fetch trade history from database
-        const dbHistory = await fetchTradeHistoryFromDatabase(auth.currentUser.id);
-        if (dbHistory.length > 0) {
-          setLiveHistory(dbHistory);
-        }
-      }
-    };
-
-    loadUserData();
-  }, [auth.currentUser?.id]);
-
-  // Load from DB as primary, localStorage as cache
-  useEffect(() => {
+  const loadTradingData = useCallback(async () => {
     const userId = auth.currentUser?.id;
     if (!userId) return;
 
-    const loadData = async () => {
-      try {
-        console.log('🔄 Loading trading data from database for user:', userId);
-        
-        // Fetch specific account data
-        const paperAccountDb = await getKV(`gross_paper_account_${userId}`);
-        const liveAccountDb = await getKV(`gross_live_account_${userId}`);
-        
-        if (paperAccountDb) setPaperAccount(paperAccountDb);
-        if (liveAccountDb) setLiveAccount(liveAccountDb);
+    try {
+      console.log('🔄 Syncing trading data from database for user:', userId);
+      
+      // 1. Fetch Relational Data (Prioritized for Live Mode)
+      const [dbPositions, dbHistory] = await Promise.all([
+        fetchPositionsFromDatabase(userId),
+        fetchTradeHistoryFromDatabase(userId)
+      ]);
 
-        // Fetch global list of positions/orders/history
-        const paperPosDb = await getKV('gross_paper_positions');
-        const paperOrdDb = await getKV('gross_paper_orders');
-        const paperHisDb = await getKV('gross_paper_history');
-        const livePosDb  = await getKV('gross_live_positions');
-        const liveOrdDb  = await getKV('gross_live_orders');
-        const liveHisDb  = await getKV('gross_live_history');
+      // 2. Fetch KV Data (Backup and metadata)
+      const [paperAccountDb, liveAccountDb, paperPosDb, paperOrdDb, paperHisDb, livePosDb, liveOrdDb, liveHisDb] = await Promise.all([
+        getKV(`gross_paper_account_${userId}`),
+        getKV(`gross_live_account_${userId}`),
+        getKV('gross_paper_positions'),
+        getKV('gross_paper_orders'),
+        getKV('gross_paper_history'),
+        getKV('gross_live_positions'),
+        getKV('gross_live_orders'),
+        getKV('gross_live_history')
+      ]);
 
-        const filterByUser = (items: any[]) => (items || []).filter(item => item.userId === userId);
+      const filterByUser = (items: any[]) => (items || []).filter(item => item.userId === userId);
 
-        if (paperPosDb) setPaperPositions(filterByUser(paperPosDb));
-        if (paperOrdDb) setPaperOrders(filterByUser(paperOrdDb));
-        if (paperHisDb) setPaperHistory(filterByUser(paperHisDb));
-        if (livePosDb)  setLivePositions(filterByUser(livePosDb));
-        if (liveOrdDb)  setLiveOrders(filterByUser(liveOrdDb));
-        if (liveHisDb)  setLiveHistory(filterByUser(liveHisDb));
-        
-        console.log('✅ Trading data loaded from DB');
-      } catch (err) {
-        console.error('Failed to load database trading data:', err);
+      // 3. Hydrate Account States
+      if (paperAccountDb) setPaperAccount(paperAccountDb);
+      if (liveAccountDb) {
+        setLiveAccount(liveAccountDb);
+        isLiveAccountHydrated.current = true;
       }
-    };
 
-    loadData();
+      // 4. Hydrate Positions
+      // Combine RELATIONAL and KV positions (Relational is source of truth for open trades)
+      // Map relational positions to KV-style for state consistency
+      const livePositionsFromKV = filterByUser(livePosDb);
+      
+      // Merge: Relational has IDs that should match. Use Relational for open trades.
+      if (dbPositions.length > 0) {
+        setLivePositions(dbPositions);
+      } else if (livePositionsFromKV.length > 0) {
+        setLivePositions(livePositionsFromKV);
+      }
+
+      // 5. Hydrate History
+      const liveHistoryFromKV = filterByUser(liveHisDb);
+      if (dbHistory.length > 0) {
+        setLiveHistory(dbHistory);
+      } else if (liveHistoryFromKV.length > 0) {
+        setLiveHistory(liveHistoryFromKV);
+      }
+
+      // 6. Hydrate Paper & Orders (KV only)
+      if (paperPosDb) setPaperPositions(filterByUser(paperPosDb));
+      if (paperOrdDb) setPaperOrders(filterByUser(paperOrdDb));
+      if (paperHisDb) setPaperHistory(filterByUser(paperHisDb));
+      if (liveOrdDb)  setLiveOrders(filterByUser(liveOrdDb));
+      
+      console.log('✅ Trading data successfully hydrated');
+    } catch (err) {
+      console.error('❌ Failed to hydrate trading data:', err);
+    }
   }, [auth.currentUser?.id]);
+
+  useEffect(() => {
+    loadTradingData();
+  }, [loadTradingData]);
 
   // Combined real-time subscription for global trading lists
   useEffect(() => {
@@ -738,6 +744,11 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       const next = [...livePositions, positionWithUserId];
       setLivePositions(next);
       patchGlobalList('gross_live_positions', next, 'live');
+      
+      // SYNC TO RELATIONAL DATABASE
+      createPositionInDatabase(positionWithUserId).catch(err => {
+        console.error('Failed to sync new position to relational DB:', err);
+      });
     }
   };
 
@@ -747,9 +758,17 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       setPaperPositions(next);
       patchGlobalList('gross_paper_positions', next, 'paper');
     } else {
+      const position = livePositions.find(p => p.id === positionId);
       const next = livePositions.filter(p => p.id !== positionId);
       setLivePositions(next);
       patchGlobalList('gross_live_positions', next, 'live');
+
+      // SYNC TO RELATIONAL DATABASE
+      if (position) {
+        closePositionInDatabase(positionId, position.currentPrice).catch(err => {
+          console.error('Failed to sync position closure to relational DB:', err);
+        });
+      }
     }
   };
 
