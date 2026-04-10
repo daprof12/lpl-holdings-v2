@@ -67,7 +67,7 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
     const priceDiff = position.side === 'buy'
       ? currentPrice - position.entryPrice
       : position.entryPrice - currentPrice;
-    const pnl = priceDiff * position.units * position.leverage;
+    const pnl = priceDiff * position.units;
 
     removePosition(position.id);
 
@@ -143,7 +143,7 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
         const priceDiff = positionToClose.side === 'buy'
           ? currentPrice - positionToClose.entryPrice
           : positionToClose.entryPrice - currentPrice;
-        const pnl = priceDiff * positionToClose.units * positionToClose.leverage;
+        const pnl = priceDiff * positionToClose.units;
         const pnlPositive = pnl >= 0;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

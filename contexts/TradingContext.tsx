@@ -958,7 +958,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
             ? currentPrice - position.entryPrice 
             : position.entryPrice - currentPrice;
           
-          const pnl = priceDiff * position.units * position.leverage;
+          const pnl = priceDiff * position.units;
           const margin = (position.units * position.entryPrice) / position.leverage;
           
           totalUnrealizedPnL += pnl;

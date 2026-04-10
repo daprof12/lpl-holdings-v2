@@ -265,7 +265,7 @@ export default function TradeManagement() {
         const priceDiff = position.side === 'buy' 
           ? position.currentPrice - position.entryPrice 
           : position.entryPrice - position.currentPrice;
-        const pnl = priceDiff * position.units * position.leverage;
+        const pnl = priceDiff * position.units;
 
         // 1. Remove from positions
         const updatedPositions = currentPositions.filter((p: any) => p.id !== tradeId);
