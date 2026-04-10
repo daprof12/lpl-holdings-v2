@@ -161,8 +161,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             paperBalance: user.paperBalance ?? (user.balance || 0),
           }));
           setUsers(migratedUsers);
-        } else {
-          // Default admin
+        } else if (!dbUsers && !storedUsers) {
+          // No local OR database users found in KV - this might be a fresh device or KV failure.
+          // RECOVERY MODE: Try fetching from the relational 'users' table as a last resort.
+          try {
+            console.log('🔍 Attempting recovery from relational users table...');
+            const response = await fetch(`${serverUrl}/users`, {
+              headers: { 'Authorization': `Bearer ${publicAnonKey}` }
+            });
+            
+            if (response.ok) {
+              const relationalUsers = await response.json();
+              if (relationalUsers && relationalUsers.length > 0) {
+                console.log('✅ Recovered users from relational table:', relationalUsers.length);
+                const recoveredUsers: UserProfile[] = relationalUsers.map((u: any) => ({
+                  id: u.id,
+                  email: u.email,
+                  firstName: u.name?.split(' ')[0] || 'User',
+                  lastName: u.name?.split(' ').slice(1).join(' ') || '',
+                  role: u.role || 'user',
+                  country: u.country,
+                  phone: u.phone,
+                  kycStatus: u.kyc_status === 'approved' ? 'verified' : u.kyc_status === 'rejected' ? 'rejected' : 'not_started',
+                  accountType: u.account_type || 'standard',
+                  paperBalance: parseFloat(u.balance || 0),
+                  liveBalance: parseFloat(u.live_balance || 0),
+                  isVerified: u.email_verified || false,
+                  createdAt: new Date(u.created_at || Date.now()),
+                  enabledDepositMethods: [],
+                  enabledWithdrawalMethods: [],
+                  cryptoWallets: {},
+                }));
+                setUsers(recoveredUsers);
+                localStorage.setItem('gross_users', JSON.stringify(recoveredUsers));
+                // Do NOT automatically setKV here to avoid race conditions; let the next sync handle it if needed
+                return;
+              }
+            }
+          } catch (recoveryError) {
+            console.error('Failed to recover users from relational table:', recoveryError);
+          }
+
+          // If recovery also fails, fallback to local admin
+          console.log('⚠️ No users found in DB or relational table. Initializing default admin locally.');
           const defaultAdmin: UserProfile = {
             id: 'admin-001',
             email: 'admin@gross.com',
@@ -181,14 +222,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             cryptoWallets: {},
           };
           setUsers([defaultAdmin]);
-          setKV('gross_users', [defaultAdmin]);
-          const defaultPasswords = { 'admin@gross.com': 'admin123' };
-          setKV('gross_passwords', defaultPasswords);
-          localStorage.setItem('gross_passwords', JSON.stringify(defaultPasswords));
           localStorage.setItem('gross_users', JSON.stringify([defaultAdmin]));
         }
       } catch (error) {
         console.error('Failed to load users from database:', error);
+      } finally {
+        setIsHydrated(true); // Ensure we mark as hydrated even on failure to allow manual login
       }
     };
 
@@ -451,9 +490,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Debounce sync briefly to capture rapid changes
     syncTimeoutRef.current = setTimeout(async () => {
+      // Safety check: Don't sync if the list only contains the default admin 
+      // AND we haven't successfully heard from the DB yet.
+      // This prevents a "re-seeding" client from wiping a populated database.
+      if (users.length === 1 && users[0].id === 'admin-001' && isHydrated) {
+         // Optionally check KV one last time before deciding to sync a "fresh" list
+         const check = await getKV('gross_users');
+         if (check && check.length > 1) {
+             console.warn('🛑 Prevented accidental database wipe. Local state has 1 user but DB has many.');
+             setUsers(check);
+             return;
+         }
+      }
+
       console.log('🔄 Triggering auto-sync to Supabase...');
       try {
-        // Use setKV directly for specialized keys for better reliability
         await setKV('gross_users', users);
         await setKV('gross_notifications', notifications);
         await setKV('gross_wallet_transactions', walletTransactions);
@@ -462,7 +513,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } catch (error) {
         console.error('❌ Supabase sync failed:', error);
       }
-    }, 2000); // 2s snappy debounce
+    }, 3000); // Increased debounce to 3s for safety
 
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
