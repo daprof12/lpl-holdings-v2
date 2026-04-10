@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { migrateBulkDataToSupabase } from '../utils/migrateToSupabase';
 import { supabase, getKV, setKV, serverUrl, publicAnonKey } from '../utils/supabase/client';
+import { toast } from 'sonner';
 
 export interface UserProfile {
   id: string;
