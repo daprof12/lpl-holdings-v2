@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { toast } from 'sonner';
+import { setKV } from '../../utils/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -92,6 +93,7 @@ export default function SessionManagement() {
         const allActivities = JSON.parse(localStorage.getItem('gross_user_activities') || '[]');
         const updated = allActivities.filter((a: any) => a.id !== sessionId);
         localStorage.setItem('gross_user_activities', JSON.stringify(updated));
+        setKV('gross_user_activities', updated).catch(console.error);
         window.dispatchEvent(new Event('storage'));
         toast.success('Session record deleted successfully');
       } catch (error) {
@@ -106,6 +108,7 @@ export default function SessionManagement() {
         const allActivities = JSON.parse(localStorage.getItem('gross_user_activities') || '[]');
         const updated = allActivities.filter((a: any) => a.type !== 'login' && a.type !== 'logout');
         localStorage.setItem('gross_user_activities', JSON.stringify(updated));
+        setKV('gross_user_activities', updated).catch(console.error);
         window.dispatchEvent(new Event('storage'));
         toast.success('All session records deleted successfully');
       } catch (error) {

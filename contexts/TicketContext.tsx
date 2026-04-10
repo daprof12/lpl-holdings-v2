@@ -415,6 +415,11 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
       return next;
     });
     
+    // Sync to database table
+    createTicketInDatabase(data).catch(err => 
+      console.error('Failed to sync ticket to database:', err)
+    );
+    
     // Trigger notification event for admins
     window.dispatchEvent(new CustomEvent('ticket-created', { 
       detail: { 
@@ -468,6 +473,12 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
         return ticket;
       });
       patchGlobalList('gross_tickets', next);
+      
+      // Sync message to database table
+      addMessageToDatabase(ticketId, { senderId, senderName, senderRole, message }).catch(err =>
+        console.error('Failed to sync ticket message to database:', err)
+      );
+      
       return next;
     });
   };
@@ -491,6 +502,12 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
         return ticket;
       });
       patchGlobalList('gross_tickets', next);
+      
+      // Sync status to database table
+      updateTicketStatusInDatabase(ticketId, status).catch(err =>
+        console.error('Failed to sync ticket status to database:', err)
+      );
+      
       return next;
     });
   };

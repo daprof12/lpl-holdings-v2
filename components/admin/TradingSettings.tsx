@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { formatCurrency } from '../../utils/formatNumber';
+import { setKV } from '../../utils/supabase/client';
 
 interface TradingSettings {
   defaultPaperBalance: number;
@@ -94,6 +95,7 @@ export default function TradingSettings() {
 
   const handleSaveSettings = () => {
     localStorage.setItem('admin_trading_settings', JSON.stringify(settings));
+    setKV('admin_trading_settings', settings).catch(console.error);
     toast.success('Default balances updated successfully (Paper & Live)');
     
     // Trigger a storage event so TradingContext picks up the change
@@ -124,6 +126,7 @@ export default function TradingSettings() {
     };
 
     localStorage.setItem('gross_paper_account', JSON.stringify(paperAccount));
+    setKV('gross_paper_account', paperAccount).catch(console.error);
     
     // Trigger storage event
     window.dispatchEvent(new Event('storage'));
@@ -152,6 +155,8 @@ export default function TradingSettings() {
     // Clear all positions and orders
     localStorage.setItem('gross_paper_positions', JSON.stringify([]));
     localStorage.setItem('gross_paper_orders', JSON.stringify([]));
+    setKV('gross_paper_positions', []).catch(console.error);
+    setKV('gross_paper_orders', []).catch(console.error);
     
     // Trigger storage event
     window.dispatchEvent(new Event('storage'));
@@ -185,6 +190,7 @@ export default function TradingSettings() {
     localStorage.setItem(`gross_live_account_${selectedLiveUserId}`, JSON.stringify(liveAccount));
     // Also update global key for legacy support, but ideally per-user key is used
     localStorage.setItem('gross_live_account', JSON.stringify(liveAccount));
+    setKV(`gross_live_account_${selectedLiveUserId}`, liveAccount).catch(console.error);
     
     // Update AuthContext user object so it's reflected in users list
     updateUser(selectedLiveUserId, { balance: balance, liveBalance: balance });
@@ -235,6 +241,7 @@ export default function TradingSettings() {
     const updated = { ...investmentAccess, [userId]: enabled };
     setInvestmentAccess(updated);
     localStorage.setItem('investment_access', JSON.stringify(updated));
+    setKV('investment_access', updated).catch(console.error);
     
     // Trigger custom event for same-window updates
     window.dispatchEvent(new CustomEvent('investment_access_changed', { 
@@ -259,6 +266,7 @@ export default function TradingSettings() {
 
     setInvestmentAccess(updated);
     localStorage.setItem('investment_access', JSON.stringify(updated));
+    setKV('investment_access', updated).catch(console.error);
     
     // Trigger custom event for same-window updates
     window.dispatchEvent(new CustomEvent('investment_access_changed', { 
@@ -275,6 +283,7 @@ export default function TradingSettings() {
 
     setInvestmentAccess({});
     localStorage.setItem('investment_access', JSON.stringify({}));
+    setKV('investment_access', {}).catch(console.error);
     
     // Trigger custom event for same-window updates
     window.dispatchEvent(new CustomEvent('investment_access_changed', { 
@@ -441,6 +450,7 @@ export default function TradingSettings() {
   const toggleAutoTrade = (enabled: boolean) => {
     setAutoTradeEnabled(enabled);
     localStorage.setItem('auto_trade_enabled', String(enabled));
+    setKV('auto_trade_enabled', enabled).catch(console.error);
     window.dispatchEvent(new Event('storage'));
     toast.success(`Auto Trade feature ${enabled ? 'enabled' : 'disabled'} globally`);
   };
@@ -449,6 +459,7 @@ export default function TradingSettings() {
   const toggleSignal = (enabled: boolean) => {
     setSignalEnabled(enabled);
     localStorage.setItem('signal_enabled', String(enabled));
+    setKV('signal_enabled', enabled).catch(console.error);
     window.dispatchEvent(new Event('storage'));
     toast.success(`Signal feature ${enabled ? 'enabled' : 'disabled'} globally`);
   };
@@ -458,6 +469,7 @@ export default function TradingSettings() {
     const updated = { ...autoTradeAccess, [userId]: enabled };
     setAutoTradeAccess(updated);
     localStorage.setItem('auto_trade_access', JSON.stringify(updated));
+    setKV('auto_trade_access', updated).catch(console.error);
     
     // Trigger custom event for same-window updates
     window.dispatchEvent(new CustomEvent('auto_trade_access_changed', { 
@@ -475,6 +487,7 @@ export default function TradingSettings() {
     const updated = { ...signalAccess, [userId]: enabled };
     setSignalAccess(updated);
     localStorage.setItem('signal_access', JSON.stringify(updated));
+    setKV('signal_access', updated).catch(console.error);
     
     // Trigger custom event for same-window updates
     window.dispatchEvent(new CustomEvent('signal_access_changed', { 
@@ -500,6 +513,7 @@ export default function TradingSettings() {
 
     setAutoTradeAccess(updated);
     localStorage.setItem('auto_trade_access', JSON.stringify(updated));
+    setKV('auto_trade_access', updated).catch(console.error);
     
     // Trigger custom event for same-window updates
     window.dispatchEvent(new CustomEvent('auto_trade_access_changed', { 
@@ -517,6 +531,7 @@ export default function TradingSettings() {
 
     setAutoTradeAccess({});
     localStorage.setItem('auto_trade_access', JSON.stringify({}));
+    setKV('auto_trade_access', {}).catch(console.error);
     
     // Trigger custom event for same-window updates
     window.dispatchEvent(new CustomEvent('auto_trade_access_changed', { 
@@ -539,6 +554,7 @@ export default function TradingSettings() {
 
     setSignalAccess(updated);
     localStorage.setItem('signal_access', JSON.stringify(updated));
+    setKV('signal_access', updated).catch(console.error);
     
     // Trigger custom event for same-window updates
     window.dispatchEvent(new CustomEvent('signal_access_changed', { 
@@ -556,6 +572,7 @@ export default function TradingSettings() {
 
     setSignalAccess({});
     localStorage.setItem('signal_access', JSON.stringify({}));
+    setKV('signal_access', {}).catch(console.error);
     
     // Trigger custom event for same-window updates
     window.dispatchEvent(new CustomEvent('signal_access_changed', { 

@@ -13,6 +13,7 @@ import {
 } from '../ui/dialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
+import { setKV } from '../../utils/supabase/client';
 
 // Extended withdrawal method interface
 export interface CryptoAsset {
@@ -142,6 +143,7 @@ export default function WithdrawalMethodsManagement() {
 
   const saveWithdrawalMethods = (methods: ExtendedWithdrawalMethod[]) => {
     localStorage.setItem('withdrawalMethods', JSON.stringify(methods));
+    setKV('withdrawalMethods', methods).catch(console.error);
     setWithdrawalMethods(methods);
   };
 

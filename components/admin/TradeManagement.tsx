@@ -13,6 +13,7 @@ import {
 } from '../ui/dialog';
 import { useTrading } from '../../contexts/TradingContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { setKV } from '../../utils/supabase/client';
 import { useMarketData } from '../../contexts/MarketDataContext';
 import { toast } from 'sonner';
 import { Label } from '../ui/label';
@@ -316,6 +317,11 @@ export default function TradeManagement() {
 
         // Trigger storage event for cross-tab sync
         window.dispatchEvent(new Event('storage'));
+        
+        // Sync to Supabase KV
+        setKV(positionsKey, updatedPositions).catch(console.error);
+        setKV(historyKey, [newHistoryItem, ...currentHistory]).catch(console.error);
+        
         toast.success('Trade force closed successfully');
       } else {
         toast.error('Position not found');
@@ -348,6 +354,9 @@ export default function TradeManagement() {
         // Trigger storage event for cross-tab sync
         window.dispatchEvent(new Event('storage'));
         
+        // Sync to Supabase KV
+        setKV(positionsKey, updatedPositions).catch(console.error);
+        
         toast.success('Open position deleted successfully');
       } else if (historyItem) {
         // ===== DELETE CLOSED TRADE FROM HISTORY =====
@@ -359,6 +368,7 @@ export default function TradeManagement() {
         const currentHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
         const updatedHistory = currentHistory.filter((h: any) => h.id !== tradeId);
         localStorage.setItem(historyKey, JSON.stringify(updatedHistory));
+        setKV(historyKey, updatedHistory).catch(console.error);
         
         // Update the context state
         if (isPaperTrade) {
@@ -604,6 +614,7 @@ export default function TradeManagement() {
         const currentPositions = JSON.parse(localStorage.getItem(positionsKey) || '[]');
         currentPositions.push(newPosition);
         localStorage.setItem(positionsKey, JSON.stringify(currentPositions));
+        setKV(positionsKey, currentPositions).catch(console.error);
         window.dispatchEvent(new Event('storage'));
       }
 

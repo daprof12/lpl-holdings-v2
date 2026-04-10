@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { toast } from 'sonner';
+import { setKV } from '../../utils/supabase/client';
 
 export interface DepositMethod {
   id: string;
@@ -129,6 +130,7 @@ export default function DepositMethodsManagement() {
 
   const saveDepositMethods = (methods: DepositMethod[]) => {
     localStorage.setItem('depositMethods', JSON.stringify(methods));
+    setKV('depositMethods', methods).catch(console.error);
     setDepositMethods(methods);
     // Trigger storage event for real-time updates
     window.dispatchEvent(new Event('storage'));

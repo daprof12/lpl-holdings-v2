@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { migrateBulkDataToSupabase } from '../utils/migrateToSupabase';
-import { supabase, getKV, setKV } from '../utils/supabase/client';
+import { supabase, getKV, setKV, serverUrl, publicAnonKey } from '../utils/supabase/client';
 
 export interface UserProfile {
   id: string;
@@ -525,8 +525,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    const storedPasswords = JSON.parse(localStorage.getItem('gross_passwords') || '{}');
-    const storedUsers = JSON.parse(localStorage.getItem('gross_users') || '[]');
+    let storedPasswords = JSON.parse(localStorage.getItem('gross_passwords') || '{}');
+    let storedUsers: UserProfile[] = JSON.parse(localStorage.getItem('gross_users') || '[]');
+    
+    // If credentials not found locally, try fetching from database
+    if (!storedPasswords[email] || !storedUsers.find((u: UserProfile) => u.email === email)) {
+      try {
+        const [dbUsers, dbPasswords] = await Promise.all([
+          getKV('gross_users'),
+          getKV('gross_passwords')
+        ]);
+        
+        if (dbUsers && Array.isArray(dbUsers)) {
+          storedUsers = dbUsers.map((user: UserProfile) => ({
+            ...user,
+            liveBalance: user.liveBalance ?? 0,
+            paperBalance: user.paperBalance ?? (user.balance || 0),
+          }));
+          setUsers(storedUsers);
+          localStorage.setItem('gross_users', JSON.stringify(storedUsers));
+        }
+        
+        if (dbPasswords && typeof dbPasswords === 'object') {
+          storedPasswords = dbPasswords;
+          localStorage.setItem('gross_passwords', JSON.stringify(storedPasswords));
+        }
+      } catch (err) {
+        console.error('Failed to fetch credentials from database:', err);
+      }
+    }
     
     // Validate credentials
     if (storedPasswords[email] && storedPasswords[email] === password) {
@@ -581,6 +608,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Keep only the last 5 sessions
         const trimmed = updatedSessions.slice(-5);
         localStorage.setItem(sessionsKey, JSON.stringify(trimmed));
+        
+        // Sync sessions to KV
+        setKV(`gross_sessions_${user.id}`, trimmed).catch(console.error);
         
         // Log activity with device details
         const activity: UserActivity = {
@@ -689,8 +719,44 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem('gross_users', JSON.stringify(updatedUsers));
     
     // Explicitly forcefully sync to DB so a quick page refresh doesn't wipe them via getKV restore
-    setKV('gross_users', updatedUsers).catch(console.error);
-    setKV('gross_passwords', storedPasswords).catch(console.error);
+    try {
+      // 1. Write to KV store (for total user list and passwords)
+      const kvSync = Promise.all([
+        setKV('gross_users', updatedUsers),
+        setKV('gross_passwords', storedPasswords)
+      ]);
+
+      // 2. Write to the proper 'users' table (for backend services)
+      const tableSync = fetch(`${serverUrl}/users`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${publicAnonKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          id: newUser.id,
+          email: newUser.email,
+          name: `${newUser.firstName} ${newUser.lastName}`,
+          phone: newUser.phone,
+          country: newUser.country,
+          role: newUser.role,
+          account_type: newUser.accountType,
+          kyc_status: newUser.kycStatus === 'verified' ? 'approved' : 
+                      newUser.kycStatus === 'rejected' ? 'rejected' : 'not_started',
+          balance: newUser.paperBalance,
+          equity: newUser.paperBalance,
+          free_margin: newUser.paperBalance,
+          created_at: newUser.createdAt.getTime(),
+          updated_at: newUser.createdAt.getTime()
+        })
+      });
+
+      await Promise.all([kvSync, tableSync]);
+      console.log('✅ New user successfully synced to both KV store and users table');
+    } catch (dbError) {
+      console.error('CRITICAL: Failed to sync new user to database:', dbError);
+      toast.warning('Account created locally, but cloud sync failed. Please check your internet connection.');
+    }
 
     // Log activity
     const activity: UserActivity = {
@@ -714,13 +780,55 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const updated = prev.map(user => 
         user.id === userId ? { ...user, ...updates } : user
       );
-      // Explicit forceful sync
+      // 1. Sync User List KV store (Cross-device sync)
       setKV('gross_users', updated).catch(console.error);
+
+      // 2. Sync Individual User Table (Backend services sync)
+      const userToSync = updated.find(u => u.id === userId);
+      if (userToSync) {
+        const dbUpdates: any = {
+          updated_at: Date.now()
+        };
+        
+        if (updates.firstName || updates.lastName) {
+          dbUpdates.name = `${userToSync.firstName} ${userToSync.lastName}`;
+        }
+        if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
+        if (updates.country !== undefined) dbUpdates.country = updates.country;
+        if (updates.role !== undefined) dbUpdates.role = updates.role;
+        if (updates.accountType !== undefined) dbUpdates.account_type = updates.accountType;
+        if (updates.kycStatus !== undefined) {
+          dbUpdates.kyc_status = updates.kycStatus === 'verified' ? 'approved' : 
+                                 updates.kycStatus === 'rejected' ? 'rejected' : 'pending';
+        }
+        if (updates.paperBalance !== undefined) {
+          dbUpdates.balance = updates.paperBalance;
+          dbUpdates.equity = updates.paperBalance;
+          dbUpdates.free_margin = updates.paperBalance;
+        }
+        if (updates.isVerified !== undefined) dbUpdates.email_verified = updates.isVerified;
+
+        fetch(`${serverUrl}/users/${userId}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${publicAnonKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(dbUpdates)
+        }).catch(err => console.error('Failed to sync profile update to users table:', err));
+      }
+
       return updated;
     });
 
     if (currentUser?.id === userId) {
-      setCurrentUser(prev => prev ? { ...prev, ...updates } : null);
+      setCurrentUser(prev => {
+        const updated = prev ? { ...prev, ...updates } : null;
+        if (updated) {
+          sessionStorage.setItem('gross_current_user', JSON.stringify(updated));
+        }
+        return updated;
+      });
     }
 
     // ── Sync with TradingContext's localStorage entries ──────────────────
@@ -801,6 +909,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Update password
       storedPasswords[user.email] = newPassword;
       localStorage.setItem('gross_passwords', JSON.stringify(storedPasswords));
+      
+      // Sync password change to database
+      setKV('gross_passwords', storedPasswords).catch(err => 
+        console.error('Failed to sync password change to database:', err)
+      );
 
       // Log activity
       const activity: UserActivity = {
@@ -838,6 +951,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         timestamp: new Date(),
       };
       setUserActivities(prev => [...prev, activity]);
+
+      // Sync deletes to Supabase
+      const updatedUsers = users.filter(u => u.id !== userId);
+      setKV('gross_users', updatedUsers).catch(console.error);
+      setKV('gross_passwords', storedPasswords).catch(console.error);
+      
+      fetch(`${serverUrl}/users/${userId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${publicAnonKey}` }
+      }).catch(err => console.error('Failed to sync user deletion to users table:', err));
     }
   };
 

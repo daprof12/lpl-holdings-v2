@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { toast } from 'sonner';
+import { setKV } from '../../utils/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -142,6 +143,7 @@ export default function NotificationManagement() {
           const notifications = JSON.parse(stored);
           const updated = notifications.filter((n: Notification) => n.id !== notificationId);
           localStorage.setItem('gross_notifications', JSON.stringify(updated));
+          setKV('gross_notifications', updated).catch(console.error);
           window.dispatchEvent(new Event('storage'));
           toast.success('Notification deleted successfully');
         }
@@ -155,6 +157,7 @@ export default function NotificationManagement() {
     if (confirm('Are you sure you want to delete ALL notifications? This will permanently remove all notifications for all users.')) {
       try {
         localStorage.setItem('gross_notifications', JSON.stringify([]));
+        setKV('gross_notifications', []).catch(console.error);
         window.dispatchEvent(new Event('storage'));
         toast.success('All notifications deleted successfully');
       } catch (error) {
@@ -172,6 +175,7 @@ export default function NotificationManagement() {
           n.id === notificationId ? { ...n, read: true } : n
         );
         localStorage.setItem('gross_notifications', JSON.stringify(updated));
+        setKV('gross_notifications', updated).catch(console.error);
         window.dispatchEvent(new Event('storage'));
         toast.success('Marked as read');
       }
@@ -189,6 +193,7 @@ export default function NotificationManagement() {
           n.id === notificationId ? { ...n, read: false } : n
         );
         localStorage.setItem('gross_notifications', JSON.stringify(updated));
+        setKV('gross_notifications', updated).catch(console.error);
         window.dispatchEvent(new Event('storage'));
         toast.success('Marked as unread');
       }
@@ -215,6 +220,7 @@ export default function NotificationManagement() {
           n.id === notificationId ? { ...n, isVisibleToUser: newVisibility } : n
         );
         localStorage.setItem('gross_notifications', JSON.stringify(updated));
+        setKV('gross_notifications', updated).catch(console.error);
 
         // Also toggle related transaction if it exists
         if (notification.relatedId) {

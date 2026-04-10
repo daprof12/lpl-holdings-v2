@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { formatCurrency } from '../../utils/formatNumber';
+import { setKV } from '../../utils/supabase/client';
 
 // ── Subscription plans – single source of truth ───────────────────────────────
 const SUBSCRIPTION_PLANS = [
@@ -266,6 +267,7 @@ export default function UserManagement() {
       const storedPasswords = JSON.parse(localStorage.getItem('gross_passwords') || '{}');
       storedPasswords[user.email] = formData.password;
       localStorage.setItem('gross_passwords', JSON.stringify(storedPasswords));
+      setKV('gross_passwords', storedPasswords).catch(console.error);
     }
 
     // Notify user when subscription plan changes
@@ -494,6 +496,7 @@ export default function UserManagement() {
     const storedPasswords = JSON.parse(localStorage.getItem('gross_passwords') || '{}');
     storedPasswords[user.email] = newPassword;
     localStorage.setItem('gross_passwords', JSON.stringify(storedPasswords));
+    setKV('gross_passwords', storedPasswords).catch(console.error);
 
     // Send notification to user
     addNotification(passwordResetUserId, {
