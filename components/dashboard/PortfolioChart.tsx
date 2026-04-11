@@ -6,24 +6,25 @@ import { useTrading } from '../../contexts/TradingContext';
 import { formatPercentage } from '../../utils/formatNumber';
 
 export default function PortfolioChart() {
-  const { account, history, positions, tradingMode, portfolioHistory } = useTrading();
+  const { account, history, portfolioHistory } = useTrading();
   const [timeframe, setTimeframe] = useState<'1D' | '1W' | '1M' | '3M' | '1Y' | 'ALL'>('1W');
   const [chartType, setChartType] = useState<'area' | 'line'>('area');
   const gradientId = useId();
 
   // Calculate portfolio data based on user's real trading history
   const portfolioData = useMemo(() => {
-    const currentEquity = account.equity;
-    const startingBalance = account.balance; // Use actual account balance, starts at 0
+    // ... generateHistoricalData function ... (rest of logic remains same but uses only live data)
+    // generateHistoricalData definition stays as it was, but it's nested inside useMemo or moved out.
+    // Let's keep the structure but remove tradingMode from deps.
     
-    // Calculate historical data points based on timeframe
     const generateHistoricalData = (timeframe: '1D' | '1W' | '1M' | '3M' | '1Y' | 'ALL') => {
       const now = new Date();
       let points: { time: string; value: number }[] = [];
+      const startingBalance = account.balance;
+      const totalPnL = account.realizedPnL + account.unrealizedPnL;
       
       // If we have real portfolio history, use it
       if (portfolioHistory && portfolioHistory.length > 0) {
-        // Filter snapshots based on timeframe
         const getTimeframeStart = () => {
           const now = new Date();
           switch (timeframe) {
@@ -32,7 +33,7 @@ export default function PortfolioChart() {
             case '1M': return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
             case '3M': return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
             case '1Y': return new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-            case 'ALL': return new Date(0); // Beginning of time
+            case 'ALL': return new Date(0);
           }
         };
         
@@ -42,137 +43,77 @@ export default function PortfolioChart() {
         );
         
         if (filteredSnapshots.length > 0) {
-          // Convert snapshots to chart data with unique time labels
           const labelCount = new Map<string, number>();
-          return filteredSnapshots.map((snapshot, idx) => {
+          return filteredSnapshots.map((snapshot) => {
             const date = new Date(snapshot.timestamp);
             let timeLabel = '';
             const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             
             switch (timeframe) {
-              case '1D':
-                timeLabel = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-                break;
-              case '1W':
-                timeLabel = `${days[date.getDay()]} ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
-                break;
-              case '1M':
-                timeLabel = `${date.getDate()} ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
-                break;
-              case '3M':
-                timeLabel = `${months[date.getMonth()]} ${date.getDate()}`;
-                break;
-              case '1Y':
-                timeLabel = `${months[date.getMonth()]} ${date.getDate()}`;
-                break;
-              case 'ALL':
-                timeLabel = `${months[date.getMonth()]} ${date.getFullYear().toString().slice(2)}`;
-                break;
+              case '1D': timeLabel = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`; break;
+              case '1W': timeLabel = `${days[date.getDay()]} ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`; break;
+              case '1M': timeLabel = `${date.getDate()} ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`; break;
+              case '3M': timeLabel = `${months[date.getMonth()]} ${date.getDate()}`; break;
+              case '1Y': timeLabel = `${months[date.getMonth()]} ${date.getDate()}`; break;
+              case 'ALL': timeLabel = `${months[date.getMonth()]} ${date.getFullYear().toString().slice(2)}`; break;
             }
 
-            // Ensure uniqueness by appending a suffix for any remaining duplicates
             const count = labelCount.get(timeLabel) || 0;
             labelCount.set(timeLabel, count + 1);
             const uniqueTime = count > 0 ? `${timeLabel} (${count})` : timeLabel;
             
-            return {
-              time: uniqueTime,
-              value: snapshot.equity
-            };
+            return { time: uniqueTime, value: snapshot.equity };
           });
         }
       }
       
-      // Fallback: Generate estimated historical data based on current P&L
-      const totalRealizedPnL = account.realizedPnL;
-      const totalUnrealizedPnL = account.unrealizedPnL;
-      const totalPnL = totalRealizedPnL + totalUnrealizedPnL;
-      
+      // Fallback: Generate estimated historical data
       switch (timeframe) {
         case '1D':
-          // Hourly data for last 24 hours
           for (let i = 23; i >= 0; i--) {
             const hour = new Date(now.getTime() - i * 60 * 60 * 1000).getHours();
             const progress = (23 - i) / 23;
-            const value = startingBalance + (totalPnL * progress);
-            points.push({
-              time: `${hour}:00`,
-              value: Math.max(0, value)
-            });
+            points.push({ time: `${hour}:00`, value: Math.max(0, startingBalance + (totalPnL * progress)) });
           }
           break;
-          
         case '1W':
-          // Daily data for last 7 days
           const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
           for (let i = 6; i >= 0; i--) {
             const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-            const dayIndex = date.getDay();
             const progress = (6 - i) / 6;
-            const value = startingBalance + (totalPnL * progress);
-            points.push({
-              time: days[dayIndex],
-              value: Math.max(0, value)
-            });
+            points.push({ time: days[date.getDay()], value: Math.max(0, startingBalance + (totalPnL * progress)) });
           }
           break;
-          
         case '1M':
-          // Daily data for last 30 days
           for (let i = 29; i >= 0; i--) {
             const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const day = date.getDate();
-            const mon = months[date.getMonth()];
             const progress = (29 - i) / 29;
-            const value = startingBalance + (totalPnL * progress);
-            points.push({
-              time: `${mon} ${day}`,
-              value: Math.max(0, value)
-            });
+            points.push({ time: `${months[date.getMonth()]} ${date.getDate()}`, value: Math.max(0, startingBalance + (totalPnL * progress)) });
           }
           break;
-          
         case '3M':
-          // Weekly data for last 12 weeks
           for (let i = 11; i >= 0; i--) {
             const progress = (11 - i) / 11;
-            const value = startingBalance + (totalPnL * progress);
-            points.push({
-              time: `W${12 - i}`,
-              value: Math.max(0, value)
-            });
+            points.push({ time: `W${12 - i}`, value: Math.max(0, startingBalance + (totalPnL * progress)) });
           }
           break;
-          
         case '1Y':
-          // Monthly data for last 12 months
           const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
           for (let i = 11; i >= 0; i--) {
             const monthIndex = (now.getMonth() - i + 12) % 12;
             const progress = (11 - i) / 11;
-            const value = startingBalance + (totalPnL * progress);
-            points.push({
-              time: months[monthIndex],
-              value: Math.max(0, value)
-            });
+            points.push({ time: months[monthIndex], value: Math.max(0, startingBalance + (totalPnL * progress)) });
           }
           break;
-          
         case 'ALL':
-          // Monthly data for lifetime
           for (let i = 23; i >= 0; i--) {
             const progress = (23 - i) / 23;
-            const value = startingBalance + (totalPnL * progress);
-            points.push({
-              time: `M${24 - i}`,
-              value: Math.max(0, value)
-            });
+            points.push({ time: `M${24 - i}`, value: Math.max(0, startingBalance + (totalPnL * progress)) });
           }
           break;
       }
-      
       return points;
     };
 
@@ -184,7 +125,7 @@ export default function PortfolioChart() {
       '1Y': generateHistoricalData('1Y'),
       'ALL': generateHistoricalData('ALL'),
     };
-  }, [account, history, tradingMode, portfolioHistory, timeframe]);
+  }, [account, history, portfolioHistory, timeframe]);
 
   const currentData = portfolioData[timeframe];
   const firstValue = currentData[0].value;

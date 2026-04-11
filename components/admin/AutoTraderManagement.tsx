@@ -218,9 +218,6 @@ export default function AutoTraderManagement() {
                   Type
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                  Mode
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                   Trades
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
@@ -255,15 +252,6 @@ export default function AutoTraderManagement() {
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded text-xs font-medium ${getStrategyColor(strategy.type)}`}>
                         {strategy.type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        strategy.mode === 'paper' 
-                          ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                          : 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                      }`}>
-                        {strategy.mode}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm">{strategy.totalTrades}</td>

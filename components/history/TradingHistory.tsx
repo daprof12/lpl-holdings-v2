@@ -60,7 +60,7 @@ interface Order {
 
 export default function TradingHistory() {
   const navigate = useNavigate();
-  const { history, orders: contextOrders, tradingMode } = useTrading();
+  const { history, orders: contextOrders } = useTrading();
   const { currentUser } = useAuth();
   const { getUserTransactions } = useTransactions();
   const [activeTab, setActiveTab] = useState<HistoryTab>('trades');

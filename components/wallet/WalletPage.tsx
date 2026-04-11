@@ -12,7 +12,7 @@ import WithdrawTab from './WithdrawTab';
 import TransactionHistory from './TransactionHistory';
 
 export default function WalletPage() {
-  const { account, positions, orders, tradingMode, liveAccount } = useTrading();
+  const { account, positions, orders } = useTrading();
   const { currentUser } = useAuth();
   const { getUserTransactions } = useTransactions();
   const [searchParams] = useSearchParams();
@@ -46,16 +46,16 @@ export default function WalletPage() {
   // Calculate wallet balances - ALWAYS from live account for deposits/withdrawals
   const walletBalance = useMemo(() => {
     // Use live account for wallet operations (deposits/withdrawals are real money)
-    const liveAccountData = liveAccount;
+    const accountData = account;
     
     // Total balance is the account equity (balance + unrealized P&L)
-    const totalBalance = liveAccountData.equity;
+    const totalBalance = accountData.equity;
     
     // Available balance is free margin (can be used for new trades)
-    const availableBalance = liveAccountData.balance;
+    const availableBalance = accountData.balance;
     
     // In orders is the margin used by open positions
-    const inOrders = liveAccountData.margin;
+    const inOrders = accountData.margin;
     
     // Pending deposits/withdrawals from transaction context
     const userTransactions = currentUser ? getUserTransactions(currentUser.id) : [];
@@ -73,7 +73,7 @@ export default function WalletPage() {
       pendingDeposits,
       pendingWithdrawals
     };
-  }, [liveAccount, currentUser, getUserTransactions]);
+  }, [account, currentUser, getUserTransactions]);
 
   // The effective available balance depends on selected wallet type
   const effectiveAvailableBalance = selectedWalletType === 'live' 

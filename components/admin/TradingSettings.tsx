@@ -9,10 +9,9 @@ import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { formatCurrency } from '../../utils/formatNumber';
-import { setKV } from '../../utils/supabase/client';
+import { getKV, setKV } from '../../utils/supabase/client';
 
 interface TradingSettings {
-  defaultPaperBalance: number;
   defaultLiveBalance: number;
 }
 
@@ -20,11 +19,8 @@ export default function TradingSettings() {
   const { users, updateUser } = useAuth();
   const { addNotification } = useNotifications();
   const [settings, setSettings] = useState<TradingSettings>({
-    defaultPaperBalance: 10000,
     defaultLiveBalance: 0,
   });
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [customBalance, setCustomBalance] = useState<string>('10000');
   const [selectedLiveUserId, setSelectedLiveUserId] = useState<string>('');
   const [customLiveBalance, setCustomLiveBalance] = useState<string>('10000');
   const [investmentAccess, setInvestmentAccess] = useState<Record<string, boolean>>({});
@@ -43,126 +39,86 @@ export default function TradingSettings() {
   const [transferTo, setTransferTo] = useState<'wallet' | 'ecn' | 'ipo' | 'portfolio'>('ecn');
   const [transferAmount, setTransferAmount] = useState<string>('');
 
-  // Load settings from localStorage
+  // Load settings from database as priority, or localStorage as fallback
   useEffect(() => {
-    const stored = localStorage.getItem('admin_trading_settings');
-    if (stored) {
+    const loadSettings = async () => {
       try {
-        setSettings(JSON.parse(stored));
-      } catch (error) {
-        console.error('Failed to load trading settings:', error);
-      }
-    }
+        // 1. Core trading settings
+        const dbSettings = await getKV('admin_trading_settings');
+        if (dbSettings) {
+          setSettings(dbSettings);
+          localStorage.setItem('admin_trading_settings', JSON.stringify(dbSettings));
+        } else {
+          const stored = localStorage.getItem('admin_trading_settings');
+          if (stored) setSettings(JSON.parse(stored));
+        }
 
-    // Load investment access settings
-    const storedAccess = localStorage.getItem('investment_access');
-    if (storedAccess) {
-      try {
-        setInvestmentAccess(JSON.parse(storedAccess));
-      } catch (error) {
-        console.error('Failed to load investment access:', error);
-      }
-    }
+        // 2. Investment access
+        const dbInvestmentAccess = await getKV('investment_access');
+        if (dbInvestmentAccess) {
+          setInvestmentAccess(dbInvestmentAccess);
+          localStorage.setItem('investment_access', JSON.stringify(dbInvestmentAccess));
+        } else {
+          const storedAccess = localStorage.getItem('investment_access');
+          if (storedAccess) setInvestmentAccess(JSON.parse(storedAccess));
+        }
 
-    // Load auto trade and signal feature settings
-    const storedAutoTrade = localStorage.getItem('auto_trade_enabled');
-    const storedSignal = localStorage.getItem('signal_enabled');
-    if (storedAutoTrade !== null) {
-      setAutoTradeEnabled(storedAutoTrade === 'true');
-    }
-    if (storedSignal !== null) {
-      setSignalEnabled(storedSignal === 'true');
-    }
+        // 3. Auto trade toggle
+        const dbAutoTradeEnabled = await getKV('auto_trade_enabled');
+        if (dbAutoTradeEnabled !== null) {
+          setAutoTradeEnabled(dbAutoTradeEnabled);
+          localStorage.setItem('auto_trade_enabled', String(dbAutoTradeEnabled));
+        } else {
+          const storedAutoTrade = localStorage.getItem('auto_trade_enabled');
+          if (storedAutoTrade !== null) setAutoTradeEnabled(storedAutoTrade === 'true');
+        }
 
-    // Load auto trade and signal user access settings
-    const storedAutoTradeAccess = localStorage.getItem('auto_trade_access');
-    const storedSignalAccess = localStorage.getItem('signal_access');
-    if (storedAutoTradeAccess) {
-      try {
-        setAutoTradeAccess(JSON.parse(storedAutoTradeAccess));
+        // 4. Signal toggle
+        const dbSignalEnabled = await getKV('signal_enabled');
+        if (dbSignalEnabled !== null) {
+          setSignalEnabled(dbSignalEnabled);
+          localStorage.setItem('signal_enabled', String(dbSignalEnabled));
+        } else {
+          const storedSignal = localStorage.getItem('signal_enabled');
+          if (storedSignal !== null) setSignalEnabled(storedSignal === 'true');
+        }
+
+        // 5. Auto trade access
+        const dbAutoTradeAccess = await getKV('auto_trade_access');
+        if (dbAutoTradeAccess) {
+          setAutoTradeAccess(dbAutoTradeAccess);
+          localStorage.setItem('auto_trade_access', JSON.stringify(dbAutoTradeAccess));
+        } else {
+          const storedAutoTradeAccess = localStorage.getItem('auto_trade_access');
+          if (storedAutoTradeAccess) setAutoTradeAccess(JSON.parse(storedAutoTradeAccess));
+        }
+
+        // 6. Signal access
+        const dbSignalAccess = await getKV('signal_access');
+        if (dbSignalAccess) {
+          setSignalAccess(dbSignalAccess);
+          localStorage.setItem('signal_access', JSON.stringify(dbSignalAccess));
+        } else {
+          const storedSignalAccess = localStorage.getItem('signal_access');
+          if (storedSignalAccess) setSignalAccess(JSON.parse(storedSignalAccess));
+        }
       } catch (error) {
-        console.error('Failed to load auto trade access:', error);
+        console.error('Failed to load settings from DB:', error);
       }
-    }
-    if (storedSignalAccess) {
-      try {
-        setSignalAccess(JSON.parse(storedSignalAccess));
-      } catch (error) {
-        console.error('Failed to load signal access:', error);
-      }
-    }
+    };
+
+    loadSettings();
   }, []);
 
   const handleSaveSettings = () => {
     localStorage.setItem('admin_trading_settings', JSON.stringify(settings));
     setKV('admin_trading_settings', settings).catch(console.error);
-    toast.success('Default balances updated successfully (Paper & Live)');
+    toast.success('Default balances updated successfully');
     
     // Trigger a storage event so TradingContext picks up the change
     window.dispatchEvent(new Event('storage'));
   };
 
-  const handleResetUserPaperBalance = () => {
-    if (!selectedUserId) {
-      toast.error('Please select a user');
-      return;
-    }
-
-    const balance = parseFloat(customBalance);
-    if (isNaN(balance) || balance < 0) {
-      toast.error('Please enter a valid balance');
-      return;
-    }
-
-    // Update the paper account for this user
-    const paperAccount = {
-      balance: balance,
-      equity: balance,
-      realizedPnL: 0,
-      unrealizedPnL: 0,
-      margin: 0,
-      availableFunds: balance,
-      bonus: 0,
-    };
-
-    localStorage.setItem('gross_paper_account', JSON.stringify(paperAccount));
-    setKV('gross_paper_account', paperAccount).catch(console.error);
-    
-    // Trigger storage event
-    window.dispatchEvent(new Event('storage'));
-    
-    const user = users.find(u => u.id === selectedUserId);
-    toast.success(`Paper balance reset to $${balance.toFixed(2)} for ${user?.email || 'user'}`);
-  };
-
-  const handleResetAllUsersPaperBalance = () => {
-    if (!confirm(`Are you sure you want to reset ALL users' paper balance to $${settings.defaultPaperBalance.toFixed(2)}? This action cannot be undone.`)) {
-      return;
-    }
-
-    const paperAccount = {
-      balance: settings.defaultPaperBalance,
-      equity: settings.defaultPaperBalance,
-      realizedPnL: 0,
-      unrealizedPnL: 0,
-      margin: 0,
-      availableFunds: settings.defaultPaperBalance,
-      bonus: 0,
-    };
-
-    localStorage.setItem('gross_paper_account', JSON.stringify(paperAccount));
-    
-    // Clear all positions and orders
-    localStorage.setItem('gross_paper_positions', JSON.stringify([]));
-    localStorage.setItem('gross_paper_orders', JSON.stringify([]));
-    setKV('gross_paper_positions', []).catch(console.error);
-    setKV('gross_paper_orders', []).catch(console.error);
-    
-    // Trigger storage event
-    window.dispatchEvent(new Event('storage'));
-    
-    toast.success(`All users' paper balances reset to $${settings.defaultPaperBalance.toFixed(2)}`);
-  };
 
   const handleResetUserLiveBalance = () => {
     if (!selectedLiveUserId) {
@@ -600,158 +556,6 @@ export default function TradingSettings() {
           <TabsTrigger value="signal">Signal</TabsTrigger>
         </TabsList>
 
-        {/* Paper Account Tab Removed */}
-        <TabsContent value="paper" style={{display: 'none'}}>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Default Paper Balance Settings */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-                  <DollarSign className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold">Default Paper Balance</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Starting balance for new paper trading accounts
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="defaultPaperBalance" className="mb-2 block">
-                    Default Balance (USD)
-                  </Label>
-                  <Input
-                    id="defaultPaperBalance"
-                    type="number"
-                    min="0"
-                    step="1000"
-                    value={settings.defaultPaperBalance}
-                    onChange={(e) => setSettings({ ...settings, defaultPaperBalance: parseFloat(e.target.value) || 0 })}
-                    className="text-lg"
-                  />
-                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                    New users will receive this amount when they start paper trading
-                  </p>
-                </div>
-
-                <Button onClick={handleSaveSettings} className="w-full">
-                  <Settings className="w-4 h-4 mr-2" />
-                  Save Default Balance
-                </Button>
-              </div>
-
-              <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                <p className="text-sm text-blue-800 dark:text-blue-200">
-                  <strong>Current Default:</strong> ${formatCurrency(settings.defaultPaperBalance)}
-                </p>
-                <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
-                  This only affects new accounts. Use the tools below to reset existing users.
-                </p>
-              </div>
-            </div>
-
-            {/* Reset Individual User Balance */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-12 h-12 rounded-lg bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
-                  <Users className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold">Reset User Balance</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Grant or reset paper balance for specific users
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="selectUser" className="mb-2 block">
-                    Select User
-                  </Label>
-                  <select
-                    id="selectUser"
-                    value={selectedUserId}
-                    onChange={(e) => setSelectedUserId(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-slate-700 border-gray-300 dark:border-slate-600"
-                  >
-                    <option value="">-- Select a user --</option>
-                    {users.filter(u => u.role === 'user').map(user => (
-                      <option key={user.id} value={user.id}>
-                        {user.email} ({user.firstName} {user.lastName})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <Label htmlFor="customBalance" className="mb-2 block">
-                    New Paper Balance (USD)
-                  </Label>
-                  <Input
-                    id="customBalance"
-                    type="number"
-                    min="0"
-                    step="1000"
-                    value={customBalance}
-                    onChange={(e) => setCustomBalance(e.target.value)}
-                  />
-                </div>
-
-                <Button 
-                  onClick={handleResetUserPaperBalance} 
-                  className="w-full"
-                  variant="outline"
-                  disabled={!selectedUserId}
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Reset User Paper Balance
-                </Button>
-              </div>
-
-              <div className="mt-6 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
-                <p className="text-sm text-amber-800 dark:text-amber-200">
-                  <strong>Note:</strong> This resets the paper trading account balance and clears positions
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Bulk Actions */}
-          <div className="mt-6 bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-lg bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
-                <RefreshCw className="w-6 h-6 text-red-600 dark:text-red-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold">Bulk Actions</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Reset balances for all users (use with caution)
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Button 
-                onClick={handleResetAllUsersPaperBalance}
-                variant="destructive"
-                className="flex-1"
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Reset All Users to Default (${formatCurrency(settings.defaultPaperBalance)})
-              </Button>
-            </div>
-
-            <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
-              <p className="text-sm text-red-800 dark:text-red-200">
-                <strong>Warning:</strong> This will reset ALL users' paper trading balances and clear their positions. This action cannot be undone.
-              </p>
-            </div>
-          </div>
-        </TabsContent>
-
         <TabsContent value="live">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Default Live Balance Settings */}
@@ -922,8 +726,8 @@ export default function TradingSettings() {
                     <th className="text-left py-3 px-4 text-sm font-semibold">User</th>
                     <th className="text-left py-3 px-4 text-sm font-semibold">Email</th>
                     <th className="text-right py-3 px-4 text-sm font-semibold">Wallet</th>
-                    <th className="text-right py-3 px-4 text-sm font-semibold">ECN</th>
                     <th className="text-right py-3 px-4 text-sm font-semibold">IPO</th>
+                    <th className="text-right py-3 px-4 text-sm font-semibold">ECN</th>
                     <th className="text-right py-3 px-4 text-sm font-semibold">Total</th>
                     <th className="text-center py-3 px-4 text-sm font-semibold">Actions</th>
                   </tr>
@@ -946,13 +750,13 @@ export default function TradingSettings() {
                           </span>
                         </td>
                         <td className="py-4 px-4 text-right">
-                          <span className="font-semibold text-green-600 dark:text-green-400">
-                            ${formatCurrency(balances.ecn)}
+                          <span className="font-semibold text-purple-600 dark:text-purple-400">
+                            ${formatCurrency(balances.ipo)}
                           </span>
                         </td>
                         <td className="py-4 px-4 text-right">
-                          <span className="font-semibold text-purple-600 dark:text-purple-400">
-                            ${formatCurrency(balances.ipo)}
+                          <span className="font-semibold text-green-600 dark:text-green-400">
+                            ${formatCurrency(balances.ecn)}
                           </span>
                         </td>
                         <td className="py-4 px-4 text-right">
@@ -1023,8 +827,8 @@ export default function TradingSettings() {
                   </Label>
                   <select
                     id="selectUser"
-                    value={selectedUserId}
-                    onChange={(e) => setSelectedUserId(e.target.value)}
+                    value={selectedLiveUserId}
+                    onChange={(e) => setSelectedLiveUserId(e.target.value)}
                     className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-slate-700 border-gray-300 dark:border-slate-600"
                   >
                     <option value="">-- Select a user --</option>
@@ -1042,19 +846,19 @@ export default function TradingSettings() {
                   </Label>
                   <div className="flex items-center">
                     <Button 
-                      onClick={() => toggleInvestmentAccess(selectedUserId, true)} 
+                      onClick={() => toggleInvestmentAccess(selectedLiveUserId, true)} 
                       className="w-full"
                       variant="outline"
-                      disabled={!selectedUserId}
+                      disabled={!selectedLiveUserId}
                     >
                       <Unlock className="w-4 h-4 mr-2" />
                       Enable Investment Access
                     </Button>
                     <Button 
-                      onClick={() => toggleInvestmentAccess(selectedUserId, false)} 
+                      onClick={() => toggleInvestmentAccess(selectedLiveUserId, false)} 
                       className="w-full"
                       variant="outline"
-                      disabled={!selectedUserId}
+                      disabled={!selectedLiveUserId}
                     >
                       <Lock className="w-4 h-4 mr-2" />
                       Disable Investment Access
@@ -1191,8 +995,8 @@ export default function TradingSettings() {
                   </Label>
                   <select
                     id="selectAutoTradeUser"
-                    value={selectedUserId}
-                    onChange={(e) => setSelectedUserId(e.target.value)}
+                    value={selectedLiveUserId}
+                    onChange={(e) => setSelectedLiveUserId(e.target.value)}
                     className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-slate-700 border-gray-300 dark:border-slate-600"
                   >
                     <option value="">-- Select a user --</option>
@@ -1210,19 +1014,19 @@ export default function TradingSettings() {
                   </Label>
                   <div className="flex flex-col sm:flex-row gap-2">
                     <Button 
-                      onClick={() => toggleAutoTradeAccess(selectedUserId, true)} 
+                      onClick={() => toggleAutoTradeAccess(selectedLiveUserId, true)} 
                       className="w-full"
                       variant="outline"
-                      disabled={!selectedUserId}
+                      disabled={!selectedLiveUserId}
                     >
                       <Unlock className="w-4 h-4 mr-2" />
                       Enable Access
                     </Button>
                     <Button 
-                      onClick={() => toggleAutoTradeAccess(selectedUserId, false)} 
+                      onClick={() => toggleAutoTradeAccess(selectedLiveUserId, false)} 
                       className="w-full"
                       variant="outline"
-                      disabled={!selectedUserId}
+                      disabled={!selectedLiveUserId}
                     >
                       <Lock className="w-4 h-4 mr-2" />
                       Disable Access
@@ -1358,8 +1162,8 @@ export default function TradingSettings() {
                   </Label>
                   <select
                     id="selectSignalUser"
-                    value={selectedUserId}
-                    onChange={(e) => setSelectedUserId(e.target.value)}
+                    value={selectedLiveUserId}
+                    onChange={(e) => setSelectedLiveUserId(e.target.value)}
                     className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-slate-700 border-gray-300 dark:border-slate-600"
                   >
                     <option value="">-- Select a user --</option>
@@ -1377,19 +1181,19 @@ export default function TradingSettings() {
                   </Label>
                   <div className="flex flex-col sm:flex-row gap-2">
                     <Button 
-                      onClick={() => toggleSignalAccess(selectedUserId, true)} 
+                      onClick={() => toggleSignalAccess(selectedLiveUserId, true)} 
                       className="w-full"
                       variant="outline"
-                      disabled={!selectedUserId}
+                      disabled={!selectedLiveUserId}
                     >
                       <Unlock className="w-4 h-4 mr-2" />
                       Enable Access
                     </Button>
                     <Button 
-                      onClick={() => toggleSignalAccess(selectedUserId, false)} 
+                      onClick={() => toggleSignalAccess(selectedLiveUserId, false)} 
                       className="w-full"
                       variant="outline"
-                      disabled={!selectedUserId}
+                      disabled={!selectedLiveUserId}
                     >
                       <Lock className="w-4 h-4 mr-2" />
                       Disable Access
@@ -1517,8 +1321,8 @@ export default function TradingSettings() {
                 >
                   <option value="wallet">Wallet Balance</option>
                   <option value="portfolio">Portfolio Balance</option>
-                  <option value="ecn">ECN Balance</option>
                   <option value="ipo">IPO Balance</option>
+                  <option value="ecn">ECN Balance</option>
                 </select>
               </div>
               <div>
@@ -1574,8 +1378,8 @@ export default function TradingSettings() {
                 >
                   <option value="wallet">Wallet Balance</option>
                   <option value="portfolio">Portfolio Balance</option>
-                  <option value="ecn">ECN Balance</option>
                   <option value="ipo">IPO Balance</option>
+                  <option value="ecn">ECN Balance</option>
                 </select>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Available: ${formatCurrency(getUserBalances(selectedUserForBalance)[transferFrom])}
@@ -1590,8 +1394,8 @@ export default function TradingSettings() {
                 >
                   <option value="wallet">Wallet Balance</option>
                   <option value="portfolio">Portfolio Balance</option>
-                  <option value="ecn">ECN Balance</option>
                   <option value="ipo">IPO Balance</option>
+                  <option value="ecn">ECN Balance</option>
                 </select>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Current: ${formatCurrency(getUserBalances(selectedUserForBalance)[transferTo])}

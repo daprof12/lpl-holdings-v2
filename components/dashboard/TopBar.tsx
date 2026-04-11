@@ -16,7 +16,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
   const { currentUser, logout } = useAuth();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoadingLogout, setIsLoadingLogout] = useState(false);
-  const { liveAccount, tradingMode, setTradingMode } = useTrading();
+  const { account } = useTrading();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(false);
@@ -39,25 +39,27 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
 
   // Margin level color helper
   const marginLevelColor = () => {
-    if (liveAccount.margin <= 0) return 'text-gray-500 dark:text-gray-400';
-    const lvl = (liveAccount.equity / liveAccount.margin) * 100;
+    if (account.margin <= 0) return 'text-gray-500 dark:text-gray-400';
+    const lvl = (account.equity / account.margin) * 100;
     if (lvl >= 100) return 'text-green-600 dark:text-green-400';
     if (lvl >= 50)  return 'text-yellow-600 dark:text-yellow-400';
     return 'text-red-600 dark:text-red-400';
   };
 
-  const marginLevelValue = liveAccount.margin > 0
-    ? formatPercentage((liveAccount.equity / liveAccount.margin) * 100)
+  const marginLevelValue = account.margin > 0
+    ? formatPercentage((account.equity / account.margin) * 100)
     : 'N/A';
 
   const accountStats = [
-    { label: 'Balance',        value: `$${formatCurrency(liveAccount.balance)}`,            color: '' },
-    { label: 'Equity',         value: `$${formatCurrency(liveAccount.equity)}`,             color: '' },
-    { label: 'Realized P&L',   value: `$${formatCurrency(liveAccount.realizedPnL)}`,        color: liveAccount.realizedPnL   >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' },
-    { label: 'Unrealized P&L', value: `${liveAccount.unrealizedPnL >= 0 ? '+' : ''}$${formatCurrency(liveAccount.unrealizedPnL)}`, color: liveAccount.unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' },
-    { label: 'Margin',         value: `$${formatCurrency(liveAccount.margin)}`,              color: '' },
+    { label: 'Balance',        value: `$${formatCurrency(account.balance)}`,            color: '' },
+    ...(account.credit > 0 ? [{ label: 'Credit', value: `$${formatCurrency(account.credit)}`, color: 'text-blue-600 dark:text-blue-400' }] : []),
+    ...(account.bonus > 0 ? [{ label: 'Bonus', value: `$${formatCurrency(account.bonus)}`, color: 'text-emerald-600 dark:text-emerald-400' }] : []),
+    { label: 'Equity',         value: `$${formatCurrency(account.equity)}`,             color: '' },
+    { label: 'Realized P&L',   value: `$${formatCurrency(account.realizedPnL)}`,        color: account.realizedPnL   >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' },
+    { label: 'Unrealized P&L', value: `${account.unrealizedPnL >= 0 ? '+' : ''}$${formatCurrency(account.unrealizedPnL)}`, color: account.unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' },
+    { label: 'Margin',         value: `$${formatCurrency(account.margin)}`,              color: '' },
     { label: 'Margin Lvl',     value: marginLevelValue,                                      color: marginLevelColor() },
-    { label: 'Available',      value: `$${formatCurrency(liveAccount.availableFunds)}`,      color: 'text-blue-600 dark:text-blue-400' },
+    { label: 'Available',      value: `$${formatCurrency(account.availableFunds)}`,      color: 'text-blue-600 dark:text-blue-400' },
   ];
 
   // Get subscription plan and styling
@@ -169,7 +171,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
             >
               <Wallet className="w-4 h-4" />
               <div className="flex flex-col items-start">
-                <span className="font-semibold">${formatCurrency(liveAccount.balance)}</span>
+                <span className="font-semibold">${formatCurrency(account.balance)}</span>
               </div>
               <ChevronDown className="w-4 h-4" />
             </button>
@@ -195,23 +197,29 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                     {/* Balance */}
                     <div className="flex items-center justify-between py-2">
                       <span className="text-sm text-gray-600 dark:text-gray-400">Balance</span>
-                      <span className="font-semibold">${formatCurrency(liveAccount.balance)}</span>
+                      <span className="font-semibold">${formatCurrency(account.balance)}</span>
                     </div>
 
-                    {/* Bonus/Credit */}
-                    {liveAccount.bonus > 0 && (
+                    {/* Credit */}
+                    {account.credit > 0 && (
                       <div className="flex items-center justify-between py-2 border-t border-gray-200 dark:border-slate-700">
-                        <span className="text-sm text-gray-600 dark:text-gray-400">Bonus/Credit</span>
-                        <span className="font-semibold text-green-600 dark:text-green-400">
-                          +${formatCurrency(liveAccount.bonus)}
-                        </span>
+                        <span className="text-sm text-gray-600 dark:text-gray-400">Credit</span>
+                        <span className="font-semibold text-blue-600 dark:text-blue-400">${formatCurrency(account.credit)}</span>
+                      </div>
+                    )}
+
+                    {/* Bonus */}
+                    {account.bonus > 0 && (
+                      <div className="flex items-center justify-between py-2 border-t border-gray-200 dark:border-slate-700">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">Bonus</span>
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">${formatCurrency(account.bonus)}</span>
                       </div>
                     )}
 
                     {/* Equity */}
                     <div className="flex items-center justify-between py-2 border-t border-gray-200 dark:border-slate-700">
                       <span className="text-sm text-gray-600 dark:text-gray-400">Equity</span>
-                      <span className="font-semibold">${formatCurrency(liveAccount.equity)}</span>
+                      <span className="font-semibold">${formatCurrency(account.equity)}</span>
                     </div>
 
                     {/* P&L */}
@@ -219,15 +227,15 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                       <div>
                         <span className="text-sm text-gray-600 dark:text-gray-400">P&L</span>
                         <div className="flex gap-2 text-xs mt-1">
-                          <span className="text-gray-500">Realized: ${formatCurrency(liveAccount.realizedPnL)}</span>
+                          <span className="text-gray-500">Realized: ${formatCurrency(account.realizedPnL)}</span>
                         </div>
                       </div>
                       <span className={`font-semibold ${
-                        liveAccount.unrealizedPnL >= 0 
+                        account.unrealizedPnL >= 0 
                           ? 'text-green-600 dark:text-green-400' 
                           : 'text-red-600 dark:text-red-400'
                       }`}>
-                        {liveAccount.unrealizedPnL >= 0 ? '+' : ''}${formatCurrency(liveAccount.unrealizedPnL)}
+                        {account.unrealizedPnL >= 0 ? '+' : ''}${formatCurrency(account.unrealizedPnL)}
                       </span>
                     </div>
 
@@ -235,9 +243,9 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                     <div className="flex items-center justify-between py-2 border-t border-gray-200 dark:border-slate-700">
                       <span className="text-sm text-gray-600 dark:text-gray-400">Margin Used</span>
                       <div className="text-right">
-                        <span className="font-semibold">${formatCurrency(liveAccount.margin)}</span>
+                        <span className="font-semibold">${formatCurrency(account.margin)}</span>
                         <div className="text-xs text-gray-500">
-                          {liveAccount.equity > 0 ? formatPercentage((liveAccount.margin / liveAccount.equity) * 100) : '0.00%'} of equity
+                          {account.equity > 0 ? formatPercentage((account.margin / account.equity) * 100) : '0.00%'} of equity
                         </div>
                       </div>
                     </div>
@@ -246,7 +254,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                     <div className="flex items-center justify-between py-2 border-t border-gray-200 dark:border-slate-700">
                       <span className="text-sm text-gray-600 dark:text-gray-400">Available Funds</span>
                       <span className="font-semibold text-blue-600 dark:text-blue-400">
-                        ${formatCurrency(liveAccount.availableFunds)}
+                        ${formatCurrency(account.availableFunds)}
                       </span>
                     </div>
                   </div>

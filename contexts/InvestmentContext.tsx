@@ -68,6 +68,7 @@ export interface UserInvestment {
   profitability: number;
   status: 'in-progress' | 'completed' | 'cancelled';
   createdAt: number;
+  showValueAndDate?: boolean; // Controls visibility of current value and end date for IPOs
 }
 
 export interface SellRequest {
@@ -123,6 +124,7 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
   const [userInvestments, setUserInvestments] = useState<UserInvestment[]>([]);
   const [sellRequests, setSellRequests] = useState<SellRequest[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
   const { currentUser } = useAuth();
 
   // ============================================
@@ -210,7 +212,8 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
         endDate: inv.maturity_date ? new Date(inv.maturity_date).getTime() : Date.now() + 30 * 24 * 60 * 60 * 1000,
         profitability: parseFloat(inv.expected_return || 0),
         status: inv.status || 'in-progress',
-        createdAt: new Date(inv.created_at).getTime()
+        createdAt: new Date(inv.created_at).getTime(),
+        showValueAndDate: inv.show_value_and_date || false
       }));
     } catch (error) {
       // Silently handle error - server might not be available yet
@@ -239,7 +242,8 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
           purchase_price: investment.purchasePrice,
           amount: investment.totalAmount,
           expected_return: investment.profitability,
-          status: investment.status
+          status: investment.status,
+          show_value_and_date: investment.showValueAndDate
         })
       });
 
@@ -264,7 +268,16 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const offers = await fetchInvestmentOffers();
-      setInvestmentOffers(offers);
+      // Only update if we actually got data, to avoid wiping healthy KV state with empty DB response
+      if (offers && offers.length > 0) {
+        setInvestmentOffers(offers);
+      } else {
+        // Fallback to KV if DB is empty
+        const dbOffers = await getKV('gross_investment_offers');
+        if (dbOffers && dbOffers.length > 0) {
+          setInvestmentOffers(dbOffers);
+        }
+      }
     } catch (error) {
       console.error('Error refreshing offers:', error);
     } finally {
@@ -349,6 +362,7 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
         console.error('Failed to load investment data from database:', error);
       } finally {
         setLoading(false);
+        setIsHydrated(true);
       }
     };
 
@@ -397,14 +411,34 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
   // Patch helper for global sets
   const patchGlobalList = (key: string, items: any[]) => {
     const userId = currentUser?.id;
+    const isAdmin = currentUser?.role === 'admin';
     if (!userId) return;
 
     try {
       const raw = localStorage.getItem(key);
       const globalItems = raw ? JSON.parse(raw) : [];
-      const others = globalItems.filter((item: any) => item.userId !== userId);
-      const merged = [...items, ...others];
-      localStorage.setItem(key, JSON.stringify(merged));
+      
+      let merged: any[];
+      
+      if (isAdmin) {
+        // Admins in this application load the global sets (all users' investments/requests)
+        // in InvestmentContext's loadAllDatabaseData. Therefore, their state represents
+        // the "Total Truth". We can safely replace the global list with their state.
+        merged = items;
+      } else {
+        // Regular users only have access to their own investments.
+        // To update the global list without erasing other users' data, 
+        // we filter out current user's old records and append the new ones.
+        const others = globalItems.filter((item: any) => item.userId !== userId);
+        merged = [...items, ...others];
+      }
+
+      // Final deduplication by ID just in case of any synchronization edge cases
+      const deduplicated = Array.from(
+        new Map(merged.map(item => [item.id, item])).values()
+      );
+      
+      localStorage.setItem(key, JSON.stringify(deduplicated));
       window.dispatchEvent(new Event('storage'));
     } catch (err) {
       console.error('Patch error:', err);
@@ -427,6 +461,13 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
 
     // Debounce sync briefly to capture rapid changes
     syncTimeoutRef.current = setTimeout(async () => {
+      // Safety check: Don't sync if not hydrated or list is empty but we expect data
+      if (!isHydrated) return;
+      if (investmentOffers.length === 0 && userInvestments.length === 0 && sellRequests.length === 0) {
+          // If EVERYTHING is empty, maybe don't sync unless we explicitly cleared it?
+          // For now, let's just make sure we ARE hydrated.
+      }
+
       console.log('🔄 Triggering investment auto-sync to Supabase...');
       try {
         await Promise.all([
@@ -519,7 +560,13 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
       console.error('❌ Failed to save investment offer to database:', error);
     });
     
-    setInvestmentOffers(prev => [...prev, newOffer]);
+    const nextOffers = [...investmentOffers, newOffer];
+    setInvestmentOffers(nextOffers);
+    
+    // Immediate local persistence to avoid loss on quick refresh
+    localStorage.setItem('investmentOffers', JSON.stringify(nextOffers));
+    window.dispatchEvent(new Event('storage'));
+
     return newOffer.id;
   };
 
@@ -529,6 +576,11 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
       if (index === -1) return prev;
       const updated = [...prev];
       updated[index] = { ...updated[index], ...updates };
+      
+      // Immediate local persistence
+      localStorage.setItem('investmentOffers', JSON.stringify(updated));
+      window.dispatchEvent(new Event('storage'));
+      
       return updated;
     });
     

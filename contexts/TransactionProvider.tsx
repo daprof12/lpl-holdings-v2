@@ -349,8 +349,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
   const getPendingTransactions = () => transactions.filter(txn => txn.status === 'pending');
 
   const syncWithTradingAccount = (userId: string, amount: number, type: 'deposit' | 'withdrawal') => {
-    const tradingMode = localStorage.getItem(`gross_trading_mode_${userId}`) || 'live';
-    const key = tradingMode === 'paper' ? `gross_paper_account_${userId}` : `gross_live_account_${userId}`;
+    const key = `gross_live_account_${userId}`;
     const account = JSON.parse(localStorage.getItem(key) || '{"balance":0,"equity":0,"realizedPnL":0,"unrealizedPnL":0,"margin":0,"availableFunds":0,"bonus":0}');
     
     if (type === 'deposit') {

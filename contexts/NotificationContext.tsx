@@ -120,6 +120,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>(loadNotifications);
   const [crmMessages,   setCrmMessages]   = useState<CRMMessage[]>(loadCRMMessages);
   const [loading, setLoading] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   // ✅ Correctly destructure currentUser (not `user`) from AuthContext
   const { currentUser } = useAuth();
@@ -165,6 +166,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         console.error('Failed to load notifications from database:', error);
       } finally {
         setLoading(false);
+        setIsHydrated(true);
       }
     };
 
@@ -220,7 +222,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const syncCrmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || !isHydrated) return;
     
     if (syncNotifsTimeoutRef.current) clearTimeout(syncNotifsTimeoutRef.current);
     
@@ -235,7 +237,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [notifications]);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || !isHydrated) return;
     
     if (syncCrmTimeoutRef.current) clearTimeout(syncCrmTimeoutRef.current);
     

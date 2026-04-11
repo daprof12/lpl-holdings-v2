@@ -345,9 +345,17 @@ export default function CardDeposit({ walletType = 'live' }: { walletType?: 'liv
                       </div>
                     )}
                   </div>
-                  <span className={`px-3 py-1 text-sm rounded-full capitalize ${statusColors[deposit.status]}`}>
-                    {deposit.status}
-                  </span>
+                  <div className="flex flex-col items-end">
+                    <span className={`px-3 py-1 text-sm rounded-full capitalize ${statusColors[deposit.status]}`}>
+                      {deposit.status}
+                    </span>
+                    {deposit.adminNotes && (
+                      <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded text-xs text-blue-700 dark:text-blue-300 max-w-[450px] text-right">
+                        <span className="font-semibold block mb-0.5">Reason:</span>
+                        {deposit.adminNotes}
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}

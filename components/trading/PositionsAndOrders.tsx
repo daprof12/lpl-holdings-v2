@@ -93,7 +93,7 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
     const remainingUnrealizedPnL = remainingPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
     const remainingMargin = remainingPositions.reduce((sum, p) => sum + (p.margin || 0), 0);
     const newBalance = account.balance + pnl;
-    const newEquity = newBalance + remainingUnrealizedPnL;
+    const newEquity = newBalance + (account.bonus || 0) + (account.credit || 0) + remainingUnrealizedPnL;
 
     updateAccount({
       balance: newBalance,

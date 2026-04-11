@@ -110,9 +110,11 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
         }
       });
       
+      const newEquity = account.balance + (account.bonus || 0) + (account.credit || 0) + totalUnrealizedPnL;
       updateAccount({
         unrealizedPnL: totalUnrealizedPnL,
-        equity: account.balance + totalUnrealizedPnL
+        equity: newEquity,
+        availableFunds: newEquity - account.margin
       });
     }
   }, [currentPrice]);

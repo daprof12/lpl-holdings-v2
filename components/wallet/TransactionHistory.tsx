@@ -176,9 +176,17 @@ export default function TransactionHistory() {
                     $0.00
                   </td>
                   <td className="py-4 px-6">
-                    <div className="flex items-center gap-2">
-                      {getStatusIcon(tx.status)}
-                      {getStatusBadge(tx.status)}
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        {getStatusIcon(tx.status)}
+                        {getStatusBadge(tx.status)}
+                      </div>
+                      {tx.adminNotes && (
+                        <div className="mt-1 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded text-xs text-blue-700 dark:text-blue-300 max-w-[450px]">
+                          <span className="font-semibold block mb-0.5 whitespace-nowrap">Reason:</span>
+                          {tx.adminNotes}
+                        </div>
+                      )}
                     </div>
                   </td>
                   <td className="py-4 px-6 font-mono text-sm text-gray-600 dark:text-gray-400">
@@ -237,6 +245,13 @@ export default function TransactionHistory() {
                 </div>
                 {getStatusBadge(tx.status)}
               </div>
+
+              {tx.adminNotes && (
+                <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded text-xs text-blue-700 dark:text-blue-300">
+                  <span className="font-semibold block mb-0.5">Reason:</span>
+                  {tx.adminNotes}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
                 <div>

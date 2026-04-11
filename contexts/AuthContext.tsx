@@ -18,7 +18,6 @@ export interface UserProfile {
   accountType: 'standard' | 'premium' | 'vip';
   balance: number; // Deprecated - kept for backward compatibility
   liveBalance: number; // Real money trading account
-  paperBalance: number; // Demo/practice trading account
   subscriptionPlan?: string;
   lastActive?: Date;
   isOnline?: boolean;
@@ -27,6 +26,11 @@ export interface UserProfile {
   enabledWithdrawalMethods?: string[]; // e.g., ['crypto', 'bank_transfer']
   cryptoWallets?: {
     [currency: string]: string; // e.g., { BTC: 'wallet_address', ETH: 'wallet_address' }
+  };
+  investmentBalances?: {
+    ipo: number;
+    ecn: number;
+    portfolio: number;
   };
 }
 
@@ -49,7 +53,7 @@ export interface WalletTransaction {
   amount: number;
   currency: string;
   status: 'pending' | 'completed' | 'failed' | 'cancelled';
-  accountType: 'live' | 'paper'; // Which account the transaction affects
+  accountType: 'live'; // Which account the transaction affects
   transactionHash?: string;
   details?: any;
   timestamp: Date;
@@ -90,8 +94,8 @@ interface AuthContextType {
   updateTransactionStatus: (transactionId: string, status: WalletTransaction['status'], notes?: string) => void;
   getUserTransactions: (userId: string) => WalletTransaction[];
   addFundsToUser: (userId: string, amount: number, type: 'credit' | 'bonus') => void;
-  addFundsToAccount: (userId: string, amount: number, accountType: 'live' | 'paper', type: 'credit' | 'bonus') => void;
-  deductFromAccount: (userId: string, amount: number, accountType: 'live' | 'paper') => boolean;
+  addFundsToAccount: (userId: string, amount: number, accountType: 'live' | 'ipo' | 'ecn' | 'portfolio', type: 'credit' | 'bonus' | 'balance') => void;
+  deductFromAccount: (userId: string, amount: number, accountType: 'live' | 'ipo' | 'ecn' | 'portfolio' | 'credit' | 'bonus') => boolean;
   addNotification: (userId: string, notification: Omit<Notification, 'id' | 'userId' | 'timestamp' | 'read'>) => void;
   markNotificationAsRead: (notificationId: string) => void;
   getUserNotifications: (userId: string) => Notification[];
@@ -137,14 +141,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Load from database as primary OR localStorage as cache
     const loadInitialData = async () => {
       try {
+        console.log('🔄 Loading initial auth data...');
         // Load users (from DB first, then fallback to local)
         const dbUsers = await getKV('gross_users');
         if (dbUsers) {
-          const migratedUsers = dbUsers.map((user: UserProfile) => ({
-            ...user,
-            liveBalance: user.liveBalance ?? 0,
-            paperBalance: user.paperBalance ?? (user.balance || 0),
-          }));
+          const migratedUsers = dbUsers.map((user: UserProfile) => {
+            // Migration: Pull investment balances from legacy localStorage if missing in DB
+            let investmentBalances = user.investmentBalances;
+            if (!investmentBalances) {
+              const legacy = localStorage.getItem(`investment_balances_${user.id}`);
+              if (legacy) {
+                try {
+                  investmentBalances = JSON.parse(legacy);
+                } catch (e) {
+                  console.error('Failed to migrate legacy investment balances:', e);
+                }
+              }
+            }
+
+            return {
+              ...user,
+              liveBalance: user.liveBalance ?? 0,
+              investmentBalances: investmentBalances || { ipo: 0, ecn: 0, portfolio: 0 }
+            };
+          });
           setUsers(migratedUsers);
           localStorage.setItem('gross_users', JSON.stringify(migratedUsers));
 
@@ -155,11 +175,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           }
         } else if (storedUsers) {
           const parsedUsers = JSON.parse(storedUsers);
-          const migratedUsers = parsedUsers.map((user: UserProfile) => ({
-            ...user,
-            liveBalance: user.liveBalance ?? 0,
-            paperBalance: user.paperBalance ?? (user.balance || 0),
-          }));
+          const migratedUsers = parsedUsers.map((user: UserProfile) => {
+            let investmentBalances = user.investmentBalances;
+            if (!investmentBalances) {
+              const legacy = localStorage.getItem(`investment_balances_${user.id}`);
+              if (legacy) {
+                try {
+                  investmentBalances = JSON.parse(legacy);
+                } catch (e) {
+                  console.error('Failed to migrate legacy investment balances from localStorage cache:', e);
+                }
+              }
+            }
+
+            return {
+              ...user,
+              liveBalance: user.liveBalance ?? 0,
+              investmentBalances: investmentBalances || { ipo: 0, ecn: 0, portfolio: 0 }
+            };
+          });
           setUsers(migratedUsers);
         } else if (!dbUsers && !storedUsers) {
           // No local OR database users found in KV - this might be a fresh device or KV failure.
@@ -184,7 +218,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                   phone: u.phone,
                   kycStatus: u.kyc_status === 'approved' ? 'verified' : u.kyc_status === 'rejected' ? 'rejected' : 'not_started',
                   accountType: u.account_type || 'standard',
-                  paperBalance: parseFloat(u.balance || 0),
                   liveBalance: parseFloat(u.live_balance || 0),
                   isVerified: u.email_verified || false,
                   createdAt: new Date(u.created_at || Date.now()),
@@ -216,7 +249,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             accountType: 'vip',
             balance: 0,
             liveBalance: 0,
-            paperBalance: 0,
             enabledDepositMethods: [],
             enabledWithdrawalMethods: [],
             cryptoWallets: {},
@@ -227,7 +259,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } catch (error) {
         console.error('Failed to load users from database:', error);
       } finally {
-        setIsHydrated(true); // Ensure we mark as hydrated even on failure to allow manual login
+        // We only mark as hydrated AFTER we've tried loading everything 
+        // to prevent premature syncs of empty local state
       }
     };
 
@@ -242,8 +275,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const migratedCurrentUser = {
             ...parsedCurrentUser,
             liveBalance: parsedCurrentUser.liveBalance ?? 0,
-            paperBalance: parsedCurrentUser.paperBalance ?? (parsedCurrentUser.balance || 0),
+            investmentBalances: parsedCurrentUser.investmentBalances || { ipo: 0, ecn: 0, portfolio: 0 }
           };
+
+          // Final check: if user balances are 0 in memory but exist in legacy storage, try one last recovery
+          if (migratedCurrentUser.investmentBalances.ipo === 0 && migratedCurrentUser.investmentBalances.ecn === 0 && migratedCurrentUser.investmentBalances.portfolio === 0) {
+            const legacy = localStorage.getItem(`investment_balances_${migratedCurrentUser.id}`);
+            if (legacy) {
+              try {
+                migratedCurrentUser.investmentBalances = JSON.parse(legacy);
+              } catch (e) { /* ignore */ }
+            }
+          }
           setCurrentUser(migratedCurrentUser);
           sessionStorage.setItem('gross_current_user', JSON.stringify(migratedCurrentUser));
         }
@@ -276,31 +319,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.error('Failed to parse supplemental data:', error);
       }
       setIsHydrated(true);
+      console.log('✅ Auth context fully hydrated');
     };
 
-    loadSupplementalData();
+    const init = async () => {
+      await loadInitialData();
+      await loadSupplementalData();
+    };
 
-    // CRITICAL: Always mark as hydrated even if part of loading fails
-    setIsHydrated(true);
+    init();
+  }, []);
 
-    // ── Login As User support ──────────────────────────────────────────
-    // If the admin initiated a "Login As User" session, override the currentUser
+  useEffect(() => {
     const adminLoginAsUser = localStorage.getItem('adminLoginAsUser');
     if (adminLoginAsUser) {
       try {
-        const { userId } = JSON.parse(adminLoginAsUser);
+        const adminData = JSON.parse(adminLoginAsUser);
+        const targetId = adminData.userId;
         const storedUsers = localStorage.getItem('gross_users');
-        if (storedUsers) {
+        if (targetId && storedUsers) {
           const allUsers = JSON.parse(storedUsers);
-          const targetUser = allUsers.find((u: any) => u.id === userId);
+          const targetUser = allUsers.find((u: any) => u.id === targetId);
           if (targetUser) {
-            console.log('🔑 Initializing isolated session as user:', targetUser.email);
-            // Mark this tab as isolated BEFORE setting currentUser
+            console.log('Initializing isolated session as user:', targetUser.email);
             sessionStorage.setItem('gross_current_user_isolated', 'true');
             sessionStorage.setItem('gross_current_user', JSON.stringify(targetUser));
             setCurrentUser(targetUser);
-            
-            // Clear the bridge key
             localStorage.removeItem('adminLoginAsUser');
           }
         }
@@ -402,7 +446,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     window.addEventListener('storage', handleStorageChange);
 
-    // ── DATABASE REALTIME SYNC ───────────────────────────────────────────
+    // -- DATABASE REALTIME SYNC ------------------------------------------─
     const channel = supabase
       .channel('public:kv_store_5d4be467')
       .on('postgres_changes', { 
@@ -478,7 +522,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [notifications]);
 
-  // ── Sync to Supabase Logic ──────────────────────────────────────────
+  // -- Sync to Supabase Logic ------------------------------------------
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -493,15 +537,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Safety check: Don't sync if the list only contains the default admin 
       // AND we haven't successfully heard from the DB yet.
       // This prevents a "re-seeding" client from wiping a populated database.
-      if (users.length === 1 && users[0].id === 'admin-001' && isHydrated) {
+      if (isHydrated && users.length <= 1) {
          // Optionally check KV one last time before deciding to sync a "fresh" list
          const check = await getKV('gross_users');
-         if (check && check.length > 1) {
-             console.warn('🛑 Prevented accidental database wipe. Local state has 1 user but DB has many.');
+         if (check && check.length > users.length) {
+             console.warn('🛑 Prevented accidental database wipe. Local state has fewer users than DB.');
              setUsers(check);
              return;
          }
       }
+
+      if (!isHydrated || users.length === 0) return;
 
       console.log('🔄 Triggering auto-sync to Supabase...');
       try {
@@ -592,7 +638,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           storedUsers = dbUsers.map((user: UserProfile) => ({
             ...user,
             liveBalance: user.liveBalance ?? 0,
-            paperBalance: user.paperBalance ?? (user.balance || 0),
           }));
           setUsers(storedUsers);
           localStorage.setItem('gross_users', JSON.stringify(storedUsers));
@@ -751,9 +796,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       phoneVerified: false,
       kycStatus: 'pending',
       accountType: 'standard',
-      balance: 10000, // Deprecated - kept for backward compatibility
+      balance: 0, // Deprecated - kept for backward compatibility
       liveBalance: 0, // New users start with 0 live balance
-      paperBalance: 10000, // Starting demo balance for practice
       // Empty array = user can see all admin-enabled deposit methods
       enabledDepositMethods: [],
       enabledWithdrawalMethods: [],
@@ -795,9 +839,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           account_type: newUser.accountType,
           kyc_status: newUser.kycStatus === 'verified' ? 'approved' : 
                       newUser.kycStatus === 'rejected' ? 'rejected' : 'not_started',
-          balance: newUser.paperBalance,
-          equity: newUser.paperBalance,
-          free_margin: newUser.paperBalance,
+          balance: 0,
+          equity: 0,
+          free_margin: 0,
           created_at: newUser.createdAt.getTime(),
           updated_at: newUser.createdAt.getTime()
         })
@@ -853,10 +897,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           dbUpdates.kyc_status = updates.kycStatus === 'verified' ? 'approved' : 
                                  updates.kycStatus === 'rejected' ? 'rejected' : 'pending';
         }
-        if (updates.paperBalance !== undefined) {
-          dbUpdates.balance = updates.paperBalance;
-          dbUpdates.equity = updates.paperBalance;
-          dbUpdates.free_margin = updates.paperBalance;
+        if (updates.liveBalance !== undefined) {
+          dbUpdates.live_balance = updates.liveBalance;
         }
         if (updates.isVerified !== undefined) dbUpdates.email_verified = updates.isVerified;
 
@@ -883,7 +925,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
     }
 
-    // ── Sync with TradingContext's localStorage entries ──────────────────
+    // -- Sync with TradingContext's localStorage entries ------------------
     // If liveBalance or paperBalance is being updated, sync those specifically
     if (Object.prototype.hasOwnProperty.call(updates, 'liveBalance')) {
       const storageKey = `gross_live_account_${userId}`;
@@ -908,30 +950,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         window.dispatchEvent(new Event('storage'));
       } catch (e) {
         console.error('Failed to sync live balance update:', e);
-      }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(updates, 'paperBalance')) {
-      const storageKey = `gross_paper_account_${userId}`;
-      const fallbackKey = 'gross_paper_account';
-      const amount = updates.paperBalance as number;
-
-      try {
-        const stored = localStorage.getItem(storageKey) || localStorage.getItem(fallbackKey);
-        const tradingAccount = stored
-          ? JSON.parse(stored)
-          : { balance: 0, equity: 0, realizedPnL: 0, unrealizedPnL: 0, margin: 0, availableFunds: 0, bonus: 0 };
-
-        tradingAccount.balance = amount;
-        tradingAccount.equity = tradingAccount.equity + (amount - (tradingAccount.balance_old || tradingAccount.balance));
-        tradingAccount.availableFunds = tradingAccount.equity - (tradingAccount.margin || 0);
-        tradingAccount.balance = amount;
-
-        localStorage.setItem(storageKey, JSON.stringify(tradingAccount));
-        localStorage.setItem(fallbackKey, JSON.stringify(tradingAccount));
-        window.dispatchEvent(new Event('storage'));
-      } catch (e) {
-        console.error('Failed to sync paper balance update:', e);
       }
     }
 
@@ -1082,15 +1100,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUserActivities(prev => [...prev, activity]);
   };
 
-  const addFundsToAccount = (userId: string, amount: number, accountType: 'live' | 'paper', type: 'credit' | 'bonus' | 'balance') => {
+  const addFundsToAccount = (userId: string, amount: number, accountType: 'live' | 'paper' | 'ipo' | 'ecn' | 'portfolio', type: 'credit' | 'bonus' | 'balance') => {
     setUsers(prev => 
       prev.map(user => {
         if (user.id !== userId) return user;
         
         if (accountType === 'live') {
-          return { ...user, liveBalance: (user.liveBalance || 0) + amount };
+          if (type === 'balance') {
+            return { ...user, liveBalance: (user.liveBalance || 0) + amount };
+          }
+          // If credit or bonus, we don't necessarily update liveBalance 
+          // if we want to keep liveBalance as "Real Cash".
+          // However, many systems treat liveBalance as "Real + Credit + Bonus".
+          // The user requested: "should show as either credit or bonus below balance while the live balance is the main balance"
+          // So we should probably NOT update user.liveBalance if it's credit/bonus.
+          return user;
+        } else if (accountType === 'ipo') {
+          const balances = user.investmentBalances || { ipo: 0, ecn: 0, portfolio: 0 };
+          return { ...user, investmentBalances: { ...balances, ipo: balances.ipo + amount } };
+        } else if (accountType === 'ecn') {
+          const balances = user.investmentBalances || { ipo: 0, ecn: 0, portfolio: 0 };
+          return { ...user, investmentBalances: { ...balances, ecn: balances.ecn + amount } };
+        } else if (accountType === 'portfolio') {
+          const balances = user.investmentBalances || { ipo: 0, ecn: 0, portfolio: 0 };
+          return { ...user, investmentBalances: { ...balances, portfolio: balances.portfolio + amount } };
         } else {
-          return { ...user, paperBalance: (user.paperBalance || 0) + amount };
+          return user;
         }
       })
     );
@@ -1100,20 +1135,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (!prev) return null;
         
         if (accountType === 'live') {
-          return { ...prev, liveBalance: (prev.liveBalance || 0) + amount };
+          if (type === 'balance') {
+            return { ...prev, liveBalance: (prev.liveBalance || 0) + amount };
+          }
+          return prev;
+        } else if (accountType === 'ipo') {
+           const balances = prev.investmentBalances || { ipo: 0, ecn: 0, portfolio: 0 };
+           return { ...prev, investmentBalances: { ...balances, ipo: balances.ipo + amount } };
+        } else if (accountType === 'ecn') {
+           const balances = prev.investmentBalances || { ipo: 0, ecn: 0, portfolio: 0 };
+           return { ...prev, investmentBalances: { ...balances, ecn: balances.ecn + amount } };
+        } else if (accountType === 'portfolio') {
+           const balances = prev.investmentBalances || { ipo: 0, ecn: 0, portfolio: 0 };
+           return { ...prev, investmentBalances: { ...balances, portfolio: balances.portfolio + amount } };
         } else {
-          return { ...prev, paperBalance: (prev.paperBalance || 0) + amount };
+          return prev;
         }
       });
     }
 
-    // ── Sync with TradingContext's localStorage entries ──────────────────
-    // TradingContext reads from gross_live_account_{userId} / gross_paper_account_{userId}
-    // so we must update those in parallel for the user's WalletPage to reflect the change.
-    const storageKey = accountType === 'live'
-      ? `gross_live_account_${userId}`
-      : `gross_paper_account_${userId}`;
-    const fallbackKey = accountType === 'live' ? 'gross_live_account' : 'gross_paper_account';
+    // -- Sync with TradingContext's localStorage entries ------------------
+    const storageKey = `gross_live_account_${userId}`;
+    const fallbackKey = 'gross_live_account';
 
     try {
       const stored = localStorage.getItem(storageKey) || localStorage.getItem(fallbackKey);
@@ -1121,12 +1164,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         ? JSON.parse(stored)
         : { balance: 0, equity: 0, realizedPnL: 0, unrealizedPnL: 0, margin: 0, availableFunds: 0, bonus: 0 };
 
-      tradingAccount.balance = (tradingAccount.balance || 0) + amount;
-      tradingAccount.equity = (tradingAccount.equity || 0) + amount;
-      tradingAccount.availableFunds = (tradingAccount.availableFunds || 0) + amount;
-      if (type === 'bonus') {
+      if (type === 'balance') {
+        tradingAccount.balance = (tradingAccount.balance || 0) + amount;
+      } else if (type === 'bonus') {
         tradingAccount.bonus = (tradingAccount.bonus || 0) + amount;
+      } else if (type === 'credit') {
+        tradingAccount.credit = (tradingAccount.credit || 0) + amount;
       }
+
+      // Equity is the SUM of all 3 pools (+ PnL which TradingContext adds)
+      tradingAccount.equity = (tradingAccount.balance || 0) + (tradingAccount.bonus || 0) + (tradingAccount.credit || 0) + (tradingAccount.unrealizedPnL || 0);
+      tradingAccount.availableFunds = tradingAccount.equity - (tradingAccount.margin || 0);
 
       localStorage.setItem(storageKey, JSON.stringify(tradingAccount));
       localStorage.setItem(fallbackKey, JSON.stringify(tradingAccount));
@@ -1149,11 +1197,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUserActivities(prev => [...prev, activity]);
   };
 
-  const deductFromAccount = (userId: string, amount: number, accountType: 'live' | 'paper'): boolean => {
+  const deductFromAccount = (userId: string, amount: number, accountType: 'live' | 'paper' | 'ipo' | 'ecn' | 'portfolio' | 'credit' | 'bonus'): boolean => {
     const user = users.find(u => u.id === userId);
     if (!user) return false;
 
-    const currentBalance = accountType === 'live' ? (user.liveBalance || 0) : (user.paperBalance || 0);
+    let currentBalance = 0;
+    const isTradingAccount = accountType === 'live' || accountType === 'credit' || accountType === 'bonus';
+    
+    if (accountType === 'live' || accountType === 'credit' || accountType === 'bonus') currentBalance = user.liveBalance || 0;
+    else {
+      const balances = user.investmentBalances || { ipo: 0, ecn: 0, portfolio: 0 };
+      currentBalance = balances[accountType as 'ipo'|'ecn'|'portfolio'] || 0;
+    }
     
     if (currentBalance < amount) {
       return false; // Insufficient funds
@@ -1163,10 +1218,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       prev.map(u => {
         if (u.id !== userId) return u;
         
-        if (accountType === 'live') {
+        if (accountType === 'live' || accountType === 'credit' || accountType === 'bonus') {
           return { ...u, liveBalance: (u.liveBalance || 0) - amount };
         } else {
-          return { ...u, paperBalance: (u.paperBalance || 0) - amount };
+          const balances = u.investmentBalances || { ipo: 0, ecn: 0, portfolio: 0 };
+          const type = accountType as 'ipo'|'ecn'|'portfolio';
+          return { ...u, investmentBalances: { ...balances, [type]: (balances[type] || 0) - amount } };
         }
       })
     );
@@ -1175,51 +1232,50 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setCurrentUser(prev => {
         if (!prev) return null;
         
-        if (accountType === 'live') {
+        if (accountType === 'live' || accountType === 'credit' || accountType === 'bonus') {
           return { ...prev, liveBalance: (prev.liveBalance || 0) - amount };
         } else {
-          return { ...prev, paperBalance: (prev.paperBalance || 0) - amount };
+          const balances = prev.investmentBalances || { ipo: 0, ecn: 0, portfolio: 0 };
+          const type = accountType as 'ipo'|'ecn'|'portfolio';
+          return { ...prev, investmentBalances: { ...balances, [type]: (balances[type] || 0) - amount } };
         }
       });
     }
 
-    // ── Sync with TradingContext's localStorage entries ──────────────────
-    const storageKey = accountType === 'live'
-      ? `gross_live_account_${userId}`
-      : `gross_paper_account_${userId}`;
-    const fallbackKey = accountType === 'live' ? 'gross_live_account' : 'gross_paper_account';
+    // -- Sync with TradingContext's localStorage entries if it's a trading account --
+    if (isTradingAccount) {
+      const storageKey = `gross_live_account_${userId}`;
+      const fallbackKey = `gross_live_account`;
 
-    try {
-      const stored = localStorage.getItem(storageKey) || localStorage.getItem(fallbackKey);
-      if (stored) {
-        const tradingAccount = JSON.parse(stored);
-        tradingAccount.balance = Math.max(0, (tradingAccount.balance || 0) - amount);
-        tradingAccount.equity = Math.max(0, (tradingAccount.equity || 0) - amount);
-        tradingAccount.availableFunds = Math.max(0, (tradingAccount.availableFunds || 0) - amount);
-
-        localStorage.setItem(storageKey, JSON.stringify(tradingAccount));
-        localStorage.setItem(fallbackKey, JSON.stringify(tradingAccount));
-
-        // Dispatch storage event so TradingContext picks up the change in real-time
-        window.dispatchEvent(new Event('storage'));
+      try {
+        const stored = localStorage.getItem(storageKey) || localStorage.getItem(fallbackKey);
+        if (stored) {
+          const tradingAccount = JSON.parse(stored);
+          if (accountType === 'bonus') {
+            tradingAccount.bonus = Math.max(0, (tradingAccount.bonus || 0) - amount);
+          } else if (accountType === 'credit') {
+            tradingAccount.credit = Math.max(0, (tradingAccount.credit || 0) - amount);
+          } else {
+            // Default to deducting from real balance
+            tradingAccount.balance = Math.max(0, (tradingAccount.balance || 0) - amount);
+          }
+          
+          // Re-calculate derived fields
+          tradingAccount.equity = (tradingAccount.balance || 0) + (tradingAccount.bonus || 0) + (tradingAccount.credit || 0) + (tradingAccount.unrealizedPnL || 0);
+          tradingAccount.availableFunds = tradingAccount.equity - (tradingAccount.margin || 0);
+          
+          localStorage.setItem(storageKey, JSON.stringify(tradingAccount));
+          localStorage.setItem(fallbackKey, JSON.stringify(tradingAccount));
+          window.dispatchEvent(new Event('storage'));
+        }
+      } catch (err) {
+        console.error('Failed to sync deduction to trading account:', err);
       }
-    } catch (error) {
-      console.error('Failed to sync trading account deduction:', error);
     }
-
-    // Log activity
-    const activity: UserActivity = {
-      id: `activity-${Date.now()}`,
-      userId: userId,
-      type: 'withdraw',
-      action: `Deducted from ${accountType} account`,
-      details: { amount, accountType },
-      timestamp: new Date(),
-    };
-    setUserActivities(prev => [...prev, activity]);
 
     return true;
   };
+
 
   const addNotification = (userId: string, notification: Omit<Notification, 'id' | 'userId' | 'timestamp' | 'read'>) => {
     const newNotification: Notification = {

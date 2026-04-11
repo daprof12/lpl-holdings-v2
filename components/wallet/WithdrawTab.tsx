@@ -23,13 +23,13 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
   const { currentUser } = useAuth();
   const { addTransaction, getUserTransactions } = useTransactions();
   const marketData = useMarketData();
-  
+
   const [selectedMethod, setSelectedMethod] = useState<'crypto' | 'e_wallet' | 'bank' | null>(null);
   const [selectedWithdrawalMethod, setSelectedWithdrawalMethod] = useState<WithdrawalMethod | null>(null);
   const [selectedCryptoAddress, setSelectedCryptoAddress] = useState<string>('');
   const [amount, setAmount] = useState('');
   const [withdrawalMethods, setWithdrawalMethods] = useState<WithdrawalMethod[]>([]);
-  
+
   // Crypto withdrawal state
   const [selectedCryptoType, setSelectedCryptoType] = useState<string>('');
   const [selectedCryptoNetwork, setSelectedCryptoNetwork] = useState<string>('');
@@ -111,48 +111,48 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
   const getNetworkFee = (crypto: string, network: string): { fee: string; usdEstimate: string } => {
     const feeMap: Record<string, Record<string, { fee: string; usdEstimate: string }>> = {
       BTC: {
-        'Bitcoin':          { fee: '0.0001 BTC',   usdEstimate: '~$3-10' },
-        'Bitcoin (Legacy)': { fee: '0.00015 BTC',  usdEstimate: '~$5-15' },
-        'Lightning':        { fee: '< 1 sat/vB',   usdEstimate: '~$0.01' },
+        'Bitcoin': { fee: '0.0001 BTC', usdEstimate: '~$3-10' },
+        'Bitcoin (Legacy)': { fee: '0.00015 BTC', usdEstimate: '~$5-15' },
+        'Lightning': { fee: '< 1 sat/vB', usdEstimate: '~$0.01' },
       },
       ETH: {
-        'Ethereum':         { fee: '0.0005-0.005 ETH', usdEstimate: '~$1-15' },
-        'Ethereum (ERC20)': { fee: '0.001-0.005 ETH',  usdEstimate: '~$3-15' },
-        'Arbitrum':         { fee: '0.0001 ETH',       usdEstimate: '~$0.10-0.50' },
-        'Optimism':         { fee: '0.0001 ETH',       usdEstimate: '~$0.10-0.50' },
-        'Base':             { fee: '0.00005 ETH',      usdEstimate: '~$0.05-0.25' },
+        'Ethereum': { fee: '0.0005-0.005 ETH', usdEstimate: '~$1-15' },
+        'Ethereum (ERC20)': { fee: '0.001-0.005 ETH', usdEstimate: '~$3-15' },
+        'Arbitrum': { fee: '0.0001 ETH', usdEstimate: '~$0.10-0.50' },
+        'Optimism': { fee: '0.0001 ETH', usdEstimate: '~$0.10-0.50' },
+        'Base': { fee: '0.00005 ETH', usdEstimate: '~$0.05-0.25' },
       },
       USDT: {
-        'Tron (TRC20)':     { fee: '1 USDT',       usdEstimate: '~$1.00' },
-        'Ethereum (ERC20)': { fee: '3-15 USDT',    usdEstimate: '~$3-15' },
+        'Tron (TRC20)': { fee: '1 USDT', usdEstimate: '~$1.00' },
+        'Ethereum (ERC20)': { fee: '3-15 USDT', usdEstimate: '~$3-15' },
         'BNB Smart Chain (BEP20)': { fee: '0.5 USDT', usdEstimate: '~$0.50' },
-        'Polygon':          { fee: '0.1 USDT',     usdEstimate: '~$0.10' },
-        'Arbitrum':         { fee: '0.1 USDT',     usdEstimate: '~$0.10' },
-        'Solana':           { fee: '0.01 USDT',    usdEstimate: '~$0.01' },
-        'Avalanche':        { fee: '0.5 USDT',     usdEstimate: '~$0.50' },
+        'Polygon': { fee: '0.1 USDT', usdEstimate: '~$0.10' },
+        'Arbitrum': { fee: '0.1 USDT', usdEstimate: '~$0.10' },
+        'Solana': { fee: '0.01 USDT', usdEstimate: '~$0.01' },
+        'Avalanche': { fee: '0.5 USDT', usdEstimate: '~$0.50' },
       },
       BNB: {
         'BNB Smart Chain (BEP20)': { fee: '0.0005 BNB', usdEstimate: '~$0.30' },
-        'BNB Smart Chain':  { fee: '0.0005 BNB',  usdEstimate: '~$0.30' },
+        'BNB Smart Chain': { fee: '0.0005 BNB', usdEstimate: '~$0.30' },
       },
       SOL: {
-        'Solana':           { fee: '0.000005 SOL', usdEstimate: '~$0.001' },
+        'Solana': { fee: '0.000005 SOL', usdEstimate: '~$0.001' },
       },
       XRP: {
-        'Ripple':           { fee: '0.01 XRP',     usdEstimate: '~$0.01' },
-        'XRP Ledger':       { fee: '0.01 XRP',     usdEstimate: '~$0.01' },
+        'Ripple': { fee: '0.01 XRP', usdEstimate: '~$0.01' },
+        'XRP Ledger': { fee: '0.01 XRP', usdEstimate: '~$0.01' },
       },
       ADA: {
-        'Cardano':          { fee: '0.17 ADA',     usdEstimate: '~$0.07' },
+        'Cardano': { fee: '0.17 ADA', usdEstimate: '~$0.07' },
       },
       DOGE: {
-        'Dogecoin':         { fee: '1 DOGE',       usdEstimate: '~$0.10' },
+        'Dogecoin': { fee: '1 DOGE', usdEstimate: '~$0.10' },
       },
       LTC: {
-        'Litecoin':         { fee: '0.001 LTC',    usdEstimate: '~$0.10' },
+        'Litecoin': { fee: '0.001 LTC', usdEstimate: '~$0.10' },
       },
       MATIC: {
-        'Polygon':          { fee: '0.01 MATIC',   usdEstimate: '~$0.01' },
+        'Polygon': { fee: '0.01 MATIC', usdEstimate: '~$0.01' },
       },
     };
 
@@ -179,7 +179,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
     if (method.cryptoType && method.network) {
       const existing = cryptoOptionsMap.get(method.cryptoType);
       const realPrice = getCryptoPrice(method.cryptoType);
-      
+
       if (existing) {
         if (!existing.networks.includes(method.network)) {
           existing.networks.push(method.network);
@@ -202,7 +202,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
     if (stored && currentUser) {
       try {
         const allMethods = JSON.parse(stored);
-        const userMethods = allMethods.filter((m: any) => 
+        const userMethods = allMethods.filter((m: any) =>
           m.userId === currentUser.id || m.userId === 'all-users'
         );
         setWithdrawalMethods(userMethods);
@@ -220,17 +220,15 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
   const userCryptoWallets = currentUser?.cryptoWallets || {};
   const hasAdminCryptoWallets = Object.keys(userCryptoWallets).length > 0;
   const hasUserWithdrawalMethods = withdrawalMethods.length > 0;
-  
+
   // Only treat user as having specific config when they have a NON-EMPTY enabledWithdrawalMethods array
   const hasUserSpecificConfig =
     currentUser &&
     Array.isArray(currentUser.enabledWithdrawalMethods) &&
     currentUser.enabledWithdrawalMethods.length > 0;
-  
+
   const withdrawMethodTypes = [
-    // Crypto: show whenever admin has enabled crypto methods — no per-user wallet required
-    ...((hasUserSpecificConfig ? userEnabledMethods.includes('crypto') : true) &&
-        adminCryptoMethods.length > 0 ? [{
+    {
       id: 'crypto' as const,
       name: 'Cryptocurrency',
       icon: Bitcoin,
@@ -238,10 +236,11 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
       fee: '0.5%',
       processingTime: '30 min - 2 hours',
       minWithdraw: 50,
-      color: 'from-orange-500 to-orange-600'
-    }] : []),
-    ...((hasUserSpecificConfig ? userEnabledMethods.includes('e_wallet') : true) &&
-        withdrawalMethods.filter(m => (m.type as string) === 'paypal' || (m.type as string) === 'e_wallet').length > 0 ? [{
+      color: 'from-orange-500 to-orange-600',
+      isAvailable: (hasUserSpecificConfig ? userEnabledMethods.includes('crypto') : true) &&
+        adminCryptoMethods.some(m => m.enabled)
+    },
+    {
       id: 'e_wallet' as const,
       name: 'E-Wallet',
       icon: DollarSign,
@@ -249,10 +248,11 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
       fee: '2%',
       processingTime: '1-2 business days',
       minWithdraw: 25,
-      color: 'from-blue-500 to-blue-600'
-    }] : []),
-    ...((hasUserSpecificConfig ? userEnabledMethods.includes('bank_transfer') : true) &&
-        withdrawalMethods.filter(m => m.type === 'bank').length > 0 ? [{
+      color: 'from-blue-500 to-blue-600',
+      isAvailable: (hasUserSpecificConfig ? userEnabledMethods.includes('e_wallet') : true) &&
+        withdrawalMethods.filter(m => ((m.type as string) === 'paypal' || (m.type as string) === 'e_wallet') && m.enabled).length > 0
+    },
+    {
       id: 'bank' as const,
       name: 'Bank Transfer',
       icon: Building2,
@@ -260,19 +260,21 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
       fee: '$25',
       processingTime: '2-5 business days',
       minWithdraw: 500,
-      color: 'from-green-500 to-green-600'
-    }] : []),
+      color: 'from-green-500 to-green-600',
+      isAvailable: (hasUserSpecificConfig ? userEnabledMethods.includes('bank_transfer') : true) &&
+        withdrawalMethods.filter(m => m.type === 'bank' && m.enabled).length > 0
+    },
   ];
 
   const calculateFee = () => {
     const amt = parseFloat(amount) || 0;
-    
+
     // For crypto, use admin-configured withdrawal fee
     if (selectedMethod === 'crypto' && selectedCryptoType && selectedCryptoNetwork) {
       const methodConfig = adminCryptoMethods.find(
         m => m.cryptoType === selectedCryptoType && m.network === selectedCryptoNetwork
       );
-      
+
       if (methodConfig) {
         if (methodConfig.withdrawalFeeType === 'fixed') {
           return methodConfig.withdrawalFee || 0;
@@ -284,7 +286,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
       // Fallback to default if no config found
       return amt * 0.005;
     }
-    
+
     if (selectedMethod === 'e_wallet') return amt * 0.02;
     if (selectedMethod === 'bank') return 25;
     return 0;
@@ -362,7 +364,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
         showErrorToast('Please select cryptocurrency and network');
         return;
       }
-      
+
       if (!customWithdrawalAddress || customWithdrawalAddress.trim().length < 10) {
         showErrorToast('Please enter a valid withdrawal address');
         return;
@@ -485,7 +487,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
     }
 
     showSuccessToast(`Withdrawal request submitted! Transaction ID: ${txId.slice(0, 12)}...`);
-    
+
     // Close modal and reset form
     setShowConfirmModal(false);
     setAmount('');
@@ -513,11 +515,10 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => onWalletTypeChange('live')}
-                className={`p-4 rounded-xl border-2 text-left transition-all ${
-                  walletType === 'live'
+                className={`p-4 rounded-xl border-2 text-left transition-all ${walletType === 'live'
                     ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
                     : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
-                }`}
+                  }`}
               >
                 <div className="font-semibold mb-1">Live Balance</div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">
@@ -529,11 +530,10 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
               </button>
               <button
                 onClick={() => onWalletTypeChange('portfolio')}
-                className={`p-4 rounded-xl border-2 text-left transition-all ${
-                  walletType === 'portfolio'
+                className={`p-4 rounded-xl border-2 text-left transition-all ${walletType === 'portfolio'
                     ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-900/20'
                     : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
-                }`}
+                  }`}
               >
                 <div className="font-semibold mb-1">Portfolio Balance</div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">
@@ -568,7 +568,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
               <p className="font-semibold mb-2">Important Withdrawal Information:</p>
               <ul className="list-disc list-inside space-y-1 text-xs">
                 <li>You must add a withdrawal method in Settings before withdrawing</li>
-                <li>Withdrawals are processed within stated timeframes after admin approval</li>
+                <li>Withdrawals are processed within stated timeframes after approval</li>
                 <li>Minimum withdrawal amounts and fees apply</li>
                 <li>You cannot withdraw funds locked in open positions</li>
                 <li>Withdrawals are subject to verification and may be delayed for security</li>
@@ -587,22 +587,22 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
             <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto">
               {userEnabledMethods.length === 0 ? (
                 <>
-                  Your account doesn't have any withdrawal methods configured yet. 
+                  Your account doesn't have any withdrawal methods configured yet.
                   Please contact support to enable withdrawal methods for your account.
                 </>
               ) : (hasAdminCryptoWallets && !hasUserWithdrawalMethods) ? (
                 <>
-                  Your account has crypto wallets configured by the administrator. 
+                  Your account has crypto wallets configured by the administrator.
                   You can withdraw to these addresses directly.
                 </>
               ) : !hasUserWithdrawalMethods ? (
                 <>
-                  No withdrawal methods are currently available. 
+                  No withdrawal methods are currently available.
                   Please contact support for assistance with withdrawals.
                 </>
               ) : (
                 <>
-                  No withdrawal methods are currently available. 
+                  No withdrawal methods are currently available.
                   Please contact support for assistance.
                 </>
               )}
@@ -622,33 +622,33 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
             <div className="mb-6">
               <Label className="mb-4 block text-lg">Select Withdrawal Method</Label>
               <div className="grid md:grid-cols-3 gap-4">
-                {withdrawMethodTypes
-                  .filter((method) => {
-                    const mId = method.id as string;
-                    // Crypto uses admin-configured methods (no saved user method needed)
-                    if (mId === 'crypto') return cryptoOptions.length > 0;
-                    const userMethodsCount = withdrawalMethods.filter(m => {
-                      if (mId === 'e_wallet') return (m.type as string) === 'e_wallet' || (m.type as string) === 'paypal';
-                      return (m.type as string) === mId;
-                    }).length;
-                    return userMethodsCount > 0;
-                  })
-                  .map((method) => {
+                {withdrawMethodTypes.map((method) => {
                   const isCrypto = method.id === 'crypto';
                   const userMethodsCount = isCrypto
                     ? cryptoOptions.length
                     : withdrawalMethods.filter(m => {
-                        if (method.id === 'e_wallet') return (m.type as string) === 'e_wallet' || (m.type as string) === 'paypal';
-                        return (m.type as string) === method.id;
-                      }).length;
-                  
+                      if (method.id === 'e_wallet') return (m.type as string) === 'e_wallet' || (m.type as string) === 'paypal';
+                      return (m.type as string) === method.id;
+                    }).length;
+
                   return (
                     <button
                       key={method.id}
-                      onClick={() => setSelectedMethod(method.id)}
-                      className="p-6 rounded-xl border-2 text-left transition-all border-gray-200 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 cursor-pointer"
+                      onClick={() => method.isAvailable && setSelectedMethod(method.id)}
+                      className={`p-6 rounded-xl border-2 text-left transition-all relative ${method.isAvailable
+                          ? 'border-gray-200 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 cursor-pointer'
+                          : 'opacity-60 cursor-not-allowed border-gray-100 dark:border-slate-800'
+                        }`}
                     >
-                      <div className={`w-12 h-12 bg-gradient-to-br ${method.color} rounded-lg flex items-center justify-center mb-4`}>
+                      {!method.isAvailable && (
+                        <div className="absolute inset-0 z-10 bg-white/40 dark:bg-slate-800/40 rounded-xl flex items-center justify-center p-6 text-center">
+                          <div className="bg-white dark:bg-slate-900 px-4 py-2 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 text-xs font-bold text-red-600 dark:text-red-400">
+                            Withdrawal method currently not available
+                          </div>
+                        </div>
+                      )}
+
+                      <div className={`w-12 h-12 bg-gradient-to-br ${method.color} rounded-lg flex items-center justify-center mb-4 ${!method.isAvailable ? 'grayscale' : ''}`}>
                         <method.icon className="w-6 h-6 text-white" />
                       </div>
                       <h3 className="font-semibold mb-2">{method.name}</h3>
@@ -667,7 +667,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
                           <span className="font-semibold">{method.processingTime}</span>
                         </div>
                         <div className="pt-2 border-t border-gray-200 dark:border-slate-600">
-                          <span className="text-green-600 dark:text-green-400 font-semibold">
+                          <span className={`${method.isAvailable ? 'text-green-600 dark:text-green-400' : 'text-gray-400'} font-semibold`}>
                             {userMethodsCount} method{userMethodsCount > 1 ? 's' : ''} available
                           </span>
                         </div>
@@ -682,7 +682,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
             {recentWithdrawals.length > 0 && (
               <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
                 <h3 className="text-lg font-semibold mb-4">Recent Withdrawals</h3>
-                
+
                 <div className="space-y-3">
                   {recentWithdrawals.map((withdrawal) => {
                     const withdrawalDate = new Date(withdrawal.timestamp);
@@ -704,9 +704,17 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
                             {withdrawal.method}
                           </div>
                         </div>
-                        <span className={`px-3 py-1 text-sm rounded-full capitalize ${statusColors[withdrawal.status]}`}>
-                          {withdrawal.status}
-                        </span>
+                        <div className="flex flex-col items-end">
+                          <span className={`px-3 py-1 text-sm rounded-full capitalize ${statusColors[withdrawal.status]}`}>
+                            {withdrawal.status}
+                          </span>
+                          {withdrawal.adminNotes && (
+                            <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded text-xs text-blue-700 dark:text-blue-300 max-w-[450px] text-right">
+                              <span className="font-semibold block mb-0.5">Reason:</span>
+                              {withdrawal.adminNotes}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -773,11 +781,10 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
                       setSelectedCryptoType(crypto.symbol);
                       setSelectedCryptoNetwork(crypto.networks[0]);
                     }}
-                    className={`p-4 rounded-lg border-2 transition-all ${
-                      selectedCryptoType === crypto.symbol
+                    className={`p-4 rounded-lg border-2 transition-all ${selectedCryptoType === crypto.symbol
                         ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
                         : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
-                    }`}
+                      }`}
                   >
                     <div className="font-semibold mb-1">{crypto.symbol}</div>
                     <div className="text-xs text-gray-600 dark:text-gray-400">${formatCurrency(crypto.price)}</div>
@@ -796,11 +803,10 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
                       key={network}
                       type="button"
                       onClick={() => setSelectedCryptoNetwork(network)}
-                      className={`p-4 rounded-lg border-2 text-left transition-all ${
-                        selectedCryptoNetwork === network
+                      className={`p-4 rounded-lg border-2 text-left transition-all ${selectedCryptoNetwork === network
                           ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
                           : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
-                      }`}
+                        }`}
                     >
                       <div className="font-semibold">{network}</div>
                       <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
@@ -825,13 +831,12 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
                   value={customWithdrawalAddress}
                   onChange={(e) => setCustomWithdrawalAddress(e.target.value)}
                   required
-                  className={`font-mono text-sm ${
-                    customWithdrawalAddress.trim().length > 0
+                  className={`font-mono text-sm ${customWithdrawalAddress.trim().length > 0
                       ? validateCryptoAddress(customWithdrawalAddress, selectedCryptoType, selectedCryptoNetwork).valid
                         ? 'border-green-500 dark:border-green-500 focus-visible:ring-green-500'
                         : 'border-red-500 dark:border-red-500 focus-visible:ring-red-500'
                       : ''
-                  }`}
+                    }`}
                 />
                 {customWithdrawalAddress.trim().length > 0 && (() => {
                   const { valid, hint } = validateCryptoAddress(customWithdrawalAddress, selectedCryptoType, selectedCryptoNetwork);
@@ -1005,7 +1010,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
                 <span className="font-semibold">Total Deducted:</span>
                 <span className="font-semibold text-lg">${(parseFloat(amount) + calculateFee()).toFixed(2)}</span>
               </div>
-              
+
               {/* Show crypto equivalent for crypto withdrawals */}
               {selectedMethod === 'crypto' && selectedCryptoType && (() => {
                 const cryptoPrice = getCryptoPrice(selectedCryptoType);
@@ -1033,7 +1038,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
                   </div>
                 );
               })()}
-              
+
               <div className="flex justify-between text-xs">
                 <span className="text-gray-500 dark:text-gray-400">Remaining Balance:</span>
                 <span>${(availableBalance - parseFloat(amount) - calculateFee()).toFixed(2)}</span>
@@ -1162,7 +1167,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
                 <div className="flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
                   <div className="text-xs text-orange-600 dark:text-orange-400">
-                    This withdrawal will be deducted from your balance immediately and is subject to admin approval. 
+                    This withdrawal will be deducted from your balance immediately and is subject to admin approval.
                     {selectedMethod === 'crypto' && ' Ensure the address is correct as crypto transactions cannot be reversed.'}
                   </div>
                 </div>

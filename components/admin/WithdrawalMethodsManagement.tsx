@@ -37,6 +37,7 @@ export interface ExtendedWithdrawalMethod {
   processingTime?: string;
   instructionNote?: string;
   applyToAllUsers?: boolean;
+  enabled: boolean;
   
   // Bank fields
   bankName?: string;
@@ -217,6 +218,7 @@ export default function WithdrawalMethodsManagement() {
       processingTime: formData.processingTime || '',
       instructionNote: formData.instructionNote || '',
       applyToAllUsers: formData.applyToAllUsers || false,
+      enabled: true, // Default to enabled
       ...formData,
     } as ExtendedWithdrawalMethod;
 
@@ -263,6 +265,14 @@ export default function WithdrawalMethodsManagement() {
     const updatedMethods = withdrawalMethods.filter(m => m.id !== id);
     saveWithdrawalMethods(updatedMethods);
     toast.success('Withdrawal method deleted successfully');
+  };
+  
+  const handleToggleStatus = (id: string) => {
+    const updatedMethods = withdrawalMethods.map(m =>
+      m.id === id ? { ...m, enabled: !m.enabled } : m
+    );
+    saveWithdrawalMethods(updatedMethods);
+    toast.success('Withdrawal method status updated');
   };
 
   const openAddDialog = () => {
@@ -466,22 +476,39 @@ export default function WithdrawalMethodsManagement() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    {method.applyToAllUsers ? (
-                      <span className="px-2 py-1 bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 text-xs rounded-full">
-                        Platform
+                    <div className="flex flex-col gap-1">
+                      {method.applyToAllUsers ? (
+                        <span className="px-2 py-1 bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 text-xs rounded-full inline-block text-center">
+                          Platform
+                        </span>
+                      ) : method.isDefault ? (
+                        <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs rounded-full inline-block text-center">
+                          Default
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 bg-gray-100 dark:bg-gray-900/20 text-gray-600 dark:text-gray-400 text-xs rounded-full inline-block text-center">
+                          Active
+                        </span>
+                      )}
+                      {/* Global availability indicator */}
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold text-center ${
+                        method.enabled 
+                          ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400' 
+                          : 'bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+                      }`}>
+                        {method.enabled ? 'ENABLED' : 'DISABLED'}
                       </span>
-                    ) : method.isDefault ? (
-                      <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs rounded-full">
-                        Default
-                      </span>
-                    ) : (
-                      <span className="px-2 py-1 bg-gray-100 dark:bg-gray-900/20 text-gray-600 dark:text-gray-400 text-xs rounded-full">
-                        Active
-                      </span>
-                    )}
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleToggleStatus(method.id)}
+                      >
+                        {method.enabled ? 'Disable' : 'Enable'}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"

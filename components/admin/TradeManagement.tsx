@@ -13,7 +13,8 @@ import {
 } from '../ui/dialog';
 import { useTrading } from '../../contexts/TradingContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { setKV } from '../../utils/supabase/client';
+import { setKV, getKV, serverUrl } from '../../utils/supabase/client';
+import { publicAnonKey } from '../../utils/supabase/info';
 import { useMarketData } from '../../contexts/MarketDataContext';
 import { toast } from 'sonner';
 import { Label } from '../ui/label';
@@ -44,7 +45,7 @@ interface Trade {
   closedAt?: string;
   stopLoss?: number;
   takeProfit?: number;
-  mode: 'paper' | 'live';
+  mode: 'live';
   userId: string;
 }
 
@@ -94,10 +95,7 @@ export default function TradeManagement() {
     account, 
     updatePosition, 
     livePositions, 
-    paperPositions, 
     liveHistory, 
-    paperHistory,
-    setPaperHistory,
     setLiveHistory
   } = useTrading();
   const { users } = useAuth();
@@ -105,7 +103,7 @@ export default function TradeManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed' | 'order'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [modeFilter, setModeFilter] = useState<'all' | 'paper' | 'live'>('all');
+  const [modeFilter, setModeFilter] = useState<'all' | 'live'>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [showDialog, setShowDialog] = useState(false);
@@ -179,46 +177,7 @@ export default function TradeManagement() {
     loadAllTrades();
   }, [users]);
 
-  const allPaperPositions = JSON.parse(localStorage.getItem('gross_paper_positions') || '[]');
-  const openPaperTrades: Trade[] = allPaperPositions.map((pos: any) => ({
-    id: pos.id,
-    user: getUserEmail(pos.userId),
-    asset: pos.symbol,
-    category: getAssetCategory(pos.symbol),
-    type: pos.side === 'buy' ? 'long' : 'short',
-    entryPrice: pos.entryPrice,
-    currentPrice: pos.currentPrice,
-    quantity: pos.units,
-    leverage: pos.leverage,
-    margin: pos.margin,
-    pnl: pos.pnl,
-    status: 'open' as const,
-    openedAt: new Date(pos.timestamp).toISOString().replace('T', ' ').substring(0, 19),
-    mode: pos.mode,
-    userId: pos.userId,
-  }));
-
-  const allPaperHistory = JSON.parse(localStorage.getItem('gross_paper_history') || '[]');
-  const closedPaperTrades: Trade[] = allPaperHistory.filter((h: any) => h.status === 'closed').map((h: any) => ({
-    id: h.id,
-    user: getUserEmail(h.userId),
-    asset: h.symbol,
-    category: getAssetCategory(h.symbol),
-    type: h.side === 'buy' ? 'long' : 'short',
-    entryPrice: h.entryPrice || h.price,
-    currentPrice: h.price,
-    quantity: h.units,
-    leverage: 1,
-    margin: 0,
-    pnl: h.pnl || 0,
-    status: 'closed' as const,
-    openedAt: new Date(h.timestamp).toISOString().replace('T', ' ').substring(0, 19),
-    closedAt: new Date(h.timestamp).toISOString().replace('T', ' ').substring(0, 19),
-    mode: h.mode,
-    userId: h.userId,
-  }));
-
-  const trades = [...dbOpenTrades, ...dbClosedTrades, ...openPaperTrades, ...closedPaperTrades];
+  const trades = [...dbOpenTrades, ...dbClosedTrades];
 
   const [formData, setFormData] = useState({
     asset: '',
@@ -300,26 +259,21 @@ export default function TradeManagement() {
 
   const handleForcClose = (tradeId: string) => {
     if (window.confirm('Are you sure you want to force close this trade?')) {
-      // Find the position in the GLOBAL list, not just admin's
-      const isPaper = modeFilter === 'paper' || (modeFilter === 'all' && allPaperPositions.find((p: any) => p.id === tradeId));
-      const positionsKey = isPaper ? 'gross_paper_positions' : 'gross_live_positions';
+      const positionsKey = 'gross_live_positions';
       const currentPositions = JSON.parse(localStorage.getItem(positionsKey) || '[]');
       const position = currentPositions.find((p: any) => p.id === tradeId);
 
       if (position) {
         const userId = position.userId;
-        // Calculate P&L
         const priceDiff = position.side === 'buy' 
           ? position.currentPrice - position.entryPrice 
           : position.entryPrice - position.currentPrice;
         const pnl = priceDiff * position.units;
 
-        // 1. Remove from positions
         const updatedPositions = currentPositions.filter((p: any) => p.id !== tradeId);
         localStorage.setItem(positionsKey, JSON.stringify(updatedPositions));
 
-        // 2. Add to history
-        const historyKey = isPaper ? 'gross_paper_history' : 'gross_live_history';
+        const historyKey = 'gross_live_history';
         const currentHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
         const newHistoryItem = {
           id: position.id,
@@ -333,17 +287,14 @@ export default function TradeManagement() {
           pnl,
           timestamp: new Date(),
           status: 'closed',
-          mode: position.mode
+          mode: 'live'
         };
         localStorage.setItem(historyKey, JSON.stringify([newHistoryItem, ...currentHistory]));
 
-        // 3. Update the user's specific account
-        const accountKey = isPaper ? `gross_paper_account_${userId}` : `gross_live_account_${userId}`;
+        const accountKey = `gross_live_account_${userId}`;
         const storedAccount = localStorage.getItem(accountKey);
         if (storedAccount) {
           const userAccount = JSON.parse(storedAccount);
-          
-          // Compute remaining unrealized P&L and margin from other open positions for THIS user
           const userPositions = updatedPositions.filter((p: any) => p.userId === userId);
           const remainingUnrealizedPnL = userPositions.reduce((sum: number, p: any) => sum + (p.pnl || 0), 0);
           const remainingMargin = userPositions.reduce((sum: number, p: any) => sum + (p.margin || 0), 0);
@@ -365,9 +316,18 @@ export default function TradeManagement() {
         // Trigger storage event for cross-tab sync
         window.dispatchEvent(new Event('storage'));
         
-        // Sync to Supabase KV
+        // Sync to Supabase KV and optionally Relational DB
         setKV(positionsKey, updatedPositions).catch(console.error);
         setKV(historyKey, [newHistoryItem, ...currentHistory]).catch(console.error);
+        
+        fetch(`${serverUrl}/positions/${tradeId}/close`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${publicAnonKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ exit_price: position.currentPrice })
+        }).catch(err => console.error('Failed to close position in relational DB:', err));
         
         toast.success('Trade force closed successfully');
       } else {
@@ -378,55 +338,25 @@ export default function TradeManagement() {
 
   const handleDelete = (tradeId: string) => {
     if (window.confirm('Are you sure you want to permanently delete this trade record? This action cannot be undone.')) {
-      // Check if it's an open position in GLOBAL list
-      const allPaperPos = JSON.parse(localStorage.getItem('gross_paper_positions') || '[]');
-      const allLivePos = JSON.parse(localStorage.getItem('gross_live_positions') || '[]');
-      const position = [...allPaperPos, ...allLivePos].find(p => p.id === tradeId);
-      
-      const allPaperHis = JSON.parse(localStorage.getItem('gross_paper_history') || '[]');
-      const allLiveHis = JSON.parse(localStorage.getItem('gross_live_history') || '[]');
-      const historyItem = [...allPaperHis, ...allLiveHis].find(h => h.id === tradeId);
+      const position = dbOpenTrades.find(p => p.id === tradeId);
+      const historyItem = dbClosedTrades.find(h => h.id === tradeId);
       
       if (position) {
-        // ===== DELETE OPEN POSITION =====
-        // Determine if it's paper or live
-        const isPaperTrade = position.mode === 'paper';
-        
-        // Remove from positions array
-        const positionsKey = isPaperTrade ? 'gross_paper_positions' : 'gross_live_positions';
+        const positionsKey = 'gross_live_positions';
         const currentPositions = JSON.parse(localStorage.getItem(positionsKey) || '[]');
         const updatedPositions = currentPositions.filter((p: any) => p.id !== tradeId);
         localStorage.setItem(positionsKey, JSON.stringify(updatedPositions));
-        
-        // Trigger storage event for cross-tab sync
         window.dispatchEvent(new Event('storage'));
-        
-        // Sync to Supabase KV
         setKV(positionsKey, updatedPositions).catch(console.error);
-        
         toast.success('Open position deleted successfully');
       } else if (historyItem) {
-        // ===== DELETE CLOSED TRADE FROM HISTORY =====
-        // Determine if it's paper or live
-        const isPaperTrade = historyItem.mode === 'paper';
-        
-        // Remove from history array
-        const historyKey = isPaperTrade ? 'gross_paper_history' : 'gross_live_history';
+        const historyKey = 'gross_live_history';
         const currentHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
         const updatedHistory = currentHistory.filter((h: any) => h.id !== tradeId);
         localStorage.setItem(historyKey, JSON.stringify(updatedHistory));
         setKV(historyKey, updatedHistory).catch(console.error);
-        
-        // Update the context state
-        if (isPaperTrade) {
-          setPaperHistory(updatedHistory);
-        } else {
-          setLiveHistory(updatedHistory);
-        }
-        
-        // Trigger storage event for cross-tab sync
+        setLiveHistory(updatedHistory);
         window.dispatchEvent(new Event('storage'));
-        
         toast.success('Closed trade deleted from history successfully');
       } else {
         toast.error('Trade not found');
@@ -450,14 +380,9 @@ export default function TradeManagement() {
       return;
     }
 
-    // Find if it's an open position or closed trade in GLOBAL lists
-    const allPaperPos = JSON.parse(localStorage.getItem('gross_paper_positions') || '[]');
-    const allLivePos = JSON.parse(localStorage.getItem('gross_live_positions') || '[]');
-    const position = [...allPaperPos, ...allLivePos].find(p => p.id === selectedTrade.id);
-    
-    const allPaperHis = JSON.parse(localStorage.getItem('gross_paper_history') || '[]');
-    const allLiveHis = JSON.parse(localStorage.getItem('gross_live_history') || '[]');
-    const historyItem = [...allPaperHis, ...allLiveHis].find(h => h.id === selectedTrade.id);
+    // Find if it's an open position or closed trade in our states
+    const position = dbOpenTrades.find(p => p.id === selectedTrade.id);
+    const historyItem = dbClosedTrades.find(h => h.id === selectedTrade.id);
     
     // Determine trade type
     const tradeType = selectedTrade.type === 'long' ? 'long' : 'short';
@@ -471,23 +396,18 @@ export default function TradeManagement() {
     const newMargin = (newQuantity * newEntryPrice) / newLeverage;
     
     if (position && selectedTrade.status === 'open') {
-      // ===== EDITING AN OPEN POSITION =====
       const userId = position.userId;
-      const isPaper = position.mode === 'paper';
-      const positionsKey = isPaper ? 'gross_paper_positions' : 'gross_live_positions';
+      const positionsKey = 'gross_live_positions';
       const currentPositions = JSON.parse(localStorage.getItem(positionsKey) || '[]');
       
       const oldMargin = position.margin;
       const oldPnL = position.pnl;
 
-      // If status changed to closed, close the position
       if (formData.status === 'closed') {
-        // 1. Remove from positions
         const updatedPositions = currentPositions.filter((p: any) => p.id !== position.id);
         localStorage.setItem(positionsKey, JSON.stringify(updatedPositions));
 
-        // 2. Add to history
-        const historyKey = isPaper ? 'gross_paper_history' : 'gross_live_history';
+        const historyKey = 'gross_live_history';
         const currentHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
         const newHistoryItem = {
           id: position.id,
@@ -501,12 +421,11 @@ export default function TradeManagement() {
           pnl: newPnL,
           timestamp: formData.closedAt ? new Date(formData.closedAt) : new Date(),
           status: 'closed',
-          mode: position.mode
+          mode: 'live'
         };
         localStorage.setItem(historyKey, JSON.stringify([newHistoryItem, ...currentHistory]));
 
-        // 3. Update the user's specific account
-        const accountKey = isPaper ? `gross_paper_account_${userId}` : `gross_live_account_${userId}`;
+        const accountKey = `gross_live_account_${userId}`;
         const storedAccount = localStorage.getItem(accountKey);
         if (storedAccount) {
           const userAccount = JSON.parse(storedAccount);
@@ -548,8 +467,7 @@ export default function TradeManagement() {
 
         localStorage.setItem(positionsKey, JSON.stringify(updatedPositions));
 
-        // Update account with adjusted margin and unrealized P&L
-        const accountKey = isPaper ? `gross_paper_account_${userId}` : `gross_live_account_${userId}`;
+        const accountKey = `gross_live_account_${userId}`;
         const storedAccount = localStorage.getItem(accountKey);
         if (storedAccount) {
           const userAccount = JSON.parse(storedAccount);
@@ -570,12 +488,8 @@ export default function TradeManagement() {
       window.dispatchEvent(new Event('storage'));
       toast.success('Trade updated successfully!');
     } else if (historyItem && selectedTrade.status === 'closed') {
-      // ===== EDITING A CLOSED TRADE IN HISTORY =====
-      // Determine which history array to update (paper or live)
-      const isPaperTrade = historyItem.mode === 'paper';
-      const targetHistory = isPaperTrade ? allPaperHistory : allLiveHistory;
+      const targetHistory = liveHistory;
       
-      // Update the history item
       const updatedHistory = targetHistory.map((h: any) => {
         if (h.id === selectedTrade.id) {
           return {
@@ -593,34 +507,20 @@ export default function TradeManagement() {
         return h;
       });
 
-      // Save back to localStorage
-      const historyKey = isPaperTrade ? 'gross_paper_history' : 'gross_live_history';
+      const historyKey = 'gross_live_history';
       localStorage.setItem(historyKey, JSON.stringify(updatedHistory));
-      
-      // Update the context state
-      if (isPaperTrade) {
-        setPaperHistory(updatedHistory);
-      } else {
-        setLiveHistory(updatedHistory);
-      }
+      setLiveHistory(updatedHistory);
 
       // Trigger storage event for cross-tab sync
       window.dispatchEvent(new Event('storage'));
 
       // If status changed to open, reopen the trade as a position
       if (formData.status === 'open') {
-        // 1. Remove from history
         const filteredHistory = targetHistory.filter((h: any) => h.id !== selectedTrade.id);
         localStorage.setItem(historyKey, JSON.stringify(filteredHistory));
-        
-        if (isPaperTrade) {
-          setPaperHistory(filteredHistory);
-        } else {
-          setLiveHistory(filteredHistory);
-        }
+        setLiveHistory(filteredHistory);
 
-        // 2. Update user's specific account
-        const accountKey = isPaperTrade ? `gross_paper_account_${historyItem.userId}` : `gross_live_account_${historyItem.userId}`;
+        const accountKey = `gross_live_account_${historyItem.userId}`;
         const storedAccount = localStorage.getItem(accountKey);
         if (storedAccount) {
           const userAccount = JSON.parse(storedAccount);
@@ -653,11 +553,10 @@ export default function TradeManagement() {
           pnl: newPnL,
           margin: newMargin,
           timestamp: formData.openedAt ? new Date(formData.openedAt).getTime() : historyItem.timestamp,
-          mode: historyItem.mode,
+          mode: 'live',
         };
 
-        // 4. Add to positions
-        const positionsKey = isPaperTrade ? 'gross_paper_positions' : 'gross_live_positions';
+        const positionsKey = 'gross_live_positions';
         const currentPositions = JSON.parse(localStorage.getItem(positionsKey) || '[]');
         currentPositions.push(newPosition);
         localStorage.setItem(positionsKey, JSON.stringify(currentPositions));
@@ -724,14 +623,6 @@ export default function TradeManagement() {
             <option value="Other">Other</option>
           </select>
           
-          <select
-            value={modeFilter}
-            onChange={(e) => setModeFilter(e.target.value as any)}
-            className="px-3 py-2 h-10 text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-          >
-            <option value="all">All Modes</option>
-            <option value="live">Live</option>
-          </select>
           
           <div className="relative">
             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />

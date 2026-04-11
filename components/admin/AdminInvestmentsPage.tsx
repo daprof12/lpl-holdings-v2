@@ -3,6 +3,7 @@ import { Search, Plus, Edit2, Trash2, MoreVertical, TrendingDown, Clock, X, Uplo
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { Switch } from '../ui/switch';
 import { useInvestments, InvestmentOffer, PROFITABILITY_TIER_LABELS, PROFITABILITY_TIER_COLORS, ProfitabilityTier } from '../../contexts/InvestmentContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { showSuccessToast, showErrorToast } from '../common/ToastNotifications';
@@ -617,9 +618,19 @@ export default function AdminInvestmentsPage() {
                     </td>
                     <td className="px-6 py-4">{investment.units}</td>
                     <td className="px-6 py-4">${formatCurrency(investment.totalAmount)}</td>
-                    <td className="px-6 py-4 font-semibold text-green-600">${formatCurrency(investment.currentValue)}</td>
-                    <td className="px-6 py-4">{new Date(investment.startDate).toLocaleDateString()}</td>
-                    <td className="px-6 py-4">{new Date(investment.endDate).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 font-semibold text-green-600">
+                      {investment.offerType === 'IPO' && !investment.showValueAndDate 
+                        ? '—' 
+                        : `$${formatCurrency(investment.currentValue)}`}
+                    </td>
+                    <td className="px-6 py-4">
+                      {new Date(investment.startDate).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4">
+                      {investment.offerType === 'IPO' && !investment.showValueAndDate 
+                        ? '—' 
+                        : new Date(investment.endDate).toLocaleDateString()}
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 text-sm rounded-full capitalize ${
                         investment.status === 'completed'
@@ -876,6 +887,7 @@ function EditInvestmentModal({
     status: investment.status,
     endDate: new Date(investment.endDate).toISOString().split('T')[0],
     profitability: investment.profitability,
+    showValueAndDate: investment.showValueAndDate ?? (investment.offerType === 'IPO' ? false : true),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -990,6 +1002,21 @@ function EditInvestmentModal({
               Current status of the investment
             </div>
           </div>
+
+          {investment.offerType === 'IPO' && (
+            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg border border-gray-200 dark:border-slate-700">
+              <div>
+                <Label className="text-base">Show Current Value & End Date</Label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  If disabled, user will see "—" for current value and end date
+                </p>
+              </div>
+              <Switch
+                checked={formData.showValueAndDate}
+                onCheckedChange={(checked) => setFormData({ ...formData, showValueAndDate: checked })}
+              />
+            </div>
+          )}
 
           <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-slate-700">
             <Button type="submit" className="flex-1">

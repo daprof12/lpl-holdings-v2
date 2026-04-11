@@ -24,6 +24,7 @@ export default function TradingPage() {
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isMobileOrderOpen, setIsMobileOrderOpen] = useState(false);
+  const [calculatorData, setCalculatorData] = useState<any>(null);
 
   const symbolKey = symbol || 'BTCUSD';
 
@@ -41,7 +42,14 @@ export default function TradingPage() {
     setEditingPosition(null);
     setIsCalculatorOpen(false);
     setIsMobileOrderOpen(false);
+    setCalculatorData(null);
   }, [symbolKey]);
+
+  const handleApplyCalculator = (data: any) => {
+    setCalculatorData(data);
+    setIsCalculatorOpen(false);
+    // If mobile, keep order panel open but calculator closed
+  };
 
   // Get real market data
   const priceData = marketData.getPrice(symbolKey);
@@ -179,6 +187,7 @@ export default function TradingPage() {
                       ask={assetData.ask}
                       editingOrder={editingOrder}
                       editingPosition={editingPosition}
+                      calculatorData={calculatorData}
                       onOpenCalculator={() => setIsCalculatorOpen(true)}
                       onCancelEdit={() => {
                         setEditingOrder(null);
@@ -192,6 +201,7 @@ export default function TradingPage() {
                         <PositionCalculatorPanel
                           currentPrice={assetData.currentPrice}
                           onClose={() => setIsCalculatorOpen(false)}
+                          onApplyToOrder={handleApplyCalculator}
                         />
                       </div>
                     )}
@@ -234,6 +244,7 @@ export default function TradingPage() {
                               ask={assetData.ask}
                               editingOrder={editingOrder}
                               editingPosition={editingPosition}
+                              calculatorData={calculatorData}
                               onOpenCalculator={() => setIsCalculatorOpen(true)}
                               onCancelEdit={() => {
                                 setEditingOrder(null);
@@ -247,6 +258,7 @@ export default function TradingPage() {
                                 <PositionCalculatorPanel
                                   currentPrice={assetData.currentPrice}
                                   onClose={() => setIsCalculatorOpen(false)}
+                                  onApplyToOrder={handleApplyCalculator}
                                 />
                               </div>
                             )}

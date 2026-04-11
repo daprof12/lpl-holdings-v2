@@ -23,7 +23,7 @@ const RISK_LIMITS = {
  */
 export default function StrategyExecutionEngine() {
   const { strategies, updateStrategy, calculateIndicators, getStrategySignal, pauseAllStrategies } = useAutoTrader();
-  const { addPosition, account, tradingMode, positions } = useTrading();
+  const { addPosition, account, positions } = useTrading();
   const { currentUser } = useAuth();
   const marketData = useMarketData();
   const priceHistoryRef = useRef<Map<string, number[]>>(new Map());
@@ -198,7 +198,7 @@ export default function StrategyExecutionEngine() {
             pnl: 0,
             margin: margin,
             timestamp: new Date(),
-            mode: strategy.mode,
+            mode: 'live',
           });
 
           // Update strategy statistics

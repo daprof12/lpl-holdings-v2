@@ -31,7 +31,7 @@ import { formatCurrency } from '../../utils/formatNumber';
 
 export default function InvestmentsPage() {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, addFundsToAccount } = useAuth();
   const { 
     investmentOffers, 
     addUserInvestment,
@@ -116,11 +116,10 @@ export default function InvestmentsPage() {
     };
   }, [currentUser]);
   
-  // Investment-specific wallet balances (ECN and IPO are separate from main trading account)
-  // Portfolio balance is the investment portfolio balance (separate from live trading account)
-  const [portfolioBalance, setPortfolioBalance] = useState(0);
-  const [ecnBalance, setEcnBalance] = useState(0);
-  const [ipoBalance, setIpoBalance] = useState(0);
+  // Investment-specific wallet balances are now part of the currentUser object in AuthContext
+  const portfolioBalance = currentUser?.investmentBalances?.portfolio || 0;
+  const ecnBalance = currentUser?.investmentBalances?.ecn || 0;
+  const ipoBalance = currentUser?.investmentBalances?.ipo || 0;
 
   // Transfer state
   const [transferAmount, setTransferAmount] = useState('');
@@ -141,52 +140,6 @@ export default function InvestmentsPage() {
   const [sellWallet, setSellWallet] = useState<'portfolio' | 'ecn' | 'ipo'>('portfolio');
   const [isSelling, setIsSelling] = useState(false);
 
-  // Load balances from localStorage (per-user key)
-  useEffect(() => {
-    if (!currentUser) return;
-    const loadBalances = () => {
-      const stored = localStorage.getItem(`investment_balances_${currentUser.id}`);
-      if (stored) {
-        const balances = JSON.parse(stored);
-        setPortfolioBalance(balances.portfolio || 0);
-        setEcnBalance(balances.ecn || 0);
-        setIpoBalance(balances.ipo || 0);
-      }
-    };
-    loadBalances();
-
-    // Listen for cross-tab storage changes
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === `investment_balances_${currentUser.id}` && e.newValue) {
-        try {
-          const balances = JSON.parse(e.newValue);
-          setPortfolioBalance(balances.portfolio || 0);
-          setEcnBalance(balances.ecn || 0);
-          setIpoBalance(balances.ipo || 0);
-        } catch { /* ignore */ }
-      }
-    };
-    // Listen for same-tab storage events
-    const handleStorageLocal = () => {
-      loadBalances();
-    };
-    window.addEventListener('storage', handleStorage);
-    window.addEventListener('investmentBalancesUpdated', handleStorageLocal);
-    return () => {
-      window.removeEventListener('storage', handleStorage);
-      window.removeEventListener('investmentBalancesUpdated', handleStorageLocal);
-    };
-  }, [currentUser?.id]);
-
-  const saveBalances = (portfolio: number, ecn: number, ipo: number) => {
-    if (!currentUser) return;
-    localStorage.setItem(`investment_balances_${currentUser.id}`, JSON.stringify({ portfolio, ecn, ipo }));
-    setPortfolioBalance(portfolio);
-    setEcnBalance(ecn);
-    setIpoBalance(ipo);
-    window.dispatchEvent(new Event('storage'));
-  };
-
   const handleTransfer = () => {
     const amount = parseFloat(transferAmount);
     if (!amount || amount <= 0) {
@@ -206,11 +159,12 @@ export default function InvestmentsPage() {
       return;
     }
 
-    // All transfers are between portfolio/ecn/ipo balances
-    const newBalances = { ...balances };
-    newBalances[fromWallet] -= amount;
-    newBalances[toWallet] += amount;
-    saveBalances(newBalances.portfolio, newBalances.ecn, newBalances.ipo);
+    if (!currentUser) return;
+
+    // Deduct from source
+    addFundsToAccount(currentUser.id, -amount, fromWallet, 'balance');
+    // Add to destination
+    addFundsToAccount(currentUser.id, amount, toWallet, 'balance');
 
     setTransferAmount('');
     showSuccessToast(`Transferred $${amount.toFixed(2)} successfully`);
@@ -274,9 +228,7 @@ export default function InvestmentsPage() {
       }
 
       // Deduct payment from the selected wallet
-      const newBalances = { portfolio: portfolioBalance, ecn: ecnBalance, ipo: ipoBalance };
-      newBalances[paymentWallet] -= totalCost;
-      saveBalances(newBalances.portfolio, newBalances.ecn, newBalances.ipo);
+      addFundsToAccount(currentUser.id, totalCost * -1, paymentWallet, 'balance');
 
       // Calculate dates
       const startDate = Date.now();
@@ -298,6 +250,7 @@ export default function InvestmentsPage() {
         endDate,
         profitability: selectedOffer.profitability,
         status: 'in-progress',
+        showValueAndDate: selectedOffer.type === 'IPO' ? false : true,
       });
 
       console.log('Investment created with ID:', investmentId);
@@ -455,12 +408,12 @@ export default function InvestmentsPage() {
             <div className="text-3xl font-bold text-green-600">${formatCurrency(portfolioBalance)}</div>
           </div>
           <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
-            <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">ECN Balance</div>
-            <div className="text-3xl font-bold text-blue-600">${formatCurrency(ecnBalance)}</div>
-          </div>
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
             <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">IPO Balance</div>
             <div className="text-3xl font-bold text-purple-600">${formatCurrency(ipoBalance)}</div>
+          </div>
+          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
+            <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">ECN Balance</div>
+            <div className="text-3xl font-bold text-blue-600">${formatCurrency(ecnBalance)}</div>
           </div>
         </div>
 
@@ -476,8 +429,8 @@ export default function InvestmentsPage() {
                 className="w-full mt-1 p-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700"
               >
                 <option value="portfolio">Portfolio Balance</option>
-                <option value="ecn">ECN Balance</option>
                 <option value="ipo">IPO Balance</option>
+                <option value="ecn">ECN Balance</option>
               </select>
             </div>
             <div>
@@ -488,8 +441,8 @@ export default function InvestmentsPage() {
                 className="w-full mt-1 p-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700"
               >
                 <option value="portfolio">Portfolio Balance</option>
-                <option value="ecn">ECN Balance</option>
                 <option value="ipo">IPO Balance</option>
+                <option value="ecn">ECN Balance</option>
               </select>
             </div>
             <div>
@@ -558,7 +511,9 @@ export default function InvestmentsPage() {
                   )}
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Category</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Offer Price</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Current Price</th>
+                  {activeTab !== 'IPO' && (
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Current Price</th>
+                  )}
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Available / Total Unit</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Action</th>
                 </tr>
@@ -610,6 +565,7 @@ export default function InvestmentsPage() {
                         Min: {offer.minPurchase} unit{offer.minPurchase !== 1 ? 's' : ''}
                       </div>
                     </td>
+                    {activeTab !== 'IPO' && (
                     <td className="px-4 py-3">
                       {offer.type === 'ECN' && (offer as any).marketPrice ? (
                         <div>
@@ -625,6 +581,7 @@ export default function InvestmentsPage() {
                         <span className="text-gray-400 dark:text-gray-500">—</span>
                       )}
                     </td>
+                    )}
                     <td className="px-4 py-3">{offer.availableUnits.toLocaleString()} / {offer.totalUnits.toLocaleString()}</td>
                     <td className="px-4 py-3">
                       <Button
@@ -741,12 +698,18 @@ export default function InvestmentsPage() {
                       <td className="px-4 py-3">{inv.units}</td>
                       <td className="px-4 py-3 font-semibold">${formatCurrency(inv.totalAmount)}</td>
                       <td className="px-4 py-3 font-semibold text-green-600 dark:text-green-400">
-                        ${formatCurrency(inv.currentValue)}
+                        {inv.offerType === 'IPO' && !inv.showValueAndDate 
+                          ? '—' 
+                          : `$${formatCurrency(inv.currentValue)}`}
                       </td>
                       {historyTypeTab === 'IPO' ? (
                         <>
                           <td className="px-4 py-3">{new Date(inv.startDate).toLocaleDateString()}</td>
-                          <td className="px-4 py-3">{new Date(inv.endDate).toLocaleDateString()}</td>
+                          <td className="px-4 py-3">
+                            {inv.offerType === 'IPO' && !inv.showValueAndDate 
+                              ? '—' 
+                              : new Date(inv.endDate).toLocaleDateString()}
+                          </td>
                         </>
                       ) : (
                         <td className="px-4 py-3">
@@ -891,8 +854,8 @@ export default function InvestmentsPage() {
                     className="w-full mt-1 p-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700"
                   >
                     <option value="portfolio">Portfolio Balance (${formatCurrency(portfolioBalance)})</option>
-                    <option value="ecn">ECN Balance (${formatCurrency(ecnBalance)})</option>
                     <option value="ipo">IPO Balance (${formatCurrency(ipoBalance)})</option>
+                    <option value="ecn">ECN Balance (${formatCurrency(ecnBalance)})</option>
                   </select>
                 </div>
                 {buyUnits && parseInt(buyUnits) > 0 && (
@@ -961,8 +924,8 @@ export default function InvestmentsPage() {
                     className="w-full mt-1 p-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700"
                   >
                     <option value="portfolio">Portfolio Balance</option>
-                    <option value="ecn">ECN Balance</option>
                     <option value="ipo">IPO Balance</option>
+                    <option value="ecn">ECN Balance</option>
                   </select>
                 </div>
                 {sellUnits && parseInt(sellUnits) > 0 && (

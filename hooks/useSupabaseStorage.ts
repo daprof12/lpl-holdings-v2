@@ -163,7 +163,7 @@ export function useUserPreferences(userId: string | null) {
     defaultValue: {
       theme: 'light' as 'light' | 'dark',
       language: 'en' as 'en' | 'es' | 'fr' | 'de' | 'zh',
-      tradingMode: 'paper' as 'paper' | 'live',
+      tradingMode: 'live' as 'live',
     },
     autoSync: enabled,
   });
@@ -200,16 +200,16 @@ export function useBulkData<T>(dataType: string, defaultValue: T = [] as any) {
 }
 
 // Hook for trading data
-export function useTradingData(userId: string | null, mode: 'paper' | 'live') {
+export function useTradingData(userId: string | null) {
   const enabled = !!userId;
   
   return useSupabaseStorage({
-    key: userId ? `trading/${userId}/${mode}` : `trading/guest/${mode}`,
+    key: userId ? `trading/${userId}/live` : `trading/guest/live`,
     defaultValue: {
-      balance: mode === 'paper' ? 10000 : 0,
-      equity: mode === 'paper' ? 10000 : 0,
+      balance: 0,
+      equity: 0,
       margin: 0,
-      freeMargin: mode === 'paper' ? 10000 : 0,
+      freeMargin: 0,
       marginLevel: 0,
       positions: [],
       orders: [],

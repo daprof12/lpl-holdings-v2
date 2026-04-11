@@ -89,8 +89,8 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
         { id: 'dm_btc_1', type: 'crypto', enabled: true, cryptoType: 'BTC', walletAddress: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', network: 'Bitcoin', minDeposit: 0.0001 },
         { id: 'dm_eth_1', type: 'crypto', enabled: true, cryptoType: 'ETH', walletAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb', network: 'Ethereum', minDeposit: 0.01 },
         { id: 'dm_usdt_1', type: 'crypto', enabled: true, cryptoType: 'USDT', walletAddress: 'TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS', network: 'Tron (TRC20)', minDeposit: 10 },
-        { id: 'dm_bank_1', type: 'bank', enabled: false, bankName: 'JPMorgan Chase Bank', accountName: 'Gross Trading Platform LLC', accountNumber: '****5678', routingNumber: '021000021', swiftCode: 'CHASUS33' },
-        { id: 'dm_card_1', type: 'card', enabled: false, processorName: 'Stripe', processorType: 'credit_card', publicKey: 'pk_live_XXXXXXXXXXXXXXXXXXXXXXXX', processingFee: 2.9 },
+        { id: 'dm_bank_1', type: 'bank', enabled: true, bankName: 'JPMorgan Chase Bank', accountName: 'Gross Trading Platform LLC', accountNumber: '****5678', routingNumber: '021000021', swiftCode: 'CHASUS33' },
+        { id: 'dm_card_1', type: 'card', enabled: true, processorName: 'Stripe', processorType: 'credit_card', publicKey: 'pk_live_XXXXXXXXXXXXXXXXXXXXXXXX', processingFee: 2.9 },
       ];
 
       let allMethods: DepositMethod[] = defaultMethods;
@@ -119,14 +119,15 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
 
       if (hasUserSpecificConfig) {
         // User has explicit per-user restrictions — honour them
-        filteredCrypto = allMethods.filter(m => m.type === 'crypto' && m.enabled && userEnabledMethods.includes('crypto'));
-        filteredCard   = allMethods.filter(m => m.type === 'card'   && m.enabled && userEnabledMethods.includes('credit_card'));
-        filteredBank   = allMethods.filter(m => m.type === 'bank'   && m.enabled && userEnabledMethods.includes('bank_transfer'));
+        // Note: m.enabled is the GLOBAL status set by admin
+        filteredCrypto = allMethods.filter(m => m.type === 'crypto' && userEnabledMethods.includes('crypto'));
+        filteredCard   = allMethods.filter(m => m.type === 'card'   && userEnabledMethods.includes('credit_card'));
+        filteredBank   = allMethods.filter(m => m.type === 'bank'   && userEnabledMethods.includes('bank_transfer'));
       } else {
-        // No per-user restriction — show all admin-enabled methods (default behaviour)
-        filteredCrypto = allMethods.filter(m => m.type === 'crypto' && m.enabled);
-        filteredCard   = allMethods.filter(m => m.type === 'card'   && m.enabled);
-        filteredBank   = allMethods.filter(m => m.type === 'bank'   && m.enabled);
+        // Show all methods, we will handle the "enabled" status in the UI
+        filteredCrypto = allMethods.filter(m => m.type === 'crypto');
+        filteredCard   = allMethods.filter(m => m.type === 'card');
+        filteredBank   = allMethods.filter(m => m.type === 'bank');
       }
 
       setAvailableMethods({
@@ -141,7 +142,7 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
 
   // Build deposit methods array dynamically based on what's available
   const depositMethods = [
-    ...(availableMethods.crypto.length > 0 ? [{
+    {
       id: 'crypto' as const,
       name: 'Cryptocurrency',
       icon: Bitcoin,
@@ -151,9 +152,10 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
       fee: '0%',
       processingTime: 'Instant - 30 min',
       minDeposit: availableMethods.crypto.length > 0 ? `$${Math.min(...availableMethods.crypto.map(m => (m.minDeposit || 0.001) * 45000))}` : '$10',
-      color: 'from-orange-500 to-orange-600'
-    }] : []),
-    ...(availableMethods.card.length > 0 ? [{
+      color: 'from-orange-500 to-orange-600',
+      isAvailable: availableMethods.crypto.some(m => m.enabled)
+    },
+    {
       id: 'card' as const,
       name: 'Credit/Debit Card',
       icon: CreditCard,
@@ -161,9 +163,10 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
       fee: availableMethods.card.length > 0 ? `${availableMethods.card[0].processingFee || 2.5}%` : '2.5%',
       processingTime: 'Instant',
       minDeposit: '$50',
-      color: 'from-blue-500 to-blue-600'
-    }] : []),
-    ...(availableMethods.bank.length > 0 ? [{
+      color: 'from-blue-500 to-blue-600',
+      isAvailable: availableMethods.card.some(m => m.enabled)
+    },
+    {
       id: 'bank' as const,
       name: 'Bank Transfer',
       icon: Building2,
@@ -171,8 +174,9 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
       fee: '0%',
       processingTime: '1-3 business days',
       minDeposit: '$100',
-      color: 'from-green-500 to-green-600'
-    }] : []),
+      color: 'from-green-500 to-green-600',
+      isAvailable: availableMethods.bank.some(m => m.enabled)
+    },
   ];
 
   const handleFileUpload = (field: 'idDocument' | 'selfieDocument', event: React.ChangeEvent<HTMLInputElement>) => {
@@ -341,10 +345,22 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
             return (
               <div
                 key={method.id}
-                onClick={() => setSelectedMethod(method.id as any)}
-                className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm hover:shadow-md transition-all cursor-pointer border-2 border-transparent hover:border-blue-500"
+                onClick={() => method.isAvailable && setSelectedMethod(method.id as any)}
+                className={`bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm transition-all border-2 relative ${
+                  method.isAvailable 
+                    ? 'hover:shadow-md cursor-pointer border-transparent hover:border-blue-500' 
+                    : 'opacity-60 cursor-not-allowed border-gray-100 dark:border-slate-700'
+                }`}
               >
-                <div className={`w-12 h-12 bg-gradient-to-br ${method.color} rounded-lg flex items-center justify-center mb-4`}>
+                {!method.isAvailable && (
+                  <div className="absolute inset-0 z-10 bg-white/40 dark:bg-slate-800/40 rounded-xl flex items-center justify-center p-6 text-center">
+                    <div className="bg-white dark:bg-slate-900 px-4 py-2 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 text-xs font-bold text-red-600 dark:text-red-400">
+                      Deposit method currently not available
+                    </div>
+                  </div>
+                )}
+                
+                <div className={`w-12 h-12 bg-gradient-to-br ${method.color} rounded-lg flex items-center justify-center mb-4 ${!method.isAvailable ? 'grayscale' : ''}`}>
                   <Icon className="w-6 h-6 text-white" />
                 </div>
 
@@ -366,8 +382,8 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
                   </div>
                 </div>
 
-                <Button className="w-full mt-4">
-                  Select Method
+                <Button className="w-full mt-4" disabled={!method.isAvailable}>
+                  {method.isAvailable ? 'Select Method' : 'Unavailable'}
                 </Button>
               </div>
             );

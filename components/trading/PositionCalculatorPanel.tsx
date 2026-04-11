@@ -4,9 +4,17 @@ import PositionCalculator from './PositionCalculator';
 interface PositionCalculatorPanelProps {
   currentPrice: number;
   onClose: () => void;
+  onApplyToOrder?: (data: {
+    orderType: 'buy' | 'sell';
+    entryPrice: string;
+    units: string;
+    stopLoss: string;
+    takeProfit: string;
+    leverage: string;
+  }) => void;
 }
 
-export default function PositionCalculatorPanel({ currentPrice, onClose }: PositionCalculatorPanelProps) {
+export default function PositionCalculatorPanel({ currentPrice, onClose, onApplyToOrder }: PositionCalculatorPanelProps) {
   return (
     <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col h-full" style={{ maxHeight: 'calc(100vh - 6rem)' }}>
       {/* Header */}
@@ -23,7 +31,10 @@ export default function PositionCalculatorPanel({ currentPrice, onClose }: Posit
 
       {/* Scrollable Content */}
       <div className="overflow-y-auto flex-1 p-4">
-        <PositionCalculator currentPrice={currentPrice} />
+        <PositionCalculator 
+          currentPrice={currentPrice} 
+          onApplyToOrder={onApplyToOrder}
+        />
       </div>
     </div>
   );

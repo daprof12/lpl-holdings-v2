@@ -112,6 +112,7 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
   const { addPosition, account, tradingMode } = useTrading();
   const { currentUser } = useAuth();
   const marketData = useMarketData();
+  const [isHydrated, setIsHydrated] = useState(false);
 
   // ============================================
   // API FUNCTIONS - Database Integration
@@ -276,6 +277,7 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
       console.error('Error refreshing strategies:', error);
     } finally {
       setLoading(false);
+      setIsHydrated(true);
     }
   };
 
@@ -316,7 +318,7 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
   const syncStrategiesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (strategies.length >= 0) {
+    if (isHydrated && strategies.length >= 0) {
       localStorage.setItem('gross_autotrader_strategies', JSON.stringify(strategies));
       
       if (syncStrategiesTimeoutRef.current) clearTimeout(syncStrategiesTimeoutRef.current);

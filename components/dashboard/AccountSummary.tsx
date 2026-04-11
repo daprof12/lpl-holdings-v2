@@ -4,11 +4,11 @@ import { useTrading } from '../../contexts/TradingContext';
 import { formatPercentage } from '../../utils/formatNumber';
 
 export default function AccountSummary() {
-  const { liveAccount, tradingMode } = useTrading();
+  const { account } = useTrading();
 
   // Calculate margin level
-  const marginLevel = liveAccount.margin > 0 && liveAccount.equity > 0
-    ? (liveAccount.equity / liveAccount.margin) * 100
+  const marginLevel = account.margin > 0 && account.equity > 0
+    ? (account.equity / account.margin) * 100
     : 0;
 
   // Determine if margin level is healthy
@@ -23,19 +23,18 @@ export default function AccountSummary() {
           : 'Critical (<50%)';
 
   // Calculate total P/L
-  const totalPnL = liveAccount.realizedPnL + liveAccount.unrealizedPnL;
+  const totalPnL = account.realizedPnL + account.unrealizedPnL;
   const isPnLPositive = totalPnL >= 0;
 
   // Calculate P/L percentage (based on starting balance vs current equity)
-  const startingBalance = 0; // Both start at 0 now
-  const pnlPercentage = liveAccount.balance > 0 
-    ? formatPercentage((totalPnL / liveAccount.balance) * 100)
+  const pnlPercentage = account.balance > 0 
+    ? formatPercentage((totalPnL / account.balance) * 100)
     : '0.00%';
 
   const cards = [
     {
       title: 'Total Balance',
-      value: `$${liveAccount.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `$${account.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: Wallet,
       color: 'from-blue-500 to-blue-600',
       bgColor: 'bg-blue-50 dark:bg-blue-900/20',
@@ -43,16 +42,16 @@ export default function AccountSummary() {
     },
     {
       title: 'Equity',
-      value: `$${liveAccount.equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `$${account.equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: DollarSign,
       color: 'from-purple-500 to-purple-600',
       bgColor: 'bg-purple-50 dark:bg-purple-900/20',
       iconColor: 'text-purple-600 dark:text-purple-400',
-      subtitle: `Balance + Unrealized P/L`
+      subtitle: `Balance + Bonus + Credit + Unrealized P/L`
     },
     {
       title: 'Margin Used',
-      value: `$${liveAccount.margin.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `$${account.margin.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: PieChart,
       color: 'from-orange-500 to-orange-600',
       bgColor: 'bg-orange-50 dark:bg-orange-900/20',
@@ -60,7 +59,7 @@ export default function AccountSummary() {
     },
     {
       title: 'Available Funds',
-      value: `$${liveAccount.availableFunds.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `$${account.availableFunds.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: Activity,
       color: 'from-green-500 to-green-600',
       bgColor: 'bg-green-50 dark:bg-green-900/20',

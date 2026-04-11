@@ -32,7 +32,6 @@ export interface Position {
   pnl: number;
   timestamp: Date;
   status: 'open' | 'closed';
-  mode: 'paper' | 'live';
 }
 
 export interface Order {
@@ -48,7 +47,6 @@ export interface Order {
   leverage: number;
   status: 'pending' | 'filled' | 'cancelled';
   timestamp: Date;
-  mode: 'paper' | 'live';
 }
 
 export interface HistoryItem {
@@ -64,7 +62,6 @@ export interface HistoryItem {
   pnl?: number;
   timestamp: Date;
   status: 'filled' | 'cancelled' | 'closed';
-  mode: 'paper' | 'live';
 }
 
 export interface Account {
@@ -75,6 +72,7 @@ export interface Account {
   margin: number;
   availableFunds: number;
   bonus: number;
+  credit: number;
 }
 
 export interface PortfolioSnapshot {
@@ -85,40 +83,19 @@ export interface PortfolioSnapshot {
 }
 
 interface TradingContextType {
-  // Paper trading state
-  paperPositions: Position[];
-  setPaperPositions: (positions: Position[]) => void;
-  paperOrders: Order[];
-  setPaperOrders: (orders: Order[]) => void;
-  paperHistory: HistoryItem[];
-  setPaperHistory: (history: HistoryItem[]) => void;
-  paperAccount: Account;
-  setPaperAccount: (account: Account) => void;
-  paperPortfolioHistory: PortfolioSnapshot[];
-  setPaperPortfolioHistory: (history: PortfolioSnapshot[]) => void;
-
-  // Live trading state
-  livePositions: Position[];
-  setLivePositions: (positions: Position[]) => void;
-  liveOrders: Order[];
-  setLiveOrders: (orders: Order[]) => void;
-  liveHistory: HistoryItem[];
-  setLiveHistory: (history: HistoryItem[]) => void;
-  liveAccount: Account;
-  setLiveAccount: (account: Account) => void;
-  livePortfolioHistory: PortfolioSnapshot[];
-  setLivePortfolioHistory: (history: PortfolioSnapshot[]) => void;
-
-  // Current trading mode
-  tradingMode: 'paper' | 'live';
-  setTradingMode: (mode: 'paper' | 'live') => void;
-
-  // Helper getters
+  // Trading state
   positions: Position[];
+  setPositions: (positions: Position[]) => void;
   orders: Order[];
+  setOrders: (orders: Order[]) => void;
   history: HistoryItem[];
+  setHistory: (history: HistoryItem[]) => void;
   account: Account;
+  setAccount: (account: Account) => void;
   portfolioHistory: PortfolioSnapshot[];
+  setPortfolioHistory: (history: PortfolioSnapshot[]) => void;
+  tradingMode: 'live' | 'paper';
+  setTradingMode: (mode: 'live' | 'paper') => void;
 
   // Actions
   addPosition: (position: Position) => void;
@@ -132,8 +109,8 @@ interface TradingContextType {
   addPortfolioSnapshot: () => void;
   
   // Balance management
-  depositToTradingAccount: (amount: number, mode: 'paper' | 'live') => void;
-  withdrawFromTradingAccount: (amount: number, mode: 'paper' | 'live') => boolean;
+  depositToTradingAccount: (amount: number) => void;
+  withdrawFromTradingAccount: (amount: number) => boolean;
 }
 
 const TradingContext = createContext<TradingContextType | undefined>(undefined);
@@ -141,51 +118,12 @@ const TradingContext = createContext<TradingContextType | undefined>(undefined);
 export function TradingProvider({ children }: { children: ReactNode }) {
   const marketData = useMarketData();
   const auth = useAuth();
-  const [tradingMode, setTradingMode] = useState<'paper' | 'live'>('live');
 
-  // Get default paper balance from admin settings
-  const getDefaultPaperBalance = () => {
-    const settings = localStorage.getItem('admin_trading_settings');
-    if (settings) {
-      try {
-        const parsed = JSON.parse(settings);
-        return parsed.defaultPaperBalance || 10000;
-      } catch {
-        return 10000;
-      }
-    }
-    return 10000; // Default $10,000 for paper trading
-  };
-
-  // Paper trading state
-  const [paperPositions, setPaperPositions] = useState<Position[]>([]);
-  const [paperOrders, setPaperOrders] = useState<Order[]>([]);
-  const [paperHistory, setPaperHistory] = useState<HistoryItem[]>([]);
-  const [paperAccount, setPaperAccount] = useState<Account>(() => {
-    // Check if account exists in localStorage first
-    const stored = localStorage.getItem('gross_paper_account');
-    if (stored) {
-      return JSON.parse(stored);
-    }
-    // Otherwise, initialize with default paper balance
-    const defaultBalance = getDefaultPaperBalance();
-    return {
-      balance: defaultBalance,
-      equity: defaultBalance,
-      realizedPnL: 0,
-      unrealizedPnL: 0,
-      margin: 0,
-      availableFunds: defaultBalance,
-      bonus: 0,
-    };
-  });
-  const [paperPortfolioHistory, setPaperPortfolioHistory] = useState<PortfolioSnapshot[]>([]);
-
-  // Live trading state
-  const [livePositions, setLivePositions] = useState<Position[]>([]);
-  const [liveOrders, setLiveOrders] = useState<Order[]>([]);
-  const [liveHistory, setLiveHistory] = useState<HistoryItem[]>([]);
-  const [liveAccount, setLiveAccount] = useState<Account>({
+  // Trading state
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [account, setAccount] = useState<Account>({
     balance: 0, // Start at $0 - user must deposit
     equity: 0,
     realizedPnL: 0,
@@ -193,11 +131,14 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     margin: 0,
     availableFunds: 0,
     bonus: 0,
+    credit: 0,
   });
   // Guard: prevent the save effect from overwriting a stored balance on first mount
-  const isLiveAccountHydrated = useRef(false);
-  const pendingLiveHydration = useRef(false);
-  const [livePortfolioHistory, setLivePortfolioHistory] = useState<PortfolioSnapshot[]>([]);
+  const isAccountHydrated = useRef(false);
+  const pendingHydration = useRef(false);
+  const [portfolioHistory, setPortfolioHistory] = useState<PortfolioSnapshot[]>([]);
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [tradingMode, setTradingMode] = useState<'live' | 'paper'>('live');
 
   // ============================================
   // API FUNCTIONS - Database Integration
@@ -237,7 +178,6 @@ export function TradingProvider({ children }: { children: ReactNode }) {
         pnl: parseFloat(dbPos.profit || 0),
         margin: (parseFloat(dbPos.amount) * parseFloat(dbPos.entry_price)) / (dbPos.leverage || 1),
         timestamp: new Date(dbPos.created_at),
-        mode: 'live', // Positions from database are live positions
         status: dbPos.status
       }));
     } catch (error) {
@@ -278,8 +218,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
         entryTimestamp: new Date(dbItem.created_at),
         pnl: parseFloat(dbItem.profit || 0),
         timestamp: new Date(dbItem.closed_at || dbItem.created_at),
-        status: 'closed',
-        mode: 'live'
+        status: 'closed'
       }));
     } catch (error) {
       console.error('Error fetching trade history from database:', error);
@@ -370,19 +309,15 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     try {
       console.log('🔄 Syncing trading data from database for user:', userId);
       
-      // 1. Fetch Relational Data (Prioritized for Live Mode)
+      // 1. Fetch Relational Data
       const [dbPositions, dbHistory] = await Promise.all([
         fetchPositionsFromDatabase(userId),
         fetchTradeHistoryFromDatabase(userId)
       ]);
 
       // 2. Fetch KV Data (Backup and metadata)
-      const [paperAccountDb, liveAccountDb, paperPosDb, paperOrdDb, paperHisDb, livePosDb, liveOrdDb, liveHisDb] = await Promise.all([
-        getKV(`gross_paper_account_${userId}`),
+      const [accountDb, posDb, ordDb, hisDb] = await Promise.all([
         getKV(`gross_live_account_${userId}`),
-        getKV('gross_paper_positions'),
-        getKV('gross_paper_orders'),
-        getKV('gross_paper_history'),
         getKV('gross_live_positions'),
         getKV('gross_live_orders'),
         getKV('gross_live_history')
@@ -390,42 +325,36 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
       const filterByUser = (items: any[]) => (items || []).filter(item => item.userId === userId);
 
-      // 3. Hydrate Account States
-      if (paperAccountDb) setPaperAccount(paperAccountDb);
-      if (liveAccountDb) {
-        setLiveAccount(liveAccountDb);
-        isLiveAccountHydrated.current = true;
+      // 3. Hydrate Account State
+      if (accountDb) {
+        setAccount(accountDb);
+        isAccountHydrated.current = true;
       }
 
       // 4. Hydrate Positions
-      // Combine RELATIONAL and KV positions (Relational is source of truth for open trades)
-      // Map relational positions to KV-style for state consistency
-      const livePositionsFromKV = filterByUser(livePosDb);
-      
-      // Merge: Relational has IDs that should match. Use Relational for open trades.
+      const positionsFromKV = filterByUser(posDb);
       if (dbPositions.length > 0) {
-        setLivePositions(dbPositions);
-      } else if (livePositionsFromKV.length > 0) {
-        setLivePositions(livePositionsFromKV);
+        setPositions(dbPositions);
+      } else if (positionsFromKV.length > 0) {
+        setPositions(positionsFromKV);
       }
 
       // 5. Hydrate History
-      const liveHistoryFromKV = filterByUser(liveHisDb);
+      const historyFromKV = filterByUser(hisDb);
       if (dbHistory.length > 0) {
-        setLiveHistory(dbHistory);
-      } else if (liveHistoryFromKV.length > 0) {
-        setLiveHistory(liveHistoryFromKV);
+        setHistory(dbHistory);
+      } else if (historyFromKV.length > 0) {
+        setHistory(historyFromKV);
       }
 
-      // 6. Hydrate Paper & Orders (KV only)
-      if (paperPosDb) setPaperPositions(filterByUser(paperPosDb));
-      if (paperOrdDb) setPaperOrders(filterByUser(paperOrdDb));
-      if (paperHisDb) setPaperHistory(filterByUser(paperHisDb));
-      if (liveOrdDb)  setLiveOrders(filterByUser(liveOrdDb));
+      // 6. Hydrate Orders
+      if (ordDb) setOrders(filterByUser(ordDb));
       
       console.log('✅ Trading data successfully hydrated');
+      setIsHydrated(true);
     } catch (err) {
       console.error('❌ Failed to hydrate trading data:', err);
+      setIsHydrated(true);
     }
   }, [auth.currentUser?.id]);
 
@@ -449,14 +378,10 @@ export function TradingProvider({ children }: { children: ReactNode }) {
         const filterByUser = (items: any[]) => (items || []).filter(item => item.userId === userId);
 
         switch (key) {
-          case `gross_paper_account_${userId}`: setPaperAccount(value); break;
-          case `gross_live_account_${userId}`:  setLiveAccount(value); break;
-          case 'gross_paper_positions': setPaperPositions(filterByUser(value)); break;
-          case 'gross_paper_orders':    setPaperOrders(filterByUser(value)); break;
-          case 'gross_paper_history':   setPaperHistory(filterByUser(value)); break;
-          case 'gross_live_positions':  setLivePositions(filterByUser(value)); break;
-          case 'gross_live_orders':     setLiveOrders(filterByUser(value)); break;
-          case 'gross_live_history':    setLiveHistory(filterByUser(value)); break;
+          case `gross_live_account_${userId}`:  setAccount(value); break;
+          case 'gross_live_positions':  setPositions(filterByUser(value)); break;
+          case 'gross_live_orders':     setOrders(filterByUser(value)); break;
+          case 'gross_live_history':    setHistory(filterByUser(value)); break;
         }
       })
       .subscribe();
@@ -486,48 +411,22 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
   // Monitor positions for changes and sync
   useEffect(() => {
-    // Only the owner of a change or an admin should ideally push? 
-    // Actually, in this model, every client is a sync node.
-    if (paperPositions.length > 0) {
-      const allStr = localStorage.getItem('gross_paper_positions');
-      if (allStr) syncListToDB('gross_paper_positions', JSON.parse(allStr));
-    }
-  }, [paperPositions, syncListToDB]);
+    if (!isHydrated) return;
+    const allStr = localStorage.getItem('gross_live_positions');
+    if (allStr) syncListToDB('gross_live_positions', JSON.parse(allStr));
+  }, [positions, isHydrated, syncListToDB]);
 
   useEffect(() => {
-    if (livePositions.length > 0) {
-      const allStr = localStorage.getItem('gross_live_positions');
-      if (allStr) syncListToDB('gross_live_positions', JSON.parse(allStr));
-    }
-  }, [livePositions, syncListToDB]);
+    if (!isHydrated) return;
+    const allStr = localStorage.getItem('gross_live_history');
+    if (allStr) syncListToDB('gross_live_history', JSON.parse(allStr));
+  }, [history, isHydrated, syncListToDB]);
 
   useEffect(() => {
-    if (paperHistory.length > 0) {
-      const allStr = localStorage.getItem('gross_paper_history');
-      if (allStr) syncListToDB('gross_paper_history', JSON.parse(allStr));
-    }
-  }, [paperHistory, syncListToDB]);
-
-  useEffect(() => {
-    if (liveHistory.length > 0) {
-      const allStr = localStorage.getItem('gross_live_history');
-      if (allStr) syncListToDB('gross_live_history', JSON.parse(allStr));
-    }
-  }, [liveHistory, syncListToDB]);
-
-  useEffect(() => {
-    if (paperOrders.length > 0) {
-      const allStr = localStorage.getItem('gross_paper_orders');
-      if (allStr) syncListToDB('gross_paper_orders', JSON.parse(allStr));
-    }
-  }, [paperOrders, syncListToDB]);
-
-  useEffect(() => {
-    if (liveOrders.length > 0) {
-      const allStr = localStorage.getItem('gross_live_orders');
-      if (allStr) syncListToDB('gross_live_orders', JSON.parse(allStr));
-    }
-  }, [liveOrders, syncListToDB]);
+    if (!isHydrated) return;
+    const allStr = localStorage.getItem('gross_live_orders');
+    if (allStr) syncListToDB('gross_live_orders', JSON.parse(allStr));
+  }, [orders, isHydrated, syncListToDB]);
 
   // Helper to update global localStorage lists without overwriting other users' data
   const updateGlobalList = (key: string, updater: (items: any[]) => any[]) => {
@@ -554,12 +453,9 @@ export function TradingProvider({ children }: { children: ReactNode }) {
         const items = JSON.parse(e.newValue);
         const filtered = items.filter((item: any) => item.userId === userId || !item.userId);
 
-        if (e.key === 'gross_paper_positions') setPaperPositions(filtered);
-        if (e.key === 'gross_paper_orders') setPaperOrders(filtered);
-        if (e.key === 'gross_paper_history') setPaperHistory(filtered);
-        if (e.key === 'gross_live_positions') setLivePositions(filtered);
-        if (e.key === 'gross_live_orders') setLiveOrders(filtered);
-        if (e.key === 'gross_live_history') setLiveHistory(filtered);
+        if (e.key === 'gross_live_positions') setPositions(filtered);
+        if (e.key === 'gross_live_orders') setOrders(filtered);
+        if (e.key === 'gross_live_history') setHistory(filtered);
       } catch (err) {
         console.error('Cross-tab sync error:', err);
       }
@@ -573,83 +469,61 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const userId = auth.currentUser?.id;
     if (!userId) {
-      isLiveAccountHydrated.current = false;
+      isAccountHydrated.current = false;
       return;
     }
 
     // Reset hydration state for the new user context
-    isLiveAccountHydrated.current = false;
-    pendingLiveHydration.current = false;
+    isAccountHydrated.current = false;
+    pendingHydration.current = false;
 
     // Always prioritize per-user key for explicit session isolation
     const stored = localStorage.getItem(`gross_live_account_${userId}`);
 
     if (stored) {
       try {
-        setLiveAccount(JSON.parse(stored));
-        pendingLiveHydration.current = true;
+        setAccount(JSON.parse(stored));
+        pendingHydration.current = true;
       } catch { 
         // fallback for malformed data
-        isLiveAccountHydrated.current = true;
+        isAccountHydrated.current = true;
       }
     } else {
       // No stored data — nothing to overwrite, safe to allow saves immediately
-      isLiveAccountHydrated.current = true;
+      isAccountHydrated.current = true;
     }
   }, [auth.currentUser?.id]);
 
-  // Complete hydration AFTER setLiveAccount has been processed by React.
-  // This ensures the save effect sees the correct (hydrated) liveAccount
+  // Complete hydration AFTER setAccount has been processed by React.
+  // This ensures the save effect sees the correct (hydrated) account
   // value rather than the stale initial { balance: 0 }.
   useEffect(() => {
-    if (pendingLiveHydration.current) {
-      pendingLiveHydration.current = false;
-      isLiveAccountHydrated.current = true;
+    if (pendingHydration.current) {
+      pendingHydration.current = false;
+      isAccountHydrated.current = true;
     }
-  }, [liveAccount]);
-
-  // Save account state to localStorage
-  useEffect(() => {
-    localStorage.setItem('gross_paper_account', JSON.stringify(paperAccount));
-  }, [paperAccount]);
+  }, [account]);
 
   // Guarded save: only write after the stored value has been loaded,
   // and always use the per-user key so each user has their own balance.
   useEffect(() => {
     const userId = auth.currentUser?.id;
-    if (!isLiveAccountHydrated.current || !userId) return;
+    if (!isAccountHydrated.current || !userId) return;
     
     // 1. Local cache
     const liveKey = `gross_live_account_${userId}`;
-    localStorage.setItem(liveKey, JSON.stringify(liveAccount));
+    localStorage.setItem(liveKey, JSON.stringify(account));
     // Keep the generic key in sync so the storage-event listener can still read it
-    localStorage.setItem('gross_live_account', JSON.stringify(liveAccount));
+    localStorage.setItem('gross_live_account', JSON.stringify(account));
 
     // 2. Database Sync (Aggressive 1s debounce)
     const timeout = setTimeout(() => {
-      setKV(liveKey, liveAccount);
-      console.log('✅ Live account synced to DB for user:', userId);
+      setKV(liveKey, account);
+      console.log('✅ Account synced to DB for user:', userId);
     }, 1000);
 
     return () => clearTimeout(timeout);
-  }, [liveAccount, auth.currentUser?.id]);
-
-  // Similar sync for paper account
-  useEffect(() => {
-    const userId = auth.currentUser?.id;
-    if (!userId) return;
-
-    const paperKey = `gross_paper_account_${userId}`;
-    localStorage.setItem(paperKey, JSON.stringify(paperAccount));
-    localStorage.setItem('gross_paper_account', JSON.stringify(paperAccount));
-
-    const timeout = setTimeout(() => {
-      setKV(paperKey, paperAccount);
-      console.log('✅ Paper account synced to DB for user:', userId);
-    }, 1000);
-
-    return () => clearTimeout(timeout);
-  }, [paperAccount, auth.currentUser?.id]);
+  }, [account, auth.currentUser?.id]);
 
   // Listen for storage events to sync balance changes from admin in real-time
   useEffect(() => {
@@ -657,13 +531,11 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       const currentUserId = auth.currentUser?.id;
       if (!currentUserId) return;
 
-      // Only respond to events for THIS user's specific account keys
+      // Only respond to events for THIS user's specific account key
       const liveKey = `gross_live_account_${currentUserId}`;
-      const paperKey = `gross_paper_account_${currentUserId}`;
 
       // If it's a StorageEvent (from another tab), only react if it's our key.
-      // If it's a generic Event (from dispatchEvent), it won't have a 'key', so we always reload.
-      if (e && 'key' in e && e.key && e.key !== liveKey && e.key !== paperKey) {
+      if (e && 'key' in e && e.key && e.key !== liveKey) {
         return;
       }
 
@@ -672,16 +544,9 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       if (rawLive) {
         try {
           const parsed = JSON.parse(rawLive);
-          setLiveAccount(parsed);
-          isLiveAccountHydrated.current = true;
-          console.log(`✅ Live balance synced for ${currentUserId}: $${parsed.balance}`);
-        } catch { /* ignore */ }
-      }
-
-      const rawPaper = localStorage.getItem(paperKey);
-      if (rawPaper) {
-        try {
-          setPaperAccount(JSON.parse(rawPaper));
+          setAccount(parsed);
+          isAccountHydrated.current = true;
+          console.log(`✅ Balance synced for ${currentUserId}: $${parsed.balance}`);
         } catch { /* ignore */ }
       }
     };
@@ -691,14 +556,9 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   }, [auth.currentUser?.id]);
 
   // Helper getters
-  const positions = tradingMode === 'paper' ? paperPositions : livePositions;
-  const orders = tradingMode === 'paper' ? paperOrders : liveOrders;
-  const history = tradingMode === 'paper' ? paperHistory : liveHistory;
-  const account = tradingMode === 'paper' ? paperAccount : liveAccount;
-  const portfolioHistory = tradingMode === 'paper' ? paperPortfolioHistory : livePortfolioHistory;
 
   // Helper to persist changes to the global list in a way that doesn't overwrite others
-  const patchGlobalList = useCallback((key: string, items: any[], mode: 'paper' | 'live') => {
+  const patchGlobalList = useCallback((key: string, items: any[]) => {
     const userId = auth.currentUser?.id;
     if (!userId) return;
 
@@ -736,52 +596,34 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       currentPrice: currentMarketPrice
     };
     
-    if (tradingMode === 'paper') {
-      const next = [...paperPositions, positionWithUserId];
-      setPaperPositions(next);
-      patchGlobalList('gross_paper_positions', next, 'paper');
-    } else {
-      const next = [...livePositions, positionWithUserId];
-      setLivePositions(next);
-      patchGlobalList('gross_live_positions', next, 'live');
-      
-      // SYNC TO RELATIONAL DATABASE
-      createPositionInDatabase(positionWithUserId).catch(err => {
-        console.error('Failed to sync new position to relational DB:', err);
+    const next = [...positions, positionWithUserId];
+    setPositions(next);
+    patchGlobalList('gross_live_positions', next);
+    
+    // SYNC TO RELATIONAL DATABASE
+    createPositionInDatabase(positionWithUserId).catch(err => {
+      console.error('Failed to sync new position to relational DB:', err);
+    });
+  };
+
+  const removePosition = (positionId: string) => {
+    const position = positions.find(p => p.id === positionId);
+    const next = positions.filter(p => p.id !== positionId);
+    setPositions(next);
+    patchGlobalList('gross_live_positions', next);
+
+    // SYNC TO RELATIONAL DATABASE
+    if (position) {
+      closePositionInDatabase(positionId, position.currentPrice).catch(err => {
+        console.error('Failed to sync position closure to relational DB:', err);
       });
     }
   };
 
-  const removePosition = (positionId: string) => {
-    if (tradingMode === 'paper') {
-      const next = paperPositions.filter(p => p.id !== positionId);
-      setPaperPositions(next);
-      patchGlobalList('gross_paper_positions', next, 'paper');
-    } else {
-      const position = livePositions.find(p => p.id === positionId);
-      const next = livePositions.filter(p => p.id !== positionId);
-      setLivePositions(next);
-      patchGlobalList('gross_live_positions', next, 'live');
-
-      // SYNC TO RELATIONAL DATABASE
-      if (position) {
-        closePositionInDatabase(positionId, position.currentPrice).catch(err => {
-          console.error('Failed to sync position closure to relational DB:', err);
-        });
-      }
-    }
-  };
-
   const updatePosition = (positionId: string, updates: Partial<Position>) => {
-    if (tradingMode === 'paper') {
-      const next = paperPositions.map(p => p.id === positionId ? { ...p, ...updates } : p);
-      setPaperPositions(next);
-      patchGlobalList('gross_paper_positions', next, 'paper');
-    } else {
-      const next = livePositions.map(p => p.id === positionId ? { ...p, ...updates } : p);
-      setLivePositions(next);
-      patchGlobalList('gross_live_positions', next, 'live');
-    }
+    const next = positions.map(p => p.id === positionId ? { ...p, ...updates } : p);
+    setPositions(next);
+    patchGlobalList('gross_live_positions', next);
   };
 
   const addOrder = (order: Order) => {
@@ -789,39 +631,21 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
 
     const orderWithUserId: Order = { ...order, userId };
-    if (tradingMode === 'paper') {
-      const next = [...paperOrders, orderWithUserId];
-      setPaperOrders(next);
-      patchGlobalList('gross_paper_orders', next, 'paper');
-    } else {
-      const next = [...liveOrders, orderWithUserId];
-      setLiveOrders(next);
-      patchGlobalList('gross_live_orders', next, 'live');
-    }
+    const next = [...orders, orderWithUserId];
+    setOrders(next);
+    patchGlobalList('gross_live_orders', next);
   };
 
   const removeOrder = (orderId: string) => {
-    if (tradingMode === 'paper') {
-      const next = paperOrders.filter(o => o.id !== orderId);
-      setPaperOrders(next);
-      patchGlobalList('gross_paper_orders', next, 'paper');
-    } else {
-      const next = liveOrders.filter(o => o.id !== orderId);
-      setLiveOrders(next);
-      patchGlobalList('gross_live_orders', next, 'live');
-    }
+    const next = orders.filter(o => o.id !== orderId);
+    setOrders(next);
+    patchGlobalList('gross_live_orders', next);
   };
 
   const updateOrder = (orderId: string, updates: Partial<Order>) => {
-    if (tradingMode === 'paper') {
-      const next = paperOrders.map(o => o.id === orderId ? { ...o, ...updates } : o);
-      setPaperOrders(next);
-      patchGlobalList('gross_paper_orders', next, 'paper');
-    } else {
-      const next = liveOrders.map(o => o.id === orderId ? { ...o, ...updates } : o);
-      setLiveOrders(next);
-      patchGlobalList('gross_live_orders', next, 'live');
-    }
+    const next = orders.map(o => o.id === orderId ? { ...o, ...updates } : o);
+    setOrders(next);
+    patchGlobalList('gross_live_orders', next);
   };
 
   const addHistory = (item: HistoryItem) => {
@@ -829,23 +653,13 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
 
     const itemWithUserId: HistoryItem = { ...item, userId };
-    if (tradingMode === 'paper') {
-      const next = [itemWithUserId, ...paperHistory];
-      setPaperHistory(next);
-      patchGlobalList('gross_paper_history', next, 'paper');
-    } else {
-      const next = [itemWithUserId, ...liveHistory];
-      setLiveHistory(next);
-      patchGlobalList('gross_live_history', next, 'live');
-    }
+    const next = [itemWithUserId, ...history];
+    setHistory(next);
+    patchGlobalList('gross_live_history', next);
   };
 
   const updateAccount = (updates: Partial<Account>) => {
-    if (tradingMode === 'paper') {
-      setPaperAccount({ ...paperAccount, ...updates });
-    } else {
-      setLiveAccount({ ...liveAccount, ...updates });
-    }
+    setAccount({ ...account, ...updates });
   };
 
   const addPortfolioSnapshot = () => {
@@ -855,56 +669,39 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       balance: account.balance,
       pnl: account.realizedPnL + account.unrealizedPnL,
     };
-    if (tradingMode === 'paper') {
-      setPaperPortfolioHistory([...paperPortfolioHistory, snapshot]);
-    } else {
-      setLivePortfolioHistory([...livePortfolioHistory, snapshot]);
+    setPortfolioHistory([...portfolioHistory, snapshot]);
+  };
+
+
+  const depositToTradingAccount = (amount: number) => {
+    const newBalance = account.balance + amount;
+    const newAcc = { ...account, balance: newBalance };
+    setAccount(newAcc);
+    
+    // Update global user record
+    if (auth.currentUser) {
+      auth.updateUser(auth.currentUser.id, { balance: newBalance, liveBalance: newBalance });
     }
   };
 
-  const depositToTradingAccount = (amount: number, mode: 'paper' | 'live') => {
-    if (mode === 'paper') {
-      const newAcc = { ...paperAccount, balance: paperAccount.balance + amount };
-      setPaperAccount(newAcc);
-    } else {
-      const newBalance = liveAccount.balance + amount;
-      const newAcc = { ...liveAccount, balance: newBalance };
-      setLiveAccount(newAcc);
-      
-      // Update global user record
-      if (auth.currentUser) {
-        auth.updateUser(auth.currentUser.id, { balance: newBalance, liveBalance: newBalance });
-      }
+  const withdrawFromTradingAccount = (amount: number) => {
+    if (account.balance < amount) return false;
+    const newBalance = account.balance - amount;
+    const newAcc = { ...account, balance: newBalance };
+    setAccount(newAcc);
+    
+    // Update global user record
+    if (auth.currentUser) {
+      auth.updateUser(auth.currentUser.id, { balance: newBalance, liveBalance: newBalance });
     }
-  };
-
-  const withdrawFromTradingAccount = (amount: number, mode: 'paper' | 'live') => {
-    if (mode === 'paper') {
-      if (paperAccount.balance < amount) return false;
-      const newAcc = { ...paperAccount, balance: paperAccount.balance - amount };
-      setPaperAccount(newAcc);
-      return true;
-    } else {
-      if (liveAccount.balance < amount) return false;
-      const newBalance = liveAccount.balance - amount;
-      const newAcc = { ...liveAccount, balance: newBalance };
-      setLiveAccount(newAcc);
-      
-      // Update global user record
-      if (auth.currentUser) {
-        auth.updateUser(auth.currentUser.id, { balance: newBalance, liveBalance: newBalance });
-      }
-      return true;
-    }
+    return true;
   };
 
   // Subscribe to market data for all positions and update prices in real-time
-  // Use a ref to track subscribed symbols so we only re-subscribe when the
-  // set of unique symbols actually changes, NOT on every position update.
   const subscribedSymbolsKeyRef = useRef('');
   
   useEffect(() => {
-    const allPositions = [...paperPositions, ...livePositions];
+    const allPositions = positions;
     const uniqueSymbols = new Set(allPositions.map(p => p.symbol));
     const symbolsKey = Array.from(uniqueSymbols).sort().join(',');
     
@@ -916,44 +713,36 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     uniqueSymbols.forEach(symbol => {
       marketData.subscribeToSymbol(symbol);
     });
-
-    // No cleanup unsubscribe here — symbols stay subscribed as long as
-    // they are in positions. Unsubscription happens naturally when the
-    // MarketDataProvider unmounts or when symbols are removed.
-  }, [paperPositions, livePositions]);
+  }, [positions]);
 
   // Update position prices and P&L on a fixed 5-second interval
-  // instead of reacting to every `marketData.prices` change to prevent loops.
-  const paperPositionsRef = useRef(paperPositions);
-  const livePositionsRef = useRef(livePositions);
-  const paperAccountRef = useRef(paperAccount);
-  const liveAccountRef = useRef(liveAccount);
+  const positionsRef = useRef(positions);
+  const accountRef = useRef(account);
   
   // Keep refs in sync
-  paperPositionsRef.current = paperPositions;
-  livePositionsRef.current = livePositions;
-  paperAccountRef.current = paperAccount;
-  liveAccountRef.current = liveAccount;
+  positionsRef.current = positions;
+  accountRef.current = account;
 
   useEffect(() => {
     const PRICE_UPDATE_INTERVAL = 5000; // Same 5s as MarketDataContext
     
     const updateAllPositionPrices = () => {
       const updatePositionPrices = (
-        positions: Position[],
-        setPositions: (pos: Position[]) => void,
-        accountState: Account,
+        currentPositions: Position[],
+        setPositionsState: (pos: Position[]) => void,
+        currentAccount: Account,
         setAccountState: (acc: Account) => void
       ) => {
         // When no positions remain, reset unrealized P&L, margin, and derived values
-        if (positions.length === 0) {
-          if (accountState.unrealizedPnL !== 0 || accountState.margin !== 0) {
+        if (currentPositions.length === 0) {
+          const targetEquity = currentAccount.balance + (currentAccount.bonus || 0) + (currentAccount.credit || 0);
+          if (currentAccount.unrealizedPnL !== 0 || currentAccount.margin !== 0 || currentAccount.availableFunds !== targetEquity || currentAccount.equity !== targetEquity) {
             setAccountState({
-              ...accountState,
-              equity: accountState.balance,
+              ...currentAccount,
+              equity: targetEquity,
               unrealizedPnL: 0,
               margin: 0,
-              availableFunds: accountState.balance,
+              availableFunds: targetEquity,
             });
           }
           return;
@@ -963,7 +752,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
         let totalMargin = 0;
         let hasUpdates = false;
         
-        const updatedPositions = positions.map(position => {
+        const updatedPositions = currentPositions.map(position => {
           const priceData = marketData.getPrice(position.symbol);
           if (!priceData || !priceData.price) {
             totalUnrealizedPnL += position.pnl || 0;
@@ -995,13 +784,14 @@ export function TradingProvider({ children }: { children: ReactNode }) {
           };
         });
 
-        const equity = accountState.balance + totalUnrealizedPnL;
+        const equity = currentAccount.balance + (currentAccount.bonus || 0) + (currentAccount.credit || 0) + totalUnrealizedPnL;
         const availableFunds = equity - totalMargin;
 
-        if (hasUpdates) {
-          setPositions(updatedPositions);
+        // Force update if position prices changed OR if derived summary values don't match latest polls
+        if (hasUpdates || currentAccount.equity !== equity || currentAccount.availableFunds !== availableFunds || currentAccount.margin !== totalMargin) {
+          setPositionsState(updatedPositions);
           setAccountState({
-            ...accountState,
+            ...currentAccount,
             equity,
             unrealizedPnL: totalUnrealizedPnL,
             margin: totalMargin,
@@ -1010,14 +800,9 @@ export function TradingProvider({ children }: { children: ReactNode }) {
         }
       };
 
-      // Update both paper and live positions using refs (no stale closures)
       updatePositionPrices(
-        paperPositionsRef.current, setPaperPositions,
-        paperAccountRef.current, setPaperAccount
-      );
-      updatePositionPrices(
-        livePositionsRef.current, setLivePositions,
-        liveAccountRef.current, setLiveAccount
+        positionsRef.current, setPositions,
+        accountRef.current, setAccount
       );
     };
 
@@ -1029,33 +814,16 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   }, []); // Empty deps — uses refs internally, runs on a fixed interval
 
   const value: TradingContextType = {
-    paperPositions,
-    setPaperPositions,
-    paperOrders,
-    setPaperOrders,
-    paperHistory,
-    setPaperHistory,
-    paperAccount,
-    setPaperAccount,
-    paperPortfolioHistory,
-    setPaperPortfolioHistory,
-    livePositions,
-    setLivePositions,
-    liveOrders,
-    setLiveOrders,
-    liveHistory,
-    setLiveHistory,
-    liveAccount,
-    setLiveAccount,
-    livePortfolioHistory,
-    setLivePortfolioHistory,
-    tradingMode,
-    setTradingMode,
     positions,
+    setPositions,
     orders,
+    setOrders,
     history,
+    setHistory,
     account,
+    setAccount,
     portfolioHistory,
+    setPortfolioHistory,
     addPosition,
     removePosition,
     updatePosition,
@@ -1067,6 +835,8 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     addPortfolioSnapshot,
     depositToTradingAccount,
     withdrawFromTradingAccount,
+    tradingMode,
+    setTradingMode,
   };
 
   return (

@@ -16,7 +16,7 @@ function planBadge(plan?: string) {
   return SUBSCRIPTION_PLANS.find(p => p.value === plan)?.badge
     ?? 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400';
 }
-import { Search, Plus, Edit, Trash2, Eye, EyeOff, DollarSign, TrendingUp, Lock, Unlock, CheckCircle, XCircle, MoreVertical, Gift, LogIn, CreditCard, UserPlus, FileText, Shield, Phone, Mail, Clock, X } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Eye, EyeOff, DollarSign, TrendingUp, Lock, Unlock, CheckCircle, XCircle, MoreVertical, Gift, LogIn, CreditCard, UserPlus, FileText, Shield, Phone, Mail, Clock, X, MinusSquare } from 'lucide-react';
 
 // ── KYC doc helpers ──────────────────────────────────────────────────────────
 interface KycDoc { name: string; type: string; size: number; uploadedAt: string; dataUrl: string; }
@@ -53,6 +53,11 @@ export default function UserManagement() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [showAddFundDialog, setShowAddFundDialog] = useState(false);
+  const [showDeductFundDialog, setShowDeductFundDialog] = useState(false);
+  const [deductFundData, setDeductFundData] = useState({
+    amount: '',
+    balanceType: 'live' as 'live' | 'credit' | 'bonus' | 'ipo' | 'ecn' | 'portfolio',
+  });
   const [showPaymentMethodsDialog, setShowPaymentMethodsDialog] = useState(false);
   const [showPasswordResetDialog, setShowPasswordResetDialog] = useState(false);
   const [viewDocModal, setViewDocModal] = useState<{ doc: KycDoc; label: string } | null>(null);
@@ -161,10 +166,10 @@ export default function UserManagement() {
   };
 
   const [addFundData, setAddFundData] = useState({
-    type: 'credit' as 'credit' | 'bonus' | 'balance',
+    type: 'balance' as 'credit' | 'bonus' | 'balance',
     amount: '',
-    accountType: 'paper' as 'live' | 'paper',
-    balanceType: 'live' as 'live' | 'balance' | 'ipo' | 'ecn' | 'portfolio',
+    accountType: 'live' as 'live',
+    balanceType: 'live' as 'live' | 'ipo' | 'ecn' | 'portfolio',
   });
 
   const [formData, setFormData] = useState({
@@ -176,6 +181,8 @@ export default function UserManagement() {
     country: '',
     balance: '',
     portfolioBalance: '',
+    ipoBalance: '',
+    ecnBalance: '',
     accountType: 'standard' as 'standard' | 'premium' | 'vip',
     kycStatus: 'pending' as 'pending' | 'verified' | 'rejected',
     isVerified: false,
@@ -200,10 +207,6 @@ export default function UserManagement() {
       const storedPasswords = JSON.parse(localStorage.getItem('gross_passwords') || '{}');
       const userPassword = storedPasswords[user.email] || '';
       
-      // Get portfolio balance
-      const investmentBalances = localStorage.getItem(`investment_balances_${userId}`);
-      const { portfolio = 0 } = investmentBalances ? JSON.parse(investmentBalances) : {};
-      
       setSelectedUserId(userId);
       setFormData({
         firstName: user.firstName,
@@ -213,7 +216,9 @@ export default function UserManagement() {
         phone: user.phone || '',
         country: user.country || '',
         balance: (user.liveBalance ?? user.balance ?? 0).toString(),
-        portfolioBalance: portfolio.toString(),
+        portfolioBalance: (user.investmentBalances?.portfolio || 0).toString(),
+        ipoBalance: (user.investmentBalances?.ipo || 0).toString(),
+        ecnBalance: (user.investmentBalances?.ecn || 0).toString(),
         accountType: user.accountType,
         kycStatus: user.kycStatus,
         isVerified: user.isVerified,
@@ -242,6 +247,13 @@ export default function UserManagement() {
     const prevPlan = user.subscriptionPlan || '';
 
     // Update user profile – write subscriptionPlan so SubscriptionManagement stays in sync
+    // Update user profile – including investment balances
+    const newInvestmentBalances = {
+      portfolio: parseFloat(formData.portfolioBalance) || 0,
+      ipo: parseFloat(formData.ipoBalance) || 0,
+      ecn: parseFloat(formData.ecnBalance) || 0,
+    };
+
     updateProfile(selectedUserId, {
       firstName: formData.firstName,
       lastName: formData.lastName,
@@ -253,13 +265,32 @@ export default function UserManagement() {
       kycStatus: formData.kycStatus,
       isVerified: formData.isVerified,
       subscriptionPlan: formData.subscriptionPlan || undefined,
+      investmentBalances: newInvestmentBalances
     });
 
-    // Update portfolio balance
-    const investmentBalances = localStorage.getItem(`investment_balances_${selectedUserId}`);
-    const currentBalances = investmentBalances ? JSON.parse(investmentBalances) : { ipo: 0, ecn: 0, portfolio: 0 };
-    currentBalances.portfolio = parseFloat(formData.portfolioBalance) || 0;
-    localStorage.setItem(`investment_balances_${selectedUserId}`, JSON.stringify(currentBalances));
+    // Update the separate storage key that many parts of the app rely on
+    const balanceKey = `investment_balances_${selectedUserId}`;
+    localStorage.setItem(balanceKey, JSON.stringify(newInvestmentBalances));
+    setKV(balanceKey, newInvestmentBalances).catch(console.error);
+
+    // ── Update Trading Account Mirror ────────────────────────────────────────
+    // Many trading views read from gross_live_account_{userId}
+    const tradingKey = `gross_live_account_${selectedUserId}`;
+    const storedTrading = localStorage.getItem(tradingKey);
+    const tradingAccount = storedTrading 
+      ? JSON.parse(storedTrading) 
+      : { balance: 0, equity: 0, unrealizedPnL: 0, realizedPnL: 0, margin: 0, availableFunds: 0, bonus: 0, credit: 0 };
+    
+    const newBalance = parseFloat(formData.balance) || 0;
+    tradingAccount.balance = newBalance;
+    // Recalculate derived equity/available funds
+    tradingAccount.equity = newBalance + (tradingAccount.bonus || 0) + (tradingAccount.credit || 0) + (tradingAccount.unrealizedPnL || 0);
+    tradingAccount.availableFunds = tradingAccount.equity - (tradingAccount.margin || 0);
+    
+    localStorage.setItem(tradingKey, JSON.stringify(tradingAccount));
+    localStorage.setItem('gross_live_account', JSON.stringify(tradingAccount));
+    setKV(tradingKey, tradingAccount).catch(console.error);
+
     window.dispatchEvent(new Event('storage'));
 
     // Update password if changed
@@ -399,7 +430,7 @@ export default function UserManagement() {
 
     toast.success(`Funds added to ${balanceLabel} successfully`);
     setShowAddFundDialog(false);
-    setAddFundData({ type: 'credit', amount: '', accountType: 'paper', balanceType: 'live' as 'live' | 'balance' | 'ipo' | 'ecn' | 'portfolio' });
+    setAddFundData({ type: 'credit', amount: '', accountType: 'live', balanceType: 'live' as 'live' | 'balance' | 'ipo' | 'ecn' | 'portfolio' });
   };
 
   /**
@@ -435,6 +466,60 @@ export default function UserManagement() {
       window.dispatchEvent(new Event('storage'));
       return txn.id;
     } catch { return `tx_${Date.now()}`; }
+  };
+
+  // Helper to get current balance for display in Deduct modal
+  const getCurrentDeductBalance = () => {
+    if (!selectedUserId || !selectedUser) return 0;
+    
+    if (deductFundData.balanceType === 'ipo' || deductFundData.balanceType === 'ecn' || deductFundData.balanceType === 'portfolio') {
+      const investmentBalances = localStorage.getItem(`investment_balances_${selectedUserId}`);
+      const balances = investmentBalances ? JSON.parse(investmentBalances) : { ipo: 0, ecn: 0, portfolio: 0 };
+      const type = deductFundData.balanceType as 'ipo'|'ecn'|'portfolio';
+      return balances[type] || 0;
+    }
+    
+    // For live, credit, bonus, we need the trading account
+    const tradingAccountKey = `gross_live_account_${selectedUserId}`;
+    const stored = localStorage.getItem(tradingAccountKey);
+    const tradingAccount = stored ? JSON.parse(stored) : { balance: 0, bonus: 0, credit: 0 };
+    
+    if (deductFundData.balanceType === 'live') return tradingAccount.balance || selectedUser.liveBalance || 0;
+    if (deductFundData.balanceType === 'bonus') return tradingAccount.bonus || 0;
+    if (deductFundData.balanceType === 'credit') return tradingAccount.credit || 0;
+    
+    return 0;
+  };
+
+  const handleDeductFund = () => {
+    if (!selectedUserId || !selectedUser) return;
+
+    const amount = parseFloat(deductFundData.amount) || 0;
+    if (amount <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+
+    // Deduct from account using central AuthContext method
+    const success = deductFromAccount(selectedUserId, amount, deductFundData.balanceType);
+    
+    if (success) {
+      // Log activity (No notification as requested)
+      logActivity({
+        type: 'withdraw',
+        action: `Funds deducted from ${deductFundData.balanceType}`,
+        details: { amount, balanceType: deductFundData.balanceType }
+      });
+
+      // Synchronize across tabs
+      window.dispatchEvent(new Event('storage'));
+      
+      toast.success(`Successfully deducted $${formatCurrency(amount)} from ${deductFundData.balanceType}`);
+      setShowDeductFundDialog(false);
+      setDeductFundData({ amount: '', balanceType: 'live' });
+    } else {
+      toast.error(`Insufficient funds in ${deductFundData.balanceType} account`);
+    }
   };
 
   const handleLoginAsUser = (userId: string, userName: string) => {
@@ -765,6 +850,17 @@ export default function UserManagement() {
                               >
                                 <DollarSign className="w-4 h-4" />
                                 Add Fund
+                              </button>
+                              <button
+                                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                                onClick={() => {
+                                  setOpenDropdownId(null);
+                                  setSelectedUserId(user.id);
+                                  setShowDeductFundDialog(true);
+                                }}
+                              >
+                                <MinusSquare className="w-4 h-4" />
+                                Deduct Fund
                               </button>
                               <button
                                 className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2"
@@ -1331,7 +1427,28 @@ export default function UserManagement() {
                         className="mt-2"
                         placeholder="0.00"
                       />
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Sets the user's portfolio balance for investments</p>
+                    </div>
+                    <div>
+                      <Label>IPO Balance (USD)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={formData.ipoBalance}
+                        onChange={(e) => setFormData({ ...formData, ipoBalance: e.target.value })}
+                        className="mt-2"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <Label>ECN Balance (USD)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={formData.ecnBalance}
+                        onChange={(e) => setFormData({ ...formData, ecnBalance: e.target.value })}
+                        className="mt-2"
+                        placeholder="0.00"
+                      />
                     </div>
                     <div>
                       <Label>Account Type</Label>
@@ -1428,33 +1545,15 @@ export default function UserManagement() {
                 </div>
                 <div>
                   <Label>Portfolio Balance</Label>
-                  <p className="mt-1 text-emerald-600">
-                    ${(() => {
-                      const balances = localStorage.getItem(`investment_balances_${selectedUser.id}`);
-                      const { portfolio = 0 } = balances ? JSON.parse(balances) : {};
-                      return portfolio.toLocaleString();
-                    })()}
-                  </p>
+                  <p className="mt-1 text-emerald-600">${formatCurrency(selectedUser.investmentBalances?.portfolio || 0)}</p>
                 </div>
                 <div>
                   <Label>IPO Balance</Label>
-                  <p className="mt-1 text-purple-600">
-                    ${(() => {
-                      const balances = localStorage.getItem(`investment_balances_${selectedUser.id}`);
-                      const { ipo = 0 } = balances ? JSON.parse(balances) : {};
-                      return ipo.toLocaleString();
-                    })()}
-                  </p>
+                  <p className="mt-1 text-purple-600">${formatCurrency(selectedUser.investmentBalances?.ipo || 0)}</p>
                 </div>
                 <div>
                   <Label>ECN Balance</Label>
-                  <p className="mt-1 text-orange-600">
-                    ${(() => {
-                      const balances = localStorage.getItem(`investment_balances_${selectedUser.id}`);
-                      const { ecn = 0 } = balances ? JSON.parse(balances) : {};
-                      return ecn.toLocaleString();
-                    })()}
-                  </p>
+                  <p className="mt-1 text-blue-600">${formatCurrency(selectedUser.investmentBalances?.ecn || 0)}</p>
                 </div>
                 <div>
                   <Label>Account Type</Label>
@@ -1482,9 +1581,9 @@ export default function UserManagement() {
                     onChange={(e) => setAddFundData({ ...addFundData, type: e.target.value as any })}
                     className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
                   >
+                    <option value="balance">Balance (Direct wallet deposit)</option>
                     <option value="credit">Credit (Must be repaid)</option>
                     <option value="bonus">Bonus (Free fund)</option>
-                    <option value="balance">Balance (Direct wallet deposit)</option>
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
                     {addFundData.type === 'credit' && 'Credit funds need to be repaid back by the user'}
@@ -1510,14 +1609,12 @@ export default function UserManagement() {
                     className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
                   >
                     <option value="live">💰 Live Balance (Trading Account)</option>
-                    <option value="balance">🏦 Wallet Balance (Main wallet)</option>
                     <option value="portfolio">💼 Portfolio Balance (Investment Portfolio)</option>
                     <option value="ipo">🏢 IPO Balance (Investment Funds)</option>
                     <option value="ecn">📊 ECN Balance (Trading Funds)</option>
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
                     {addFundData.balanceType === 'live' && 'Adds to live trading account balance'}
-                    {addFundData.balanceType === 'balance' && 'Adds directly to the user\'s main wallet balance'}
                     {addFundData.balanceType === 'portfolio' && 'Portfolio balance is used for investments'}
                     {addFundData.balanceType === 'ipo' && 'IPO balance is used for investment opportunities'}
                     {addFundData.balanceType === 'ecn' && 'ECN balance is used for ECN trading'}
@@ -1530,6 +1627,73 @@ export default function UserManagement() {
                   Add Funds
                 </Button>
                 <Button variant="outline" onClick={() => setShowAddFundDialog(false)} className="flex-1">
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      
+      {/* Deduct Fund Dialog */}
+      <Dialog open={showDeductFundDialog} onOpenChange={setShowDeductFundDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Deduct Funds</DialogTitle>
+            <DialogDescription>
+              Deduct funds directly from user account balances. No notification will be sent.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedUser && (
+            <div className="space-y-6 pt-4">
+              <div className="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">User:</span>
+                  <span className="font-semibold">{selectedUser.firstName} {selectedUser.lastName}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500 capitalize">{deductFundData.balanceType === 'live' ? 'Main' : deductFundData.balanceType} Balance:</span>
+                  <span className={`font-semibold ${getCurrentDeductBalance() > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
+                    ${formatCurrency(getCurrentDeductBalance())}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <Label>Source Balance</Label>
+                  <select
+                    value={deductFundData.balanceType}
+                    onChange={(e) => setDeductFundData({ ...deductFundData, balanceType: e.target.value as any })}
+                    className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                  >
+                    <option value="live">💰 Live Balance</option>
+                    <option value="credit">💳 Credit Balance (Deducted from Live)</option>
+                    <option value="bonus">🎁 Bonus Balance (Deducted from Bonus Pool)</option>
+                    <option value="portfolio">💼 Portfolio Balance</option>
+                    <option value="ipo">🏢 IPO Balance</option>
+                    <option value="ecn">📊 ECN Balance</option>
+                  </select>
+                </div>
+
+                <div>
+                  <Label>Amount to Deduct</Label>
+                  <Input
+                    type="number"
+                    value={deductFundData.amount}
+                    onChange={(e) => setDeductFundData({ ...deductFundData, amount: e.target.value })}
+                    className="mt-2"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button onClick={handleDeductFund} className="flex-1 bg-red-600 hover:bg-red-700 text-white">
+                  Deduct Funds
+                </Button>
+                <Button variant="outline" onClick={() => setShowDeductFundDialog(false)} className="flex-1">
                   Cancel
                 </Button>
               </div>

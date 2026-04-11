@@ -36,7 +36,7 @@ export default function NotificationCenter() {
 
     const handleTicketMessage = (event: any) => {
       const shortTicketId = formatTxnId(event.detail.ticketId);
-      
+
       // Notify the opposite party
       if (currentUser?.role === 'admin' && event.detail.senderRole === 'user') {
         addNotification({
@@ -73,9 +73,9 @@ export default function NotificationCenter() {
           resolved: 'Your ticket has been resolved',
           closed: 'Your ticket has been closed',
         };
-        
+
         const message = statusMessages[event.detail.status as keyof typeof statusMessages] || `Ticket status changed to ${event.detail.status}`;
-        
+
         addNotification({
           type: event.detail.status === 'resolved' ? 'success' : 'info',
           title: 'Ticket Status Updated',
@@ -102,13 +102,13 @@ export default function NotificationCenter() {
   const filteredNotifications = notifications.filter(notif => {
     // Filter by user (if user-specific notification)
     if (notif.userId && notif.userId !== currentUser?.id) return false;
-    
+
     // Visibility check - skip if explicitly hidden by admin
     if (notif.isVisibleToUser === false) return false;
 
     // Filter by read status
     if (filter === 'unread' && notif.read) return false;
-    
+
     return true;
   });
 
@@ -193,21 +193,19 @@ export default function NotificationCenter() {
           <div className="flex gap-2 border-b border-gray-200 dark:border-slate-700 pb-2">
             <button
               onClick={() => setFilter('all')}
-              className={`px-4 py-2 rounded-lg transition-colors ${
-                filter === 'all'
+              className={`px-4 py-2 rounded-lg transition-colors ${filter === 'all'
                   ? 'bg-blue-500 text-white'
                   : 'bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600'
-              }`}
+                }`}
             >
               All ({userVisibleCount})
             </button>
             <button
               onClick={() => setFilter('unread')}
-              className={`px-4 py-2 rounded-lg transition-colors ${
-                filter === 'unread'
+              className={`px-4 py-2 rounded-lg transition-colors ${filter === 'unread'
                   ? 'bg-blue-500 text-white'
                   : 'bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600'
-              }`}
+                }`}
             >
               Unread ({unreadCount})
             </button>
@@ -226,15 +224,14 @@ export default function NotificationCenter() {
                 {filteredNotifications.map((notif) => (
                   <div
                     key={notif.id}
-                    className={`p-4 rounded-lg border transition-all ${getNotificationStyle(notif.type)} ${
-                      !notif.read ? 'ring-2 ring-blue-500 ring-opacity-50' : ''
-                    }`}
+                    className={`p-4 rounded-lg border transition-all ${getNotificationStyle(notif.type)} ${!notif.read ? 'ring-2 ring-blue-500 ring-opacity-50' : ''
+                      }`}
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-shrink-0 mt-1">
                         {getNotificationIcon(notif.type)}
                       </div>
-                      
+
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1">
@@ -242,20 +239,20 @@ export default function NotificationCenter() {
                             <p className="text-sm mt-1 text-gray-700 dark:text-gray-300">
                               {notif.message.replace(/\s*by admin\.?/gi, '.')}
                             </p>
-                            
+
                             {/* Metadata */}
                             {notif.metadata?.promoCode && (
                               <div className="mt-2 inline-block px-3 py-1 bg-yellow-200 dark:bg-yellow-900/30 rounded font-mono text-sm">
                                 Code: {notif.metadata.promoCode}
                               </div>
                             )}
-                            
+
                             {notif.metadata?.expiryDate && (
                               <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
                                 Expires: {new Date(notif.metadata.expiryDate).toLocaleDateString()}
                               </div>
                             )}
-                            
+
                             {notif.metadata?.actionUrl && (
                               <a
                                 href={notif.metadata.actionUrl}
@@ -266,12 +263,12 @@ export default function NotificationCenter() {
                                 Learn more →
                               </a>
                             )}
-                            
+
                             <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                               {new Date(notif.timestamp).toLocaleString()}
                             </div>
                           </div>
-                          
+
                           <div className="flex items-center gap-1 flex-shrink-0">
                             {!notif.read && (
                               <Button
@@ -293,7 +290,7 @@ export default function NotificationCenter() {
                             </Button>
                           </div>
                         </div>
-                        
+
                         {/* Channels */}
                         <div className="mt-2 flex gap-1 flex-wrap">
                           {notif.channels?.map(channel => (

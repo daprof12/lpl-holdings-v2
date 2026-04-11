@@ -9,7 +9,7 @@ import React from 'react';
 import { formatPercentage, formatCurrency } from '../../utils/formatNumber';
 
 export default function OpenPositions() {
-  const { positions, removePosition, updatePosition, addHistory, account, updateAccount, tradingMode } = useTrading();
+  const { positions, removePosition, updatePosition, addHistory, account, updateAccount } = useTrading();
   const [modifyingPosition, setModifyingPosition] = useState<string | null>(null);
   const [modifyStopLoss, setModifyStopLoss] = useState('');
   const [modifyTakeProfit, setModifyTakeProfit] = useState('');
@@ -63,7 +63,7 @@ export default function OpenPositions() {
       pnl,
       timestamp: new Date(),
       status: 'closed',
-      mode: tradingMode
+      mode: 'live' as any // Use live mode exclusively
     });
 
     // Compute remaining unrealized P&L and margin from other open positions
