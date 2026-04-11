@@ -47,7 +47,39 @@ export interface CRMMessage {
     expiryDate?: string;
     actionUrl?: string;
     imageUrl?: string;
+    emailTemplateId?: string; // ID of the template used
   };
+}
+
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  category: 'deposit' | 'withdrawal' | 'deals' | 'subscription' | 'promotion' | 'general';
+  subject: string;
+  logoUrl?: string;
+  heroImage?: string;
+  heroTitle?: string;
+  blocks: {
+    id: string;
+    type: 'text' | 'button' | 'image' | 'feature_list' | 'spacer' | 'footer';
+    content: any;
+    style?: any;
+  }[];
+  footerText?: string;
+  accentColor?: string;
+  lastModified: Date;
+}
+
+export interface SMTPConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  auth: {
+    user: string;
+    pass: string;
+  };
+  fromEmail: string;
+  fromName: string;
 }
 
 interface NotificationContextType {
@@ -65,6 +97,12 @@ interface NotificationContextType {
   updateCRMMessage: (id: string, updates: Partial<CRMMessage>) => void;
   sendCRMMessage: (id: string) => void;
   deleteCRMMessage: (id: string) => void;
+  // Templates & SMTP
+  emailTemplates: EmailTemplate[];
+  saveEmailTemplate: (template: Omit<EmailTemplate, 'lastModified'>) => void;
+  deleteEmailTemplate: (id: string) => void;
+  smtpConfig: SMTPConfig | null;
+  saveSMTPConfig: (config: SMTPConfig) => void;
   // Compat
   refreshNotifications: () => Promise<void>;
 }
@@ -73,8 +111,10 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 
 // ─── Storage helpers ────────────────────────────────────────────────────────
 
-const NOTIF_KEY = 'gross_notifications';
-const CRM_KEY   = 'gross_crm_messages';
+const NOTIF_KEY     = 'gross_notifications';
+const CRM_KEY       = 'gross_crm_messages';
+const TEMPLATES_KEY = 'gross_email_templates';
+const SMTP_KEY      = 'gross_smtp_config';
 
 function deduplicateById<T extends { id: string }>(items: T[]): T[] {
   const seen = new Set<string>();
@@ -119,6 +159,8 @@ function loadCRMMessages(): CRMMessage[] {
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>(loadNotifications);
   const [crmMessages,   setCrmMessages]   = useState<CRMMessage[]>(loadCRMMessages);
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
+  const [smtpConfig, setSmtpConfig] = useState<SMTPConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
@@ -160,6 +202,72 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           }));
           setCrmMessages(parsed);
         }
+
+        const dbTemplates = await getKV(TEMPLATES_KEY);
+        if (dbTemplates) {
+          setEmailTemplates((dbTemplates as any[]).map(t => ({ ...t, lastModified: new Date(t.lastModified) })));
+        } else {
+          // Initialize default premium templates (Netflix style structure)
+          const defaults: EmailTemplate[] = [
+            { 
+              id: 'tpl-deposit-01', 
+              name: 'Premium Deposit Confirmation', 
+              category: 'deposit', 
+              subject: 'Deposit Successful - Your funds are ready',
+              heroTitle: 'Funds Added Successfully',
+              logoUrl: '/logo.png',
+              accentColor: '#E50914', // Brand Red
+              blocks: [
+                { id: 'b1', type: 'text', content: 'Hey there,\n\nYour deposit has been successfully processed and is now available in your Live Balance. You can start trading on indices, crypto, and stocks immediately.' },
+                { id: 'b2', type: 'button', content: { label: 'Go to Dashboard', url: '/dashboard' } },
+                { id: 'b3', type: 'feature_list', content: [
+                  { icon: 'shield', title: 'Secure Transaction', text: 'All operations are protected with 256-bit encryption.' },
+                  { icon: 'zap', title: 'Instant Access', text: 'Funds are ready for immediate market participation.' }
+                ]},
+                { id: 'b4', type: 'footer', content: 'This is an automated confirmation of your deposit.' }
+              ],
+              lastModified: new Date() 
+            },
+            { 
+              id: 'tpl-withdraw-01', 
+              name: 'Withdrawal Processing', 
+              category: 'withdrawal', 
+              subject: 'Update on your withdrawal request',
+              heroTitle: 'Processing Your Request',
+              logoUrl: '/logo.png',
+              accentColor: '#000000',
+              blocks: [
+                { id: 'b1', type: 'text', content: 'Hello,\n\nWe have received your withdrawal request and our team is currently processing it. You will receive another update once the funds have been dispatched to your chosen method.' },
+                { id: 'b2', type: 'button', content: { label: 'Track Status', url: '/wallet' } },
+                { id: 'b3', type: 'footer', content: 'Processing time usually takes 30 mins - 2 hours.' }
+              ],
+              lastModified: new Date() 
+            },
+            { 
+              id: 'tpl-promo-01', 
+              name: 'Special Promotion - Bonus', 
+              category: 'promotion', 
+              subject: 'Exclusive Trading Bonus Just for You!',
+              heroTitle: 'Unlock Your 50% Bonus',
+              logoUrl: '/logo.png',
+              accentColor: '#E50914',
+              blocks: [
+                { id: 'b1', type: 'text', content: 'We noticed you haven\'t traded in a while. To get you back in the game, we are offering an exclusive 50% bonus on your next deposit of $500 or more.' },
+                { id: 'b2', type: 'button', content: { label: 'Claim My Bonus', url: '/deposit' } },
+                { id: 'b3', type: 'feature_list', content: [
+                  { icon: 'star', title: 'Unlimited Potential', text: 'Trade over 2000+ assets with low spreads.' },
+                  { icon: 'percent', title: 'Low Fees', text: 'Zero commission on major pairings this month.' }
+                ]},
+                { id: 'b4', type: 'footer', content: 'Offer valid for the next 48 hours only.' }
+              ],
+              lastModified: new Date() 
+            }
+          ];
+          setEmailTemplates(defaults);
+        }
+
+        const dbSmtp = await getKV(SMTP_KEY);
+        if (dbSmtp) setSmtpConfig(dbSmtp as SMTPConfig);
         
         console.log('✅ Notifications loaded from DB');
       } catch (error) {
@@ -453,6 +561,22 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         updateCRMMessage,
         sendCRMMessage,
         deleteCRMMessage,
+        emailTemplates,
+        saveEmailTemplate: (template: any) => {
+          const next = [...emailTemplates.filter(t => t.id !== template.id), { ...template, lastModified: new Date() }];
+          setEmailTemplates(next);
+          setKV(TEMPLATES_KEY, next);
+        },
+        deleteEmailTemplate: (id: string) => {
+          const next = emailTemplates.filter(t => t.id !== id);
+          setEmailTemplates(next);
+          setKV(TEMPLATES_KEY, next);
+        },
+        smtpConfig,
+        saveSMTPConfig: (config: SMTPConfig) => {
+          setSmtpConfig(config);
+          setKV(SMTP_KEY, config);
+        },
         refreshNotifications,
       }}
     >

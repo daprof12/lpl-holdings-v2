@@ -306,7 +306,7 @@ export default function UserManagement() {
       addNotification(selectedUserId, {
         type: 'success',
         title: 'Subscription Updated',
-        message: `Your subscription plan has been updated to ${formData.subscriptionPlan} by an administrator.`,
+        message: `Your subscription plan has been updated to ${formData.subscriptionPlan}.`,
         channels: ['in-app'],
       });
     }
@@ -351,7 +351,7 @@ export default function UserManagement() {
       addWalletTransaction({
         userId: selectedUserId,
         type: 'deposit',
-        method: addFundData.type === 'credit' ? 'Admin Credit' : addFundData.type === 'bonus' ? 'Admin Bonus' : 'Admin Deposit',
+        method: addFundData.type === 'credit' ? 'Credit' : addFundData.type === 'bonus' ? 'Bonus' : 'Deposit',
         amount: amount,
         currency: 'USD',
         accountType: 'live',
@@ -377,7 +377,7 @@ export default function UserManagement() {
       addWalletTransaction({
         userId: selectedUserId,
         type: 'deposit',
-        method: addFundData.type === 'credit' ? 'Admin Credit' : addFundData.type === 'bonus' ? 'Admin Bonus' : 'Admin Deposit',
+        method: addFundData.type === 'credit' ? 'Credit' : addFundData.type === 'bonus' ? 'Bonus' : 'Deposit',
         amount: amount,
         currency: 'USD',
         accountType: 'live',
@@ -408,7 +408,7 @@ export default function UserManagement() {
       addWalletTransaction({
         userId: selectedUserId,
         type: 'deposit',
-        method: `Admin ${addFundData.type === 'credit' ? 'Credit' : addFundData.type === 'bonus' ? 'Bonus' : 'Deposit'} (${addFundData.balanceType.toUpperCase()})`,
+        method: `${addFundData.type === 'credit' ? 'Credit' : addFundData.type === 'bonus' ? 'Bonus' : 'Deposit'} (${addFundData.balanceType.toUpperCase()})`,
         amount: amount,
         currency: 'USD',
         accountType: 'live',
@@ -423,7 +423,7 @@ export default function UserManagement() {
     addNotification(selectedUserId, {
       type: 'success',
       title: 'Funds Added',
-      message: `$${formatCurrency(amount)} ${addFundData.type} has been added to your ${balanceLabel} by admin.`,
+      message: `$${formatCurrency(amount)} ${addFundData.type} has been added to your ${balanceLabel}.`,
       channels: ['in-app'],
       relatedId: txnId,
     });
@@ -456,7 +456,7 @@ export default function UserManagement() {
         status: 'completed',
         timestamp: Date.now(),
         completedAt: Date.now(),
-        adminNotes: `Admin ${fundType} → ${balanceType.toUpperCase()}`,
+        adminNotes: `${fundType.charAt(0).toUpperCase() + fundType.slice(1)} → ${balanceType.toUpperCase()}`,
         isVisibleToUser: false,
       };
       existing.unshift(txn);
@@ -587,7 +587,7 @@ export default function UserManagement() {
     addNotification(passwordResetUserId, {
       type: 'warning',
       title: 'Password Reset',
-      message: 'Your password has been reset by an administrator. Please use your new password to login.',
+      message: 'Your password has been reset. Please use your new password to login.',
       channels: ['in-app'],
     });
 

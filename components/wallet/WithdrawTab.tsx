@@ -1065,7 +1065,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
         {/* Info */}
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
           <p className="text-xs text-blue-600 dark:text-blue-400">
-            <strong>Processing Time:</strong> {methodInfo.processingTime} after admin approval
+            <strong>Processing Time:</strong> {methodInfo.processingTime} after approval
           </p>
         </div>
       </form>
@@ -1167,7 +1167,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
                 <div className="flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
                   <div className="text-xs text-orange-600 dark:text-orange-400">
-                    This withdrawal will be deducted from your balance immediately and is subject to admin approval.
+                    This withdrawal will be deducted from your balance immediately and is subject to approval.
                     {selectedMethod === 'crypto' && ' Ensure the address is correct as crypto transactions cannot be reversed.'}
                   </div>
                 </div>

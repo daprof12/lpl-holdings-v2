@@ -147,7 +147,7 @@ export default function Login() {
 
     setTimeout(() => {
       setModalLoading(false);
-      toast.success('Password reset request submitted. Please wait for admin approval.');
+      toast.success('Password reset request submitted. Please wait for approval.');
       setForgotPasswordStep('code');
     }, 1000);
   };
@@ -575,7 +575,7 @@ export default function Login() {
               {forgotPasswordStep === 'code' && (
                 <div className="space-y-5">
                   <p className="text-sm" style={{ color: '#9ca3af' }}>
-                    Your request has been submitted. Please wait for admin approval. Once approved, enter the recovery code sent by the admin.
+                    Your request has been submitted. Please wait for approval. Once approved, enter the recovery code sent to you.
                   </p>
                   <div>
                     <label

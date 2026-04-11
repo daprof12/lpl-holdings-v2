@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Search, Trash2, Eye, Bell, BellOff, Plus, X, Filter, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
+import { Search, Trash2, Eye, Edit, Bell, BellOff, Plus, X, Filter, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -36,6 +36,9 @@ export default function NotificationManagement() {
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedMessage, setEditedMessage] = useState('');
+  const [editedTitle, setEditedTitle] = useState('');
 
   // Create notification form
   const [createForm, setCreateForm] = useState({
@@ -204,7 +207,40 @@ export default function NotificationManagement() {
 
   const handleViewDetails = (notification: Notification) => {
     setSelectedNotification(notification);
+    setEditedMessage(notification.message);
+    setEditedTitle(notification.title);
+    setIsEditing(false);
     setShowDetailsDialog(true);
+  };
+
+  const handleUpdateNotification = () => {
+    if (!selectedNotification) return;
+    if (!editedTitle.trim() || !editedMessage.trim()) {
+      toast.error('Title and message cannot be empty');
+      return;
+    }
+
+    try {
+      const stored = localStorage.getItem('gross_notifications');
+      if (stored) {
+        const notifications = JSON.parse(stored);
+        const updated = notifications.map((n: Notification) =>
+          n.id === selectedNotification.id 
+            ? { ...n, title: editedTitle, message: editedMessage } 
+            : n
+        );
+        
+        localStorage.setItem('gross_notifications', JSON.stringify(updated));
+        setKV('gross_notifications', updated).catch(console.error);
+        window.dispatchEvent(new Event('storage'));
+        
+        setSelectedNotification({ ...selectedNotification, title: editedTitle, message: editedMessage });
+        setIsEditing(false);
+        toast.success('Notification updated successfully');
+      }
+    } catch (error) {
+      toast.error('Failed to update notification');
+    }
   };
 
   const handleToggleVisibility = (notificationId: string) => {
@@ -685,12 +721,12 @@ export default function NotificationManagement() {
             <div className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <Label>User</Label>
+                  <Label className="text-gray-500 text-xs">User</Label>
                   <p className="mt-1 font-medium">{getUserName(selectedNotification.userId)}</p>
                   <p className="text-sm text-gray-500">{getUserEmail(selectedNotification.userId)}</p>
                 </div>
                 <div>
-                  <Label>Status</Label>
+                  <Label className="text-gray-500 text-xs">Status</Label>
                   <div className="mt-1">
                     {selectedNotification.read ? (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
@@ -706,7 +742,7 @@ export default function NotificationManagement() {
                   </div>
                 </div>
                 <div>
-                  <Label>Type</Label>
+                  <Label className="text-gray-500 text-xs">Type</Label>
                   <div className="mt-1">
                     <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${getTypeBadgeClass(selectedNotification.type)}`}>
                       {getTypeIcon(selectedNotification.type)}
@@ -715,7 +751,7 @@ export default function NotificationManagement() {
                   </div>
                 </div>
                 <div>
-                  <Label>Channels</Label>
+                  <Label className="text-gray-500 text-xs">Channels</Label>
                   <div className="mt-1 flex gap-2 flex-wrap">
                     {(selectedNotification.channels || ['in-app']).map(channel => (
                       <span key={channel} className="px-2 py-1 rounded text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
@@ -725,24 +761,54 @@ export default function NotificationManagement() {
                   </div>
                 </div>
                 <div className="md:col-span-2">
-                  <Label>Title</Label>
-                  <p className="mt-1 font-medium">{selectedNotification.title}</p>
+                  <Label className="text-gray-500 text-xs">Title</Label>
+                  {isEditing ? (
+                    <Input
+                      value={editedTitle}
+                      onChange={(e) => setEditedTitle(e.target.value)}
+                      className="mt-1"
+                    />
+                  ) : (
+                    <p className="mt-1 font-medium">{selectedNotification.title}</p>
+                  )}
                 </div>
                 <div className="md:col-span-2">
-                  <Label>Message</Label>
-                  <p className="mt-1 text-gray-700 dark:text-gray-300">{selectedNotification.message}</p>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-gray-500 text-xs">Message</Label>
+                    {!isEditing && (
+                      <button
+                        onClick={() => setIsEditing(true)}
+                        className="text-blue-600 dark:text-blue-400 hover:text-blue-700 p-1 rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                        title="Edit Message"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {isEditing ? (
+                    <textarea
+                      value={editedMessage}
+                      onChange={(e) => setEditedMessage(e.target.value)}
+                      className="w-full mt-1 p-3 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm min-h-[120px] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                      placeholder="Enter notification message..."
+                    />
+                  ) : (
+                    <p className="mt-1 text-gray-700 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-slate-900/50 p-3 rounded-lg border border-gray-100 dark:border-slate-800">
+                      {selectedNotification.message}
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <Label>Date</Label>
+                  <Label className="text-gray-500 text-xs text-xs">Date</Label>
                   <p className="mt-1">{new Date(selectedNotification.timestamp).toLocaleDateString()}</p>
                 </div>
                 <div>
-                  <Label>Time</Label>
+                  <Label className="text-gray-500 text-xs text-xs">Time</Label>
                   <p className="mt-1">{new Date(selectedNotification.timestamp).toLocaleTimeString()}</p>
                 </div>
               </div>
               <div>
-                <Label>Notification ID</Label>
+                <Label className="text-gray-500 text-xs">Notification ID</Label>
                 <code className="block mt-1 text-xs bg-gray-100 dark:bg-slate-700 px-3 py-2 rounded">
                   {selectedNotification.id}
                 </code>
@@ -750,39 +816,60 @@ export default function NotificationManagement() {
             </div>
           )}
           <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-slate-700">
-            <Button
-              variant="outline"
-              onClick={() => setShowDetailsDialog(false)}
-              className="flex-1"
-            >
-              Close
-            </Button>
-            {selectedNotification && !selectedNotification.read && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  handleMarkAsRead(selectedNotification.id);
-                  setShowDetailsDialog(false);
-                }}
-                className="flex-1"
-              >
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Mark as Read
-              </Button>
+            {isEditing ? (
+              <>
+                <Button
+                  onClick={handleUpdateNotification}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-2"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Save Changes
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsEditing(false)}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowDetailsDialog(false)}
+                  className="flex-1"
+                >
+                  Close
+                </Button>
+                {selectedNotification && !selectedNotification.read && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      handleMarkAsRead(selectedNotification.id);
+                      setShowDetailsDialog(false);
+                    }}
+                    className="flex-1"
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Mark as Read
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (selectedNotification) {
+                      handleDeleteNotification(selectedNotification.id);
+                      setShowDetailsDialog(false);
+                    }
+                  }}
+                  className="flex-1 text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete
+                </Button>
+              </>
             )}
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (selectedNotification) {
-                  handleDeleteNotification(selectedNotification.id);
-                  setShowDetailsDialog(false);
-                }
-              }}
-              className="flex-1 text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete
-            </Button>
           </div>
         </DialogContent>
       </Dialog>

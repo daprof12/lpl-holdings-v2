@@ -237,10 +237,10 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
     addNotification(currentUser.id, {
       type: 'info',
       title: 'KYC Verification Submitted',
-      message: 'Your KYC verification has been submitted and is pending admin review. This usually takes 1-2 business days.',
+      message: 'Your KYC verification has been submitted and is pending review. This usually takes 1-2 business days.',
     });
 
-    toast.success('KYC verification submitted successfully! Awaiting admin approval.');
+    toast.success('KYC verification submitted successfully! Awaiting approval.');
     setShowKYCDialog(false);
     
     // Reset form

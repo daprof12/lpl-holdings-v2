@@ -77,7 +77,7 @@ export default function AutoTraderManagement() {
     if (!strategy) return;
 
     toggleStrategy(strategyId, isActive);
-    toast.success(`Strategy ${isActive ? 'activated' : 'paused'} by admin`);
+    toast.success(`Strategy ${isActive ? 'activated' : 'paused'}`);
   };
 
   const handleEmergencyStop = () => {

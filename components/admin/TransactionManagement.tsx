@@ -325,13 +325,18 @@ export default function TransactionManagement() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="max-w-xs truncate">{transaction.method}</div>
-                    <span className={`mt-1 inline-block px-2 py-0.5 rounded-full text-[10px] capitalize ${
+                    <div className="font-semibold capitalize text-gray-900 dark:text-white">{transaction.method}</div>
+                    {transaction.method === 'crypto' && (
+                      <div className="text-[10px] text-blue-600 dark:text-blue-400 font-mono font-bold mt-0.5">
+                        {transaction.currency} • {transaction.network}
+                      </div>
+                    )}
+                    <span className={`mt-1.5 inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${
                       transaction.walletType === 'portfolio'
                         ? 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'
                         : 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
                     }`}>
-                      {transaction.walletType === 'portfolio' ? 'Portfolio' : 'Live'}
+                      {transaction.walletType === 'portfolio' ? 'Portfolio Balance' : 'Live Account'}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -480,6 +485,75 @@ export default function TransactionManagement() {
                     )}
                   </div>
                 )}
+                {/* Withdrawal Specific Information */}
+                {selectedTransaction.type === 'withdrawal' && (
+                  <div className="col-span-2 mt-4 p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg border border-gray-200 dark:border-slate-700">
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      <ArrowUpCircle className="w-4 h-4 text-red-600" />
+                      Withdrawal Information
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      {selectedTransaction.method === 'bank' && (
+                        <>
+                          <div>
+                            <Label className="text-gray-600 dark:text-gray-400">Bank Name</Label>
+                            <p className="font-semibold">{selectedTransaction.bankName || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-gray-600 dark:text-gray-400">Account Name</Label>
+                            <p className="font-semibold">{selectedTransaction.accountName || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-gray-600 dark:text-gray-400">Account Number</Label>
+                            <p className="font-mono font-semibold">{selectedTransaction.accountNumber || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-gray-600 dark:text-gray-400">Routing Number</Label>
+                            <p className="font-mono font-semibold">{selectedTransaction.routingNumber || 'N/A'}</p>
+                          </div>
+                          {selectedTransaction.swiftCode && (
+                            <div>
+                              <Label className="text-gray-600 dark:text-gray-400">SWIFT Code</Label>
+                              <p className="font-mono font-semibold">{selectedTransaction.swiftCode}</p>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      
+                      {(selectedTransaction.method === 'paypal' || selectedTransaction.method === 'skrill' || selectedTransaction.paypalEmail) && (
+                        <div className="col-span-2">
+                          <Label className="text-gray-600 dark:text-gray-400">
+                            {selectedTransaction.method === 'skrill' ? 'Skrill Email' : 'PayPal Email'}
+                          </Label>
+                          <p className="font-semibold p-2 bg-white dark:bg-slate-800 rounded border border-gray-200 dark:border-slate-600">
+                            {selectedTransaction.paypalEmail || selectedTransaction.email || 'N/A'}
+                          </p>
+                        </div>
+                      )}
+
+                      {selectedTransaction.method === 'crypto' && (
+                        <>
+                          <div>
+                            <Label className="text-gray-600 dark:text-gray-400">Asset Type</Label>
+                            <p className="font-semibold">{selectedTransaction.currency || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-gray-600 dark:text-gray-400">Network</Label>
+                            <p className="font-semibold">{selectedTransaction.network || 'N/A'}</p>
+                          </div>
+                          <div className="col-span-2">
+                            <Label className="text-gray-600 dark:text-gray-400">User's Wallet Address</Label>
+                            <p className="font-mono text-sm break-all font-semibold p-2 bg-white dark:bg-slate-800 rounded border border-gray-200 dark:border-slate-600">
+                              {selectedTransaction.walletAddress || 'N/A'}
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Status and Actions */}
                 <div>
                   <Label className="text-gray-600 dark:text-gray-400">Status</Label>
                   <div className={`inline-flex items-center gap-2 px-2 py-1 rounded text-sm capitalize ${getStatusColor(selectedTransaction.status)}`}>
@@ -493,18 +567,6 @@ export default function TransactionManagement() {
                     <p className="font-mono text-sm break-all">{selectedTransaction.txHash || selectedTransaction.transactionHash}</p>
                   </div>
                 )}
-                {selectedTransaction.walletAddress && (
-                  <div className="col-span-2">
-                    <Label className="text-gray-600 dark:text-gray-400">Wallet Address</Label>
-                    <p className="font-mono text-sm break-all">{selectedTransaction.walletAddress}</p>
-                  </div>
-                )}
-                {selectedTransaction.network && (
-                  <div>
-                    <Label className="text-gray-600 dark:text-gray-400">Network</Label>
-                    <p>{selectedTransaction.network}</p>
-                  </div>
-                )}
                 {selectedTransaction.processedAt && (
                   <div className="col-span-2">
                     <Label className="text-gray-600 dark:text-gray-400">Processed At</Label>
@@ -513,13 +575,13 @@ export default function TransactionManagement() {
                 )}
                 {selectedTransaction.notes && (
                   <div className="col-span-2">
-                    <Label className="text-gray-600 dark:text-gray-400">Notes</Label>
+                    <Label className="text-gray-600 dark:text-gray-400">Admin Notes</Label>
                     <p className="text-sm">{selectedTransaction.notes}</p>
                   </div>
                 )}
                 {selectedTransaction.details && (
                   <div className="col-span-2">
-                    <Label className="text-gray-600 dark:text-gray-400">Additional Details</Label>
+                    <Label className="text-gray-600 dark:text-gray-400">JSON Payload (System)</Label>
                     <pre className="text-xs mt-2 p-2 bg-gray-100 dark:bg-slate-700 rounded overflow-x-auto">
                       {JSON.stringify(selectedTransaction.details, null, 2)}
                     </pre>

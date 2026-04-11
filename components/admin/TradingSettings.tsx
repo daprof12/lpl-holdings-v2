@@ -161,7 +161,7 @@ export default function TradingSettings() {
     addNotification(selectedLiveUserId, {
       type: 'warning',
       title: 'Balance Reset',
-      message: `Your live balance has been reset to $${formatCurrency(balance)} by admin.`,
+      message: `Your live balance has been reset to $${formatCurrency(balance)}.`,
       channels: ['in-app'],
     });
   };
@@ -310,7 +310,7 @@ export default function TradingSettings() {
       addNotification(selectedUserForBalance, {
         type: 'info',
         title: 'Balance Updated',
-        message: `Your wallet balance has been updated to $${formatCurrency(amount)} by admin.`,
+        message: `Your wallet balance has been updated to $${formatCurrency(amount)}.`,
         channels: ['in-app'],
       });
     } else {
@@ -332,7 +332,7 @@ export default function TradingSettings() {
       addNotification(selectedUserForBalance, {
         type: 'info',
         title: 'Balance Updated',
-        message: `Your ${balanceType.toUpperCase()} balance has been updated to $${formatCurrency(amount)} by admin.`,
+        message: `Your ${balanceType.toUpperCase()} balance has been updated to $${formatCurrency(amount)}.`,
         channels: ['in-app'],
       });
     }
