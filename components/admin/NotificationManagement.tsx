@@ -48,7 +48,10 @@ export default function NotificationManagement() {
     channels: ['in-app'],
   });
 
-
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const [editedTitle, setEditedTitle] = useState('');
+  const [editedMessage, setEditedMessage] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
 
   // Fetch all notifications from database
   const fetchNotifications = async () => {
