@@ -21,32 +21,22 @@ export default function PasswordResetManagement() {
   const [modalMode, setModalMode] = useState<'code' | 'password'>('code');
   const [isLoading, setIsLoading] = useState(false);
 
-  const loadRequests = async () => {
+  const loadRequests = () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('password_resets')
-        .select(`
-          *,
-          profiles (email)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      
-      if (data) {
-        setRequests(data.map((r: any) => ({
-          id: r.id,
-          user_id: r.user_id,
-          email: r.profiles?.email || 'Unknown',
-          timestamp: r.created_at,
-          status: (r.status === 'completed') ? 'completed' : 
-                  (r.status === 'cancelled') ? 'rejected' : 
-                  (r.status === 'expired') ? 'expired' : 
-                  r.token ? 'code_sent' : 'pending',
-          recoveryCode: r.token
-        })));
-      }
+      const stored = JSON.parse(localStorage.getItem('gross_password_reset_requests') || '[]');
+      // Map it to ensure interface compliance
+      const mapped = stored.map((r: any) => ({
+        id: r.id,
+        user_id: 'unknown',
+        email: r.email,
+        timestamp: r.timestamp,
+        status: r.status,
+        recoveryCode: r.recoveryCode
+      }));
+      // Sort newest first
+      mapped.sort((a: any, b: any) => b.timestamp - a.timestamp);
+      setRequests(mapped);
     } catch (error) {
       console.error('Failed to load reset requests:', error);
       toast.error('Failed to load reset requests');
@@ -58,15 +48,16 @@ export default function PasswordResetManagement() {
   useEffect(() => {
     loadRequests();
     
-    const channel = supabase
-      .channel('password-resets-admin')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'password_resets' }, () => {
+    // Listen for cross-tab storage changes
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'gross_password_reset_requests') {
         loadRequests();
-      })
-      .subscribe();
-
+      }
+    };
+    
+    window.addEventListener('storage', handleStorage);
     return () => {
-      supabase.removeChannel(channel);
+      window.removeEventListener('storage', handleStorage);
     };
   }, []);
 
@@ -93,20 +84,21 @@ export default function PasswordResetManagement() {
     if (!selectedRequest) return;
 
     try {
-      const { error } = await supabase
-        .from('password_resets')
-        .update({ 
-          token: recoveryCode,
-          status: 'pending' // Still pending but token is sent
-        })
-        .eq('id', selectedRequest.id);
-
-      if (error) throw error;
-
-      toast.success(`Recovery code sent to ${selectedRequest.email}`);
-      setShowModal(false);
-      setSelectedRequest(null);
-      setRecoveryCode('');
+      const stored = JSON.parse(localStorage.getItem('gross_password_reset_requests') || '[]');
+      const index = stored.findIndex((r: any) => r.id === selectedRequest.id);
+      
+      if (index !== -1) {
+        stored[index].recoveryCode = recoveryCode;
+        stored[index].status = 'code_sent';
+        localStorage.setItem('gross_password_reset_requests', JSON.stringify(stored));
+        window.dispatchEvent(new StorageEvent('storage', { key: 'gross_password_reset_requests', newValue: JSON.stringify(stored) }));
+        
+        toast.success(`Recovery code sent to ${selectedRequest.email}`);
+        setShowModal(false);
+        setSelectedRequest(null);
+        setRecoveryCode('');
+        loadRequests();
+      }
     } catch (err) {
       toast.error('Failed to update recovery code');
     }
@@ -124,22 +116,30 @@ export default function PasswordResetManagement() {
     }
 
     try {
-      // 1. Update user password in Supabase Auth (Admin way)
-      // Note: This requires service role or admin permissions. 
-      // For now, we update the status, and assuming the actual password update 
-      // happens via an edge function or admin API.
+      // Direct reset (for mock/local users logic)
+      const storedUsers = JSON.parse(localStorage.getItem('gross_users') || '[]');
+      const userIndex = storedUsers.findIndex((u: any) => u.email === selectedRequest.email);
       
-      const { error: resetError } = await supabase
-        .from('password_resets')
-        .update({ status: 'completed' })
-        .eq('id', selectedRequest.id);
-
-      if (resetError) throw resetError;
+      if (userIndex !== -1) {
+        storedUsers[userIndex].password = newPassword;
+        localStorage.setItem('gross_users', JSON.stringify(storedUsers));
+        window.dispatchEvent(new StorageEvent('storage', { key: 'gross_users', newValue: JSON.stringify(storedUsers) }));
+      }
+      
+      // Update the request status
+      const stored = JSON.parse(localStorage.getItem('gross_password_reset_requests') || '[]');
+      const reqIndex = stored.findIndex((r: any) => r.id === selectedRequest.id);
+      if (reqIndex !== -1) {
+        stored[reqIndex].status = 'completed';
+        localStorage.setItem('gross_password_reset_requests', JSON.stringify(stored));
+        window.dispatchEvent(new StorageEvent('storage', { key: 'gross_password_reset_requests', newValue: JSON.stringify(stored) }));
+      }
 
       toast.success(`Password reset for ${selectedRequest.email} completed`);
       setShowModal(false);
       setSelectedRequest(null);
       setNewPassword('');
+      loadRequests();
     } catch (err) {
       console.error('Reset error:', err);
       toast.error('Failed to reset password');
@@ -148,13 +148,16 @@ export default function PasswordResetManagement() {
 
   const handleRejectRequest = async (request: PasswordResetRequest) => {
     try {
-      const { error } = await supabase
-        .from('password_resets')
-        .update({ status: 'cancelled' })
-        .eq('id', request.id);
-
-      if (error) throw error;
+      const stored = JSON.parse(localStorage.getItem('gross_password_reset_requests') || '[]');
+      const reqIndex = stored.findIndex((r: any) => r.id === request.id);
+      if (reqIndex !== -1) {
+        stored[reqIndex].status = 'rejected';
+        localStorage.setItem('gross_password_reset_requests', JSON.stringify(stored));
+        window.dispatchEvent(new StorageEvent('storage', { key: 'gross_password_reset_requests', newValue: JSON.stringify(stored) }));
+      }
+      
       toast.success(`Request from ${request.email} rejected`);
+      loadRequests();
     } catch (err) {
       toast.error('Failed to reject request');
     }
