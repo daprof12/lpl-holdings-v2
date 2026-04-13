@@ -63,43 +63,16 @@ export default function AutoTraderPage() {
 
   // Check user access
   useEffect(() => {
-    if (!currentUser) {
-      navigate('/dashboard');
-      return;
-    }
-
-    const loadAccessSettings = () => {
-      const autoTradeAccessData = localStorage.getItem('auto_trade_access');
-      if (autoTradeAccessData) {
-        try {
-          const accessMap = JSON.parse(autoTradeAccessData);
-          const userHasAccess = accessMap[currentUser.id] === true;
-          setHasAccess(userHasAccess);
-          
-          if (!userHasAccess) {
-            navigate('/dashboard');
-          }
-        } catch (e) {
-          navigate('/dashboard');
-        }
-      } else {
-        navigate('/dashboard');
-      }
-    };
-
-    loadAccessSettings();
-
-    // Listen for custom auto trade access change event (same window)
-    const handleAccessChange = (event: Event) => {
-      console.log('Auto trade access changed event detected!', event);
-      loadAccessSettings();
-    };
-
-    window.addEventListener('auto_trade_access_changed', handleAccessChange);
+    if (!currentUser) return;
     
-    return () => {
-      window.removeEventListener('auto_trade_access_changed', handleAccessChange);
-    };
+    const userHasAccess = currentUser.hasAutoTradeAccess === true;
+    setHasAccess(userHasAccess);
+    
+    if (!userHasAccess && currentUser.id) {
+      // Small delay to prevent redirect loops during initial load
+      const timer = setTimeout(() => navigate('/dashboard'), 100);
+      return () => clearTimeout(timer);
+    }
   }, [currentUser, navigate]);
 
   // If no access, show nothing (will redirect)

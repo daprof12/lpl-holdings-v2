@@ -1,11 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Search, Trash2, Eye, Edit, Bell, BellOff, Plus, X, Filter, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { toast } from 'sonner';
-import { setKV } from '../../utils/supabase/client';
+import { supabase } from '../../utils/supabase/client';
+import { api } from '../../utils/supabase/api';
 import {
   Dialog,
   DialogContent,
@@ -35,10 +36,8 @@ export default function NotificationManagement() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedMessage, setEditedMessage] = useState('');
-  const [editedTitle, setEditedTitle] = useState('');
+  const [dbNotifications, setDbNotifications] = useState<Notification[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Create notification form
   const [createForm, setCreateForm] = useState({
@@ -49,21 +48,62 @@ export default function NotificationManagement() {
     channels: ['in-app'],
   });
 
-  // Get all notifications from localStorage
-  const allNotifications = useMemo(() => {
+
+
+  // Fetch all notifications from database
+  const fetchNotifications = async () => {
+    setIsLoading(true);
     try {
-      const stored = localStorage.getItem('gross_notifications');
-      if (!stored) return [];
-      const parsed = JSON.parse(stored);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
+      const data = await api.notifications.getAll();
+      if (Array.isArray(data)) {
+        setDbNotifications(data.map((n: any) => ({
+          id: n.id,
+          userId: n.user_id,
+          type: n.type,
+          title: n.title,
+          message: n.message,
+          timestamp: new Date(n.created_at).getTime(),
+          read: n.read_status === 'read',
+          isVisibleToUser: n.is_visible,
+          channels: n.channels,
+          relatedId: n.related_id
+        })));
+      }
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error);
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+
+    // Set up real-time subscription
+    const channel = supabase
+      .channel('notifications-db-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications'
+        },
+        (payload) => {
+          console.log('Realtime notification change:', payload);
+          fetchNotifications(); // Simple approach: refetch on any change
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // Apply filters
   const filteredNotifications = useMemo(() => {
-    let notifications = [...allNotifications];
+    let notifications = [...dbNotifications];
 
     // Apply type filter
     if (filterType !== 'all') {
@@ -100,9 +140,9 @@ export default function NotificationManagement() {
     }
 
     return notifications.sort((a, b) => b.timestamp - a.timestamp);
-  }, [allNotifications, filterType, filterStatus, selectedUserId, searchQuery, users]);
+  }, [dbNotifications, filterType, filterStatus, selectedUserId, searchQuery, users]);
 
-  const handleCreateNotification = () => {
+  const handleCreateNotification = async () => {
     if (!createForm.userId) {
       toast.error('Please select a user');
       return;
@@ -117,11 +157,13 @@ export default function NotificationManagement() {
     }
 
     try {
-      addNotification(createForm.userId, {
+      await api.notifications.create({
+        user_id: createForm.userId,
         type: createForm.type,
         title: createForm.title,
         message: createForm.message,
-        channels: createForm.channels as any,
+        channels: createForm.channels,
+        is_visible: true
       });
       
       toast.success('Notification created successfully');
@@ -133,73 +175,51 @@ export default function NotificationManagement() {
         message: '',
         channels: ['in-app'],
       });
+      fetchNotifications();
     } catch (error) {
       toast.error('Failed to create notification');
     }
   };
 
-  const handleDeleteNotification = (notificationId: string) => {
+  const handleDeleteNotification = async (notificationId: string) => {
     if (confirm('Are you sure you want to delete this notification? This cannot be undone.')) {
       try {
-        const stored = localStorage.getItem('gross_notifications');
-        if (stored) {
-          const notifications = JSON.parse(stored);
-          const updated = notifications.filter((n: Notification) => n.id !== notificationId);
-          localStorage.setItem('gross_notifications', JSON.stringify(updated));
-          setKV('gross_notifications', updated).catch(console.error);
-          window.dispatchEvent(new Event('storage'));
-          toast.success('Notification deleted successfully');
-        }
+        await api.notifications.delete(notificationId);
+        toast.success('Notification deleted successfully');
+        fetchNotifications();
       } catch (error) {
         toast.error('Failed to delete notification');
       }
     }
   };
 
-  const handleDeleteAllNotifications = () => {
+  const handleDeleteAllNotifications = async () => {
     if (confirm('Are you sure you want to delete ALL notifications? This will permanently remove all notifications for all users.')) {
       try {
-        localStorage.setItem('gross_notifications', JSON.stringify([]));
-        setKV('gross_notifications', []).catch(console.error);
-        window.dispatchEvent(new Event('storage'));
+        await api.notifications.deleteAll();
         toast.success('All notifications deleted successfully');
+        fetchNotifications();
       } catch (error) {
         toast.error('Failed to delete notifications');
       }
     }
   };
 
-  const handleMarkAsRead = (notificationId: string) => {
+  const handleMarkAsRead = async (notificationId: string) => {
     try {
-      const stored = localStorage.getItem('gross_notifications');
-      if (stored) {
-        const notifications = JSON.parse(stored);
-        const updated = notifications.map((n: Notification) =>
-          n.id === notificationId ? { ...n, read: true } : n
-        );
-        localStorage.setItem('gross_notifications', JSON.stringify(updated));
-        setKV('gross_notifications', updated).catch(console.error);
-        window.dispatchEvent(new Event('storage'));
-        toast.success('Marked as read');
-      }
+      await api.notifications.update(notificationId, { read_status: 'read' });
+      toast.success('Marked as read');
+      fetchNotifications();
     } catch (error) {
       toast.error('Failed to update notification');
     }
   };
 
-  const handleMarkAsUnread = (notificationId: string) => {
+  const handleMarkAsUnread = async (notificationId: string) => {
     try {
-      const stored = localStorage.getItem('gross_notifications');
-      if (stored) {
-        const notifications = JSON.parse(stored);
-        const updated = notifications.map((n: Notification) =>
-          n.id === notificationId ? { ...n, read: false } : n
-        );
-        localStorage.setItem('gross_notifications', JSON.stringify(updated));
-        setKV('gross_notifications', updated).catch(console.error);
-        window.dispatchEvent(new Event('storage'));
-        toast.success('Marked as unread');
-      }
+      await api.notifications.update(notificationId, { read_status: 'unread' });
+      toast.success('Marked as unread');
+      fetchNotifications();
     } catch (error) {
       toast.error('Failed to update notification');
     }
@@ -213,7 +233,7 @@ export default function NotificationManagement() {
     setShowDetailsDialog(true);
   };
 
-  const handleUpdateNotification = () => {
+  const handleUpdateNotification = async () => {
     if (!selectedNotification) return;
     if (!editedTitle.trim() || !editedMessage.trim()) {
       toast.error('Title and message cannot be empty');
@@ -221,60 +241,32 @@ export default function NotificationManagement() {
     }
 
     try {
-      const stored = localStorage.getItem('gross_notifications');
-      if (stored) {
-        const notifications = JSON.parse(stored);
-        const updated = notifications.map((n: Notification) =>
-          n.id === selectedNotification.id 
-            ? { ...n, title: editedTitle, message: editedMessage } 
-            : n
-        );
-        
-        localStorage.setItem('gross_notifications', JSON.stringify(updated));
-        setKV('gross_notifications', updated).catch(console.error);
-        window.dispatchEvent(new Event('storage'));
-        
-        setSelectedNotification({ ...selectedNotification, title: editedTitle, message: editedMessage });
-        setIsEditing(false);
-        toast.success('Notification updated successfully');
-      }
+      await api.notifications.update(selectedNotification.id, {
+        title: editedTitle,
+        message: editedMessage
+      });
+      
+      toast.success('Notification updated successfully');
+      setSelectedNotification({ ...selectedNotification, title: editedTitle, message: editedMessage });
+      setIsEditing(false);
+      fetchNotifications();
     } catch (error) {
       toast.error('Failed to update notification');
     }
   };
 
-  const handleToggleVisibility = (notificationId: string) => {
+  const handleToggleVisibility = async (notificationId: string) => {
     try {
-      const stored = localStorage.getItem('gross_notifications');
-      if (stored) {
-        const notifications = JSON.parse(stored);
-        const notification = notifications.find((n: Notification) => n.id === notificationId);
-        if (!notification) return;
+      const notification = dbNotifications.find(n => n.id === notificationId);
+      if (!notification) return;
 
-        const newVisibility = !notification.isVisibleToUser;
-        const updated = notifications.map((n: Notification) =>
-          n.id === notificationId ? { ...n, isVisibleToUser: newVisibility } : n
-        );
-        localStorage.setItem('gross_notifications', JSON.stringify(updated));
-        setKV('gross_notifications', updated).catch(console.error);
+      const newVisibility = !notification.isVisibleToUser;
+      await api.notifications.update(notificationId, { is_visible: newVisibility });
 
-        // Also toggle related transaction if it exists
-        if (notification.relatedId) {
-          const storedTxns = localStorage.getItem('transactions');
-          if (storedTxns) {
-            const txns = JSON.parse(storedTxns);
-            const updatedTxns = txns.map((t: any) =>
-              t.id === notification.relatedId ? { ...t, isVisibleToUser: newVisibility } : t
-            );
-            localStorage.setItem('transactions', JSON.stringify(updatedTxns));
-            localStorage.setItem('gross_transactions', JSON.stringify(updatedTxns));
-            window.dispatchEvent(new CustomEvent('transactionsUpdated'));
-          }
-        }
-
-        window.dispatchEvent(new Event('storage'));
-        toast.success(newVisibility ? 'Notification is now visible to user' : 'Notification is now hidden from user');
-      }
+      // Support for related transactions - if needed, should be handled server-side or via separate API calls
+      // For now, just refresh notifications
+      fetchNotifications();
+      toast.success(newVisibility ? 'Notification is now visible to user' : 'Notification is now hidden from user');
     } catch (error) {
       toast.error('Failed to update visibility');
     }
@@ -356,7 +348,7 @@ export default function NotificationManagement() {
             </div>
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Total</p>
-              <p className="text-2xl font-bold">{allNotifications.length}</p>
+              <p className="text-2xl font-bold">{dbNotifications.length}</p>
             </div>
           </div>
         </div>
@@ -368,7 +360,7 @@ export default function NotificationManagement() {
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Unread</p>
               <p className="text-2xl font-bold">
-                {allNotifications.filter(n => !n.read).length}
+                {dbNotifications.filter(n => !n.read).length}
               </p>
             </div>
           </div>
@@ -381,7 +373,7 @@ export default function NotificationManagement() {
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Read</p>
               <p className="text-2xl font-bold">
-                {allNotifications.filter(n => n.read).length}
+                {dbNotifications.filter(n => n.read).length}
               </p>
             </div>
           </div>
@@ -394,7 +386,7 @@ export default function NotificationManagement() {
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Today</p>
               <p className="text-2xl font-bold">
-                {allNotifications.filter(n =>
+                {dbNotifications.filter(n =>
                   Date.now() - n.timestamp < 24 * 60 * 60 * 1000
                 ).length}
               </p>

@@ -10,6 +10,7 @@ import { DepositMethod } from '../admin/DepositMethodsManagement';
 import { useMarketData } from '../../contexts/MarketDataContext';
 import { showSuccessToast, showErrorToast } from '../common/ToastNotifications';
 import { formatCurrency } from '../../utils/formatNumber';
+import { api } from '../../utils/supabase/api';
 
 interface WithdrawTabProps {
   availableBalance: number;
@@ -50,36 +51,25 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
   // Confirmation modal state
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
 
-  // Load admin-configured crypto methods for withdrawal
+  // Load admin-configured crypto methods and user withdrawal methods
   useEffect(() => {
-    const stored = localStorage.getItem('depositMethods');
-
-    // Default seed — same as DepositMethodsManagement defaults
-    const defaultMethods = [
-      { id: 'dm_btc_1', type: 'crypto', enabled: true, cryptoType: 'BTC', walletAddress: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', network: 'Bitcoin', minDeposit: 0.0001 },
-      { id: 'dm_eth_1', type: 'crypto', enabled: true, cryptoType: 'ETH', walletAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb', network: 'Ethereum', minDeposit: 0.01 },
-      { id: 'dm_usdt_1', type: 'crypto', enabled: true, cryptoType: 'USDT', walletAddress: 'TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS', network: 'Tron (TRC20)', minDeposit: 10 },
-    ];
-
-    let allMethods: DepositMethod[] = defaultMethods as DepositMethod[];
-
-    if (!stored) {
-      localStorage.setItem('depositMethods', JSON.stringify([
-        ...defaultMethods,
-        { id: 'dm_bank_1', type: 'bank', enabled: true, bankName: 'JPMorgan Chase Bank', accountName: 'Gross Trading Platform LLC', accountNumber: '****5678', routingNumber: '021000021', swiftCode: 'CHASUS33' },
-        { id: 'dm_card_1', type: 'card', enabled: true, processorName: 'Stripe', processorType: 'credit_card', publicKey: 'pk_live_XXXXXXXXXXXXXXXXXXXXXXXX', processingFee: 2.9 },
-      ]));
-    } else {
+    const loadWithdrawalConfigs = async () => {
       try {
-        allMethods = JSON.parse(stored);
+        const allMethods = await api.paymentMethods.getAll();
+        const cryptoMethods = allMethods.filter((m: any) => m.type === 'crypto' && m.enabled);
+        setAdminCryptoMethods(cryptoMethods);
+        
+        if (currentUser) {
+          const userMethods = await api.withdrawalMethods.getByUserId(currentUser.id);
+          setWithdrawalMethods(userMethods || []);
+        }
       } catch (error) {
-        console.error('Failed to load admin crypto methods:', error);
+        console.error('Failed to load withdrawal configs:', error);
       }
-    }
+    };
 
-    const cryptoMethods = allMethods.filter(m => m.type === 'crypto' && m.enabled);
-    setAdminCryptoMethods(cryptoMethods);
-  }, []);
+    loadWithdrawalConfigs();
+  }, [currentUser?.id]);
 
   // Subscribe to crypto symbols for real-time pricing
   useEffect(() => {
@@ -195,22 +185,6 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
   });
 
   const cryptoOptions = Array.from(cryptoOptionsMap.values());
-
-  // Load user's withdrawal methods from settings
-  useEffect(() => {
-    const stored = localStorage.getItem('withdrawalMethods');
-    if (stored && currentUser) {
-      try {
-        const allMethods = JSON.parse(stored);
-        const userMethods = allMethods.filter((m: any) =>
-          m.userId === currentUser.id || m.userId === 'all-users'
-        );
-        setWithdrawalMethods(userMethods);
-      } catch (error) {
-        console.error('Failed to load withdrawal methods:', error);
-      }
-    }
-  }, [currentUser]);
 
   // Get recent withdrawals
   const recentWithdrawals = currentUser ? getUserTransactions(currentUser.id).filter(t => t.type === 'withdrawal').slice(0, 5) : [];
@@ -412,91 +386,79 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
     setShowConfirmModal(true);
   };
 
-  const processWithdrawal = () => {
+  const processWithdrawal = async () => {
     if (!currentUser) return;
 
     const withdrawAmount = parseFloat(amount);
     const fee = calculateFee();
-
-    // Create withdrawal transaction
-    const txId = addTransaction({
-      userId: currentUser.id,
-      type: 'withdrawal',
-      method: selectedMethod === 'e_wallet' ? 'paypal' : (selectedMethod as any),
-      amount: withdrawAmount,
-      currency: 'USD',
-      usdEquivalent: withdrawAmount,
-      status: 'pending',
-      walletType,
-      ...(selectedMethod === 'bank' && {
-        bankName,
-        accountName,
-        accountNumber,
-        routingNumber,
-        swiftCode,
-      }),
-      ...(selectedMethod === 'e_wallet' && {
-        paypalEmail,
-      }),
-      ...(selectedMethod === 'crypto' && {
-        walletAddress: customWithdrawalAddress,
-        network: selectedCryptoNetwork,
-        currency: selectedCryptoType,
-      }),
-    });
-
-    // Immediately deduct the withdrawal amount (including fee) from user's balance
-    // If admin approves → deduction stays (finalized)
-    // If admin rejects → funds are returned to user's balance
     const totalDeduction = withdrawAmount + fee;
 
-    if (walletType === 'portfolio') {
-      // Deduct from portfolio balance
-      const stored = localStorage.getItem(`investment_balances_${currentUser.id}`);
-      const balances = stored ? JSON.parse(stored) : { ecn: 0, ipo: 0, portfolio: 0 };
-      balances.portfolio = Math.max(0, (balances.portfolio || 0) - totalDeduction);
-      localStorage.setItem(`investment_balances_${currentUser.id}`, JSON.stringify(balances));
-      window.dispatchEvent(new Event('storage'));
-    } else {
-      // Deduct from live balance
-      const users = JSON.parse(localStorage.getItem('gross_users') || '[]');
-      const userIndex = users.findIndex((u: any) => u.id === currentUser.id);
-      if (userIndex !== -1) {
-        users[userIndex].balance = Math.max(0, (users[userIndex].balance || 0) - totalDeduction);
-        users[userIndex].liveBalance = Math.max(0, (users[userIndex].liveBalance || 0) - totalDeduction);
-        localStorage.setItem('gross_users', JSON.stringify(users));
+    try {
+      // 1. Create withdrawal transaction in relational DB
+      const result = await createWithdrawal({
+        amount: withdrawAmount,
+        method: selectedMethod,
+        currency: selectedCryptoType || 'USD',
+        walletType,
+        destination_address: customWithdrawalAddress || paypalEmail || accountNumber,
+        bankName,
+        accountName,
+        routingNumber,
+        swiftCode,
+        network: selectedCryptoNetwork,
+        metadata: {
+          fee,
+          totalDeduction,
+          walletType
+        }
+      });
 
-        // Sync with trading account (deduct from live account)
-        const liveAccountKey = `gross_live_account_${currentUser.id}`;
-        const liveAccount = JSON.parse(
-          localStorage.getItem(liveAccountKey) ||
-          localStorage.getItem('gross_live_account') ||
-          '{"balance":0,"equity":0,"realizedPnL":0,"unrealizedPnL":0,"margin":0,"availableFunds":0,"bonus":0}'
-        );
-        liveAccount.balance = Math.max(0, liveAccount.balance - totalDeduction);
-        liveAccount.equity = Math.max(0, liveAccount.equity - totalDeduction);
-        liveAccount.availableFunds = Math.max(0, liveAccount.availableFunds - totalDeduction);
-        // Write to both per-user and generic keys so TradingContext picks it up
-        localStorage.setItem(liveAccountKey, JSON.stringify(liveAccount));
-        localStorage.setItem('gross_live_account', JSON.stringify(liveAccount));
-
-        // Trigger real-time updates across tabs and contexts
-        window.dispatchEvent(new Event('storage'));
-        window.dispatchEvent(new CustomEvent('usersUpdated'));
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to submit withdrawal');
       }
+
+      // 2. Deduct from user's balance in relational DB (Delta Update)
+      if (walletType === 'portfolio') {
+        await api.investmentWallets.update(currentUser.id, { 
+          portfolio: -totalDeduction 
+        });
+        
+        // Update local session via AuthContext
+        const currentPortfolio = currentUser.investmentBalances?.portfolio || 0;
+        updateUser(currentUser.id, { 
+          investmentBalances: {
+            ...currentUser.investmentBalances,
+            portfolio: Math.max(0, currentPortfolio - totalDeduction)
+          } as any
+        });
+      } else {
+        await api.users.updateBalance(currentUser.id, -totalDeduction);
+        
+        // Update local session via AuthContext
+        const currentLive = currentUser.liveBalance || 0;
+        const newLive = Math.max(0, currentLive - totalDeduction);
+        updateUser(currentUser.id, { 
+          balance: newLive, 
+          liveBalance: newLive 
+        });
+      }
+
+      showSuccessToast(`Withdrawal request submitted!`);
+
+      // 3. Reset form
+      setShowConfirmModal(false);
+      setAmount('');
+      setSelectedMethod(null);
+      setSelectedWithdrawalMethod(null);
+      setUseCustomAddress(false);
+      setSelectedCryptoType('');
+      setSelectedCryptoNetwork('');
+      setCustomWithdrawalAddress('');
+      
+    } catch (error) {
+      console.error('Withdrawal failed:', error);
+      showErrorToast((error as Error).message || 'Withdrawal failed. Please try again.');
     }
-
-    showSuccessToast(`Withdrawal request submitted! Transaction ID: ${txId.slice(0, 12)}...`);
-
-    // Close modal and reset form
-    setShowConfirmModal(false);
-    setAmount('');
-    setSelectedMethod(null);
-    setSelectedWithdrawalMethod(null);
-    setUseCustomAddress(false);
-    setSelectedCryptoType('');
-    setSelectedCryptoNetwork('');
-    setCustomWithdrawalAddress('');
   };
 
   // Filter methods by type

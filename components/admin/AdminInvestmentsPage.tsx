@@ -69,7 +69,7 @@ export default function AdminInvestmentsPage() {
     getAllSellRequests
   } = useInvestments();
 
-  const { users } = useAuth();
+  const { users, addFundsToAccount } = useAuth();
 
   // Helper function to get user details
   const getUserDetails = (userId: string) => {
@@ -81,6 +81,17 @@ export default function AdminInvestmentsPage() {
       };
     }
     return { name: 'Unknown User', email: userId };
+  };
+
+  // Helper to get effective current value (dynamic for ECN unless custom)
+  const getEffectiveValue = (inv: any) => {
+    if (inv.offerType === 'ECN' && !inv.isCustomValue) {
+      const offer = investmentOffers.find(o => o.id === inv.offerId);
+      if (offer && offer.marketPrice) {
+        return inv.units * offer.marketPrice;
+      }
+    }
+    return inv.currentValue;
   };
 
   // Filter offers
@@ -192,33 +203,33 @@ export default function AdminInvestmentsPage() {
         processedBy: 'Admin',
       });
       
-      // Credit user wallet
+      // Credit user wallet using centralized method
       const userId = request.userId;
-      const stored = localStorage.getItem(`investment_balances_${userId}`);
-      if (stored) {
-        const balances = JSON.parse(stored);
-        const walletKey = request.paymentWallet;
-        balances[walletKey] = (balances[walletKey] || 0) + request.totalAmount;
-        localStorage.setItem(`investment_balances_${userId}`, JSON.stringify(balances));
-      } else {
-        // Create new balance record
-        const newBalances = {
-          portfolio: request.paymentWallet === 'portfolio' ? request.totalAmount : 0,
-          ecn: request.paymentWallet === 'ecn' ? request.totalAmount : 0,
-          ipo: request.paymentWallet === 'ipo' ? request.totalAmount : 0,
-        };
-        localStorage.setItem(`investment_balances_${userId}`, JSON.stringify(newBalances));
-      }
+      const accountType = request.paymentWallet === 'wallet' ? 'live' : request.paymentWallet;
       
-      // Trigger storage event for real-time updates across contexts
-      window.dispatchEvent(new Event('storage'));
-
-      // Sync to database
-      const key = `investment_balances_${userId}`;
-      const finalBalances = JSON.parse(localStorage.getItem(key) || '{}');
-      import('../../utils/supabase/client').then(({ setKV }) => {
-        setKV(key, finalBalances);
-      });
+      addFundsToAccount(userId, request.totalAmount, accountType, 'balance');
+      
+      // Reduce user's investment units
+      const userInv = userInvestments.find(i => i.id === request.investmentId);
+      if (userInv) {
+        const remainingUnits = userInv.units - request.units;
+        if (remainingUnits <= 0) {
+          // If all units sold, mark as completed or delete
+          updateUserInvestment(userInv.id, { 
+            units: 0, 
+            status: 'completed',
+            currentValue: 0 
+          });
+        } else {
+          // Update with remaining units and proportionately reduce currentValue
+          const ratio = remainingUnits / userInv.units;
+          updateUserInvestment(userInv.id, { 
+            units: remainingUnits,
+            totalAmount: userInv.totalAmount * ratio,
+            currentValue: userInv.currentValue * ratio
+          });
+        }
+      }
       
       showSuccessToast('Sell request approved. User wallet credited with $' + formatCurrency(request.totalAmount));
     }
@@ -619,9 +630,16 @@ export default function AdminInvestmentsPage() {
                     <td className="px-6 py-4">{investment.units}</td>
                     <td className="px-6 py-4">${formatCurrency(investment.totalAmount)}</td>
                     <td className="px-6 py-4 font-semibold text-green-600">
-                      {investment.offerType === 'IPO' && !investment.showValueAndDate 
-                        ? '—' 
-                        : `$${formatCurrency(investment.currentValue)}`}
+                      <div className="flex flex-col">
+                        <span>
+                          {investment.offerType === 'IPO' && !investment.showValueAndDate 
+                            ? '—' 
+                            : `$${formatCurrency(getEffectiveValue(investment))}`}
+                        </span>
+                        {investment.isCustomValue && (
+                          <span className="text-[10px] bg-amber-100 text-amber-600 px-1 rounded w-fit mt-1 uppercase">Custom</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       {new Date(investment.startDate).toLocaleDateString()}
@@ -862,7 +880,10 @@ export default function AdminInvestmentsPage() {
       {/* Edit Investment Modal */}
       {showEditInvestmentModal && editingInvestment && (
         <EditInvestmentModal
-          investment={editingInvestment}
+          investment={{
+            ...editingInvestment,
+            currentValue: getEffectiveValue(editingInvestment)
+          }}
           onClose={() => { setShowEditInvestmentModal(false); setEditingInvestment(null); }}
           onSave={handleUpdateInvestment}
         />
@@ -896,6 +917,7 @@ function EditInvestmentModal({
     // Convert date back to timestamp
     const updates = {
       ...formData,
+      isCustomValue: investment.isCustomValue || formData.currentValue !== investment.currentValue,
       endDate: new Date(formData.endDate).getTime(),
     };
     

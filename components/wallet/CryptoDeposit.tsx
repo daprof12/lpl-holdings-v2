@@ -37,37 +37,21 @@ const copyToClipboard = async (text: string) => {
   }
 };
 
-export default function CryptoDeposit({ walletType = 'live' }: { walletType?: 'live' | 'portfolio' }) {
+export default function CryptoDeposit({ walletType = 'live', methods }: { walletType?: 'live' | 'portfolio', methods: DepositMethod[] }) {
   const [selectedCrypto, setSelectedCrypto] = useState('');
   const [selectedNetwork, setSelectedNetwork] = useState('');
   const [copied, setCopied] = useState(false);
   const [amount, setAmount] = useState('');
-  const [adminDepositMethods, setAdminDepositMethods] = useState<DepositMethod[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   
   const { currentUser: user } = useAuth();
-  const { addTransaction, getRecentDeposits } = useTransactions();
+  const { createDeposit, getRecentDeposits } = useTransactions();
   const marketData = useMarketData();
-
-  // Load admin-configured deposit methods from localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem('depositMethods');
-    if (stored) {
-      try {
-        const allMethods: DepositMethod[] = JSON.parse(stored);
-        // Filter for enabled crypto deposit methods only
-        const cryptoMethods = allMethods.filter(m => m.type === 'crypto' && m.enabled);
-        setAdminDepositMethods(cryptoMethods);
-      } catch (error) {
-        console.error('Failed to load deposit methods:', error);
-      }
-    }
-  }, []);
 
   // Subscribe to crypto symbols for real-time pricing
   useEffect(() => {
-    adminDepositMethods.forEach(method => {
+    methods.forEach(method => {
       if (method.cryptoType) {
         const symbol = `${method.cryptoType}USD`;
         marketData.subscribeToSymbol(symbol);
@@ -75,14 +59,14 @@ export default function CryptoDeposit({ walletType = 'live' }: { walletType?: 'l
     });
 
     return () => {
-      adminDepositMethods.forEach(method => {
+      methods.forEach(method => {
         if (method.cryptoType) {
           const symbol = `${method.cryptoType}USD`;
           marketData.unsubscribeFromSymbol(symbol);
         }
       });
     };
-  }, [adminDepositMethods]);
+  }, [methods]);
 
   // Get real-time crypto price from MarketDataContext
   const getCryptoPrice = (cryptoSymbol: string): number => {
@@ -164,7 +148,7 @@ export default function CryptoDeposit({ walletType = 'live' }: { walletType?: 'l
     price: number;
   }>();
 
-  adminDepositMethods.forEach(method => {
+  methods.forEach(method => {
     if (method.cryptoType && method.network && method.walletAddress) {
       const existing = cryptoOptionsMap.get(method.cryptoType);
       if (existing) {
@@ -211,7 +195,7 @@ export default function CryptoDeposit({ walletType = 'live' }: { walletType?: 'l
   const minDepositUSD = selectedCryptoData?.minDeposit ? selectedCryptoData.minDeposit * currentPrice : 10;
   
   // Get fee configuration from the admin-configured method
-  const selectedMethodConfig = adminDepositMethods.find(
+  const selectedMethodConfig = methods.find(
     m => m.cryptoType === selectedCrypto && m.network === selectedNetwork
   );
   
@@ -265,31 +249,41 @@ export default function CryptoDeposit({ walletType = 'live' }: { walletType?: 'l
     setShowConfirmModal(true);
   };
 
-  const processPayment = () => {
+  const processPayment = async () => {
     if (!user) return;
 
     setIsSubmitting(true);
 
-    // Create transaction
-    const txId = addTransaction({
-      userId: user.id,
-      type: 'deposit',
-      method: 'crypto',
-      amount: cryptoAmount,
-      currency: selectedCrypto,
-      usdEquivalent: parseFloat(amount),
-      status: 'pending',
-      walletAddress: depositAddress,
-      network: selectedNetwork,
-      walletType,
-    });
+    try {
+      // Create transaction in relational DB
+      const result = await createDeposit({
+        amount: parseFloat(amount),
+        payment_method: 'crypto',
+        currency: selectedCrypto,
+        walletAddress: depositAddress,
+        network: selectedNetwork,
+        walletType,
+        metadata: {
+          cryptoAmount,
+          currentPrice
+        }
+      });
 
-    showSuccessToast(`Deposit request submitted! Transaction ID: ${txId.slice(0, 12)}...`);
-    
-    // Close modal and reset form
-    setShowConfirmModal(false);
-    setAmount('');
-    setIsSubmitting(false);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to submit deposit');
+      }
+
+      showSuccessToast(`Deposit request submitted successfully!`);
+      
+      // Close modal and reset form
+      setShowConfirmModal(false);
+      setAmount('');
+    } catch (error) {
+      console.error('Deposit processing error:', error);
+      showErrorToast((error as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

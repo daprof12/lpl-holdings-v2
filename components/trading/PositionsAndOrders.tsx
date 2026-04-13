@@ -319,7 +319,7 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                     <span className="font-mono text-gray-700 dark:text-gray-300 break-all">{formatTxnId(position.id)}</span>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                  <div className="grid grid-cols-2 gap-2 text-sm mb-2">
                     <div>
                       <div className="text-gray-500 dark:text-gray-400">Units</div>
                       <div>{position.units}</div>
@@ -343,13 +343,17 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                       <div className="font-mono">${(position.margin || 0).toFixed(2)}</div>
                     </div>
                     <div>
+                      <div className="text-gray-500 dark:text-gray-400">Leverage</div>
+                      <div className="font-semibold text-blue-600 dark:text-blue-400">{position.leverage || 1}x</div>
+                    </div>
+                    <div>
                       <div className="text-gray-500 dark:text-gray-400">Date Opened</div>
                       <div>{new Date(position.timestamp).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</div>
                     </div>
                   </div>
                   
                   {(position.stopLoss || position.takeProfit) && (
-                    <div className="pt-2 border-t border-gray-200 dark:border-slate-600 flex gap-3 text-xs">
+                    <div className="pt-2 border-t border-gray-200 dark:border-slate-600 flex gap-3 text-sm">
                       {position.stopLoss && (
                         <div>
                           <span className="text-gray-500 dark:text-gray-400">SL: </span>
@@ -417,7 +421,7 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                     </div>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                  <div className="grid grid-cols-2 gap-2 text-sm mb-2">
                     <div>
                       <div className="text-gray-500 dark:text-gray-400">Units</div>
                       <div>{order.units}</div>
@@ -437,7 +441,7 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                   </div>
                   
                   {(order.stopLoss || order.takeProfit) && (
-                    <div className="pt-2 border-t border-gray-200 dark:border-slate-600 flex gap-3 text-xs">
+                    <div className="pt-2 border-t border-gray-200 dark:border-slate-600 flex gap-3 text-sm">
                       {order.stopLoss && (
                         <div>
                           <span className="text-gray-500 dark:text-gray-400">SL: </span>
@@ -504,7 +508,7 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                     <span className="font-mono text-gray-700 dark:text-gray-300 break-all">{formatTxnId(item.id)}</span>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
                       <div className="text-gray-500 dark:text-gray-400">Units</div>
                       <div>{item.units}</div>

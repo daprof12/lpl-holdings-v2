@@ -41,13 +41,31 @@ export default function AccountSummary() {
       iconColor: 'text-blue-600 dark:text-blue-400'
     },
     {
+      title: 'Bonus Funds',
+      value: `$${(account.bonus || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      icon: DollarSign,
+      color: 'from-emerald-500 to-emerald-600',
+      bgColor: 'bg-emerald-50 dark:bg-emerald-900/20',
+      iconColor: 'text-emerald-600 dark:text-emerald-400',
+      subtitle: 'Promotional funds'
+    },
+    {
+      title: 'Credit Line',
+      value: `$${(account.credit || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      icon: Wallet,
+      color: 'from-blue-500 to-blue-600',
+      bgColor: 'bg-blue-50 dark:bg-blue-900/20',
+      iconColor: 'text-blue-600 dark:text-blue-400',
+      subtitle: 'Funds to be repaid'
+    },
+    {
       title: 'Equity',
       value: `$${account.equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: DollarSign,
       color: 'from-purple-500 to-purple-600',
       bgColor: 'bg-purple-50 dark:bg-purple-900/20',
       iconColor: 'text-purple-600 dark:text-purple-400',
-      subtitle: `Balance + Bonus + Credit + Unrealized P/L`
+      subtitle: `Total assets + Profit/Loss`
     },
     {
       title: 'Margin Used',

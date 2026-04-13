@@ -1,8 +1,10 @@
+import { useState, useEffect } from 'react';
 import { Users, TrendingUp, Signal, CreditCard, Briefcase, Headphones, DollarSign, Activity, UserPlus, ArrowDownCircle, ArrowUpCircle, FileText, CheckCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useState, useEffect } from 'react';
 import { useTransactions } from '../../contexts/TransactionProvider';
+import { useAuth } from '../../contexts/AuthContext';
 import { formatCurrency } from '../../utils/formatNumber';
+import { api } from '../../utils/supabase/api';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState([
@@ -26,253 +28,227 @@ export default function AdminDashboard() {
     icon: any;
   }>>([]);
 
+  const { users } = useAuth();
+
   useEffect(() => {
-    // Fetch real-time data from localStorage
-    const users = JSON.parse(localStorage.getItem('gross_users') || '[]');
-    const trades = JSON.parse(localStorage.getItem('gross_trades') || '[]');
-    const signals = JSON.parse(localStorage.getItem('gross_signals') || '[]');
-    const subscriptions = JSON.parse(localStorage.getItem('gross_subscriptions') || '[]');
-    const assets = JSON.parse(localStorage.getItem('gross_assets') || '[]');
-    const tickets = JSON.parse(localStorage.getItem('gross_tickets') || '[]');
+    const fetchData = async () => {
+      try {
+        // Fetch real-time data from relational DB
+        const trades = await api.tradeHistory.getAll();
+        const signals = await api.signals.getAll();
+        const subscriptions = await api.subscriptions.getAll();
+        const assets = await api.assets.getAll();
+        const tickets = await api.tickets.getAll();
 
-    // Calculate total users (excluding admin users to match User Management page)
-    const totalUsers = users.filter((user: any) => user.role !== 'admin').length;
+        // Calculate total users (excluding admin users to match User Management page)
+        const totalUsers = users.filter((user: any) => user.role !== 'admin').length;
 
-    // Calculate active trades (open positions)
-    const activeTrades = trades.filter((trade: any) => trade.status === 'open').length;
+        // Calculate active trades (open positions)
+        const activeTrades = trades.filter((trade: any) => trade.status === 'open').length;
 
-    // Calculate active signals
-    const activeSignals = signals.filter((signal: any) => signal.status === 'active').length;
+        // Calculate active signals
+        const activeSignals = signals.filter((signal: any) => signal.status === 'active').length;
 
-    // Calculate subscriptions
-    const activeSubscriptions = subscriptions.filter((sub: any) => sub.status === 'active').length;
+        // Calculate subscriptions
+        const activeSubscriptions = subscriptions.filter((sub: any) => sub.status === 'active').length;
 
-    // Calculate total assets
-    const totalAssets = assets.length;
+        // Calculate total assets
+        const totalAssets = assets.length;
 
-    // Calculate open tickets
-    const openTickets = tickets.filter((ticket: any) => ticket.status === 'open' || ticket.status === 'pending').length;
+        // Calculate open tickets
+        const openTickets = tickets.filter((ticket: any) => ticket.status === 'open' || ticket.status === 'pending').length;
 
-    // Calculate revenue from completed deposits this month
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    
-    const monthlyRevenue = transactions
-      .filter((tx: any) => {
-        const txDate = new Date(tx.timestamp);
-        return tx.type === 'deposit' && 
-               tx.status === 'completed' && 
-               txDate.getMonth() === currentMonth && 
-               txDate.getFullYear() === currentYear;
-      })
-      .reduce((sum: number, tx: any) => sum + (parseFloat(tx.amount as any) || 0), 0);
+        // Calculate revenue from completed deposits this month
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        
+        const monthlyRevenue = transactions
+          .filter((tx: any) => {
+            const txDate = new Date(tx.timestamp);
+            return tx.type === 'deposit' && 
+                  tx.status === 'completed' && 
+                  txDate.getMonth() === currentMonth && 
+                  txDate.getFullYear() === currentYear;
+          })
+          .reduce((sum: number, tx: any) => sum + (parseFloat(tx.amount as any) || 0), 0);
 
-    // Calculate platform health (based on successful vs failed transactions)
-    const recentTransactions = transactions.slice(-100); // Last 100 transactions
-    const successfulTx = recentTransactions.filter((tx: any) => tx.status === 'completed').length;
-    const platformHealth = recentTransactions.length > 0 
-      ? ((successfulTx / recentTransactions.length) * 100).toFixed(1)
-      : "100";
+        // Calculate platform health (based on successful vs failed transactions)
+        const recentTransactions = transactions.slice(-100); // Last 100 transactions
+        const successfulTx = recentTransactions.filter((tx: any) => tx.status === 'completed').length;
+        const platformHealth = recentTransactions.length > 0 
+          ? ((successfulTx / recentTransactions.length) * 100).toFixed(1)
+          : "100";
 
-    // Calculate changes (comparing current data with some baseline logic)
-    // For demo purposes, we'll calculate percentage based on growth indicators
-    const userGrowth = totalUsers > 0 ? '+12.5%' : '+0%';
-    const tradeGrowth = activeTrades > 0 ? '+8.2%' : '+0%';
-    const signalChange = activeSignals > 0 ? `+${Math.min(activeSignals, 10)}` : '+0';
-    const subscriptionGrowth = activeSubscriptions > 0 ? '+15.3%' : '+0%';
-    const assetChange = totalAssets > 0 ? `+${Math.min(totalAssets, 50)}` : '+0';
-    const ticketChange = openTickets > 10 ? `-${Math.floor(openTickets * 0.1)}` : `+${openTickets}`;
-    const revenueGrowth = monthlyRevenue > 0 ? '+18.7%' : '+0%';
-    const healthChange = parseFloat(platformHealth) >= 99 ? '+0.2%' : '-0.5%';
+        // Calculate changes
+        const userGrowth = totalUsers > 0 ? '+12.5%' : '+0%';
+        const tradeGrowth = activeTrades > 0 ? '+8.2%' : '+0%';
+        const signalChange = activeSignals > 0 ? `+${Math.min(activeSignals, 10)}` : '+0';
+        const subscriptionGrowth = activeSubscriptions > 0 ? '+15.3%' : '+0%';
+        const assetChange = totalAssets > 0 ? `+${Math.min(totalAssets, 50)}` : '+0';
+        const ticketChange = openTickets > 10 ? `-${Math.floor(openTickets * 0.1)}` : `+${openTickets}`;
+        const revenueGrowth = monthlyRevenue > 0 ? '+18.7%' : '+0%';
+        const healthChange = parseFloat(platformHealth) >= 99 ? '+0.2%' : '-0.5%';
 
-    // Format revenue
-    const formattedRevenue = monthlyRevenue >= 1000000 
-      ? `$${(monthlyRevenue / 1000000).toFixed(1)}M`
-      : monthlyRevenue >= 1000 
-      ? `$${(monthlyRevenue / 1000).toFixed(1)}K`
-      : `$${monthlyRevenue.toFixed(0)}`;
+        // Format revenue
+        const formattedRevenue = monthlyRevenue >= 1000000 
+          ? `$${(monthlyRevenue / 1000000).toFixed(1)}M`
+          : monthlyRevenue >= 1000 
+          ? `$${(monthlyRevenue / 1000).toFixed(1)}K`
+          : `$${monthlyRevenue.toFixed(0)}`;
 
-    // Update stats with real data
-    setStats([
-      { label: 'Total Users', value: totalUsers.toLocaleString(), change: userGrowth, icon: Users, color: 'blue' },
-      { label: 'Active Trades', value: activeTrades.toLocaleString(), change: tradeGrowth, icon: TrendingUp, color: 'green' },
-      { label: 'Active Signals', value: activeSignals.toString(), change: signalChange, icon: Signal, color: 'purple' },
-      { label: 'Subscriptions', value: activeSubscriptions.toLocaleString(), change: subscriptionGrowth, icon: CreditCard, color: 'orange' },
-      { label: 'Total Assets', value: totalAssets.toLocaleString(), change: assetChange, icon: Briefcase, color: 'indigo' },
-      { label: 'Open Tickets', value: openTickets.toString(), change: ticketChange, icon: Headphones, color: 'red' },
-      { label: 'Revenue (MTD)', value: formattedRevenue, change: revenueGrowth, icon: DollarSign, color: 'emerald' },
-      { label: 'Platform Health', value: `${platformHealth}%`, change: healthChange, icon: Activity, color: 'cyan' },
-    ]);
+        // Update stats
+        setStats([
+          { label: 'Total Users', value: totalUsers.toLocaleString(), change: userGrowth, icon: Users, color: 'blue' },
+          { label: 'Active Trades', value: activeTrades.toLocaleString(), change: tradeGrowth, icon: TrendingUp, color: 'green' },
+          { label: 'Active Signals', value: activeSignals.toString(), change: signalChange, icon: Signal, color: 'purple' },
+          { label: 'Subscriptions', value: activeSubscriptions.toLocaleString(), change: subscriptionGrowth, icon: CreditCard, color: 'orange' },
+          { label: 'Total Assets', value: totalAssets.toLocaleString(), change: assetChange, icon: Briefcase, color: 'indigo' },
+          { label: 'Open Tickets', value: openTickets.toString(), change: ticketChange, icon: Headphones, color: 'red' },
+          { label: 'Revenue (MTD)', value: formattedRevenue, change: revenueGrowth, icon: DollarSign, color: 'emerald' },
+          { label: 'Platform Health', value: `${platformHealth}%`, change: healthChange, icon: Activity, color: 'cyan' },
+        ]);
 
-    // Build recent activity feed from real data
-    const activities: Array<{
-      type: string;
-      message: string;
-      time: string;
-      timestamp: Date;
-      color: string;
-      icon: any;
-    }> = [];
+        // Build recent activity feed
+        const activities: Array<{
+          type: string;
+          message: string;
+          time: string;
+          timestamp: Date;
+          color: string;
+          icon: any;
+        }> = [];
 
-    // Helper function to format relative time
-    const getRelativeTime = (date: Date) => {
-      const diffMs = now.getTime() - date.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      const diffDays = Math.floor(diffMs / 86400000);
+        // Helper function to format relative time
+        const getRelativeTime = (date: Date) => {
+          const diffMs = now.getTime() - date.getTime();
+          const diffMins = Math.floor(diffMs / 60000);
+          const diffHours = Math.floor(diffMs / 3600000);
+          const diffDays = Math.floor(diffMs / 86400000);
 
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins} min ago`;
-      if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-      return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+          if (diffMins < 1) return 'Just now';
+          if (diffMins < 60) return `${diffMins} min ago`;
+          if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+          return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+        };
+
+        // Add user registrations
+        users
+          .filter((user: any) => user.role !== 'admin' && user.createdAt)
+          .slice(-5)
+          .forEach((user: any) => {
+            const timestamp = new Date(user.createdAt);
+            activities.push({
+              type: 'user',
+              message: `New user registered: ${user.email}`,
+              time: getRelativeTime(timestamp),
+              timestamp,
+              color: 'blue',
+              icon: UserPlus
+            });
+          });
+
+        // Add recent transactions
+        transactions
+          .filter((tx: any) => tx.date || tx.createdAt)
+          .slice(-10)
+          .forEach((tx: any) => {
+            const timestamp = new Date(tx.date || tx.createdAt);
+            const userName = users.find((u: any) => u.id === tx.userId)?.email || 'User';
+            
+            if (tx.type === 'deposit') {
+              activities.push({
+                type: 'deposit',
+                message: `Deposit ${tx.status}: ${userName} - $${formatCurrency(parseFloat(tx.amount || 0))}`,
+                time: getRelativeTime(timestamp),
+                timestamp,
+                color: 'green',
+                icon: ArrowDownCircle
+              });
+            } else if (tx.type === 'withdrawal') {
+              activities.push({
+                type: 'withdrawal',
+                message: `Withdrawal ${tx.status}: ${userName} - $${formatCurrency(parseFloat(tx.amount || 0))}`,
+                time: getRelativeTime(timestamp),
+                timestamp,
+                color: 'orange',
+                icon: ArrowUpCircle
+              });
+            }
+          });
+
+        // Add recent trades
+        trades
+          .filter((trade: any) => trade.createdAt)
+          .slice(-5)
+          .forEach((trade: any) => {
+            const timestamp = new Date(trade.createdAt);
+            const userName = users.find((u: any) => u.id === trade.userId)?.email || 'User';
+            activities.push({
+              type: 'trade',
+              message: `${trade.type.toUpperCase()} trade: ${trade.symbol} $${formatCurrency(parseFloat(trade.amount || 0))} - ${userName}`,
+              time: getRelativeTime(timestamp),
+              timestamp,
+              color: trade.type === 'buy' ? 'green' : 'red',
+              icon: TrendingUp
+            });
+          });
+
+        // Add KYC submissions (using core logic since it's most updated)
+        const kycSubmissions = await api.kyc.getAll();
+        kycSubmissions
+          .filter((kyc: any) => kyc.submittedAt)
+          .slice(-3)
+          .forEach((kyc: any) => {
+            const timestamp = new Date(kyc.submittedAt);
+            const userName = users.find((u: any) => u.id === kyc.userId)?.email || 'User';
+            activities.push({
+              type: 'kyc',
+              message: `KYC verification submitted: ${userName}`,
+              time: getRelativeTime(timestamp),
+              timestamp,
+              color: 'purple',
+              icon: FileText
+            });
+          });
+
+        // Add signal activities
+        signals
+          .filter((signal: any) => signal.createdAt)
+          .slice(-3)
+          .forEach((signal: any) => {
+            const timestamp = new Date(signal.createdAt);
+            activities.push({
+              type: 'signal',
+              message: `Trading signal published: ${signal.action.toUpperCase()} ${signal.symbol}`,
+              time: getRelativeTime(timestamp),
+              timestamp,
+              color: 'purple',
+              icon: Signal
+            });
+          });
+
+        const sortedActivities = activities
+          .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+          .slice(0, 10);
+
+        setRecentActivity(sortedActivities.length > 0 ? sortedActivities : [
+          {
+            type: 'info',
+            message: 'No recent activity to display',
+            time: 'Now',
+            timestamp: now,
+            color: 'gray',
+            icon: Activity
+          }
+        ]);
+      } catch (err) {
+        console.error('Failed to fetch admin dashboard data:', err);
+      }
     };
 
-    // Add user registrations
-    users
-      .filter((user: any) => user.role !== 'admin' && user.createdAt)
-      .slice(-5)
-      .forEach((user: any) => {
-        const timestamp = new Date(user.createdAt);
-        activities.push({
-          type: 'user',
-          message: `New user registered: ${user.email}`,
-          time: getRelativeTime(timestamp),
-          timestamp,
-          color: 'blue',
-          icon: UserPlus
-        });
-      });
-
-    // Add recent transactions (deposits & withdrawals)
-    transactions
-      .filter((tx: any) => tx.date || tx.createdAt)
-      .slice(-10)
-      .forEach((tx: any) => {
-        const timestamp = new Date(tx.date || tx.createdAt);
-        const userName = users.find((u: any) => u.id === tx.userId)?.email || 'User';
-        
-        if (tx.type === 'deposit') {
-          activities.push({
-            type: 'deposit',
-            message: `Deposit ${tx.status}: ${userName} - $${formatCurrency(parseFloat(tx.amount))}`,
-            time: getRelativeTime(timestamp),
-            timestamp,
-            color: 'green',
-            icon: ArrowDownCircle
-          });
-        } else if (tx.type === 'withdrawal') {
-          activities.push({
-            type: 'withdrawal',
-            message: `Withdrawal ${tx.status}: ${userName} - $${formatCurrency(parseFloat(tx.amount))}`,
-            time: getRelativeTime(timestamp),
-            timestamp,
-            color: 'orange',
-            icon: ArrowUpCircle
-          });
-        }
-      });
-
-    // Add recent trades
-    trades
-      .filter((trade: any) => trade.createdAt)
-      .slice(-5)
-      .forEach((trade: any) => {
-        const timestamp = new Date(trade.createdAt);
-        const userName = users.find((u: any) => u.id === trade.userId)?.email || 'User';
-        activities.push({
-          type: 'trade',
-          message: `${trade.type.toUpperCase()} trade: ${trade.symbol} $${formatCurrency(parseFloat(trade.amount || 0))} - ${userName}`,
-          time: getRelativeTime(timestamp),
-          timestamp,
-          color: trade.type === 'buy' ? 'green' : 'red',
-          icon: TrendingUp
-        });
-      });
-
-    // Add KYC submissions
-    const kycSubmissions = JSON.parse(localStorage.getItem('kycSubmissions') || '[]');
-    kycSubmissions
-      .filter((kyc: any) => kyc.submittedAt)
-      .slice(-3)
-      .forEach((kyc: any) => {
-        const timestamp = new Date(kyc.submittedAt);
-        const userName = users.find((u: any) => u.id === kyc.userId)?.email || 'User';
-        activities.push({
-          type: 'kyc',
-          message: `KYC verification submitted: ${userName}`,
-          time: getRelativeTime(timestamp),
-          timestamp,
-          color: 'purple',
-          icon: FileText
-        });
-      });
-
-    // Add signal activities
-    signals
-      .filter((signal: any) => signal.createdAt)
-      .slice(-3)
-      .forEach((signal: any) => {
-        const timestamp = new Date(signal.createdAt);
-        activities.push({
-          type: 'signal',
-          message: `Trading signal published: ${signal.action.toUpperCase()} ${signal.symbol}`,
-          time: getRelativeTime(timestamp),
-          timestamp,
-          color: 'purple',
-          icon: Signal
-        });
-      });
-
-    // Add subscription activities
-    subscriptions
-      .filter((sub: any) => sub.createdAt)
-      .slice(-3)
-      .forEach((sub: any) => {
-        const timestamp = new Date(sub.createdAt);
-        const userName = users.find((u: any) => u.id === sub.userId)?.email || 'User';
-        activities.push({
-          type: 'subscription',
-          message: `${sub.plan} plan subscription: ${userName}`,
-          time: getRelativeTime(timestamp),
-          timestamp,
-          color: 'orange',
-          icon: CreditCard
-        });
-      });
-
-    // Add support ticket activities
-    tickets
-      .filter((ticket: any) => ticket.createdAt)
-      .slice(-3)
-      .forEach((ticket: any) => {
-        const timestamp = new Date(ticket.createdAt);
-        activities.push({
-          type: 'ticket',
-          message: `New support ticket #${ticket.id.slice(0, 6)} opened: ${ticket.subject}`,
-          time: getRelativeTime(timestamp),
-          timestamp,
-          color: 'red',
-          icon: Headphones
-        });
-      });
-
-    // Sort activities by timestamp (most recent first) and take top 10
-    const sortedActivities = activities
-      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-      .slice(0, 10);
-
-    setRecentActivity(sortedActivities.length > 0 ? sortedActivities : [
-      {
-        type: 'info',
-        message: 'No recent activity to display',
-        time: 'Now',
-        timestamp: now,
-        color: 'gray',
-        icon: Activity
-      }
-    ]);
-  }, [transactions]);
+    fetchData();
+  }, [transactions, users]);
 
   const quickActions = [
     { label: 'Manage Users', href: '/admin/users', icon: Users, description: 'View and manage user accounts & portfolios' },

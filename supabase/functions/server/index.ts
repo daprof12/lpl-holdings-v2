@@ -9,30 +9,26 @@ import { logger } from "npm:hono/logger";
 
 // Import all table-based services
 import {
-  UserService,
-  DepositService,
-  WithdrawalService,
   PositionService,
   NotificationService,
   SignalService,
+  TradingAccountService,
+  PendingOrderService,
 } from "./tableService.ts";
 
 import * as kv from "./kv_store.ts";
 
 import {
-  MarketAssetService,
-  PaymentMethodService,
-  UserPreferencesService,
-  InvestmentOfferService,
-  UserInvestmentService,
-  SupportTicketService,
-  TicketMessageService,
-  TransactionService,
-  KYCDocumentService,
-  AutoTraderConfigService,
-  PriceAlertService,
-  AdminSettingsService,
   TradeHistoryService,
+  SessionService,
+  LoginHistoryService,
+  PasswordResetService,
+  ContactSubmissionService,
+  InvestmentWalletService,
+  CRMMessageService,
+  EmailTemplateService,
+  SMTPConfigService,
+  UserWithdrawalMethodService,
 } from "./allTableServices.ts";
 
 const app = new Hono();
@@ -235,6 +231,412 @@ app.post("/make-server-5d4be467/users/:userId/preferences", async (c) => {
     return c.json({ success: true, preferences });
   } catch (error: any) {
     console.error('Error updating preferences:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Update notification preferences only
+app.put("/make-server-5d4be467/users/:userId/preferences/notifications", async (c) => {
+  try {
+    const userId = c.req.param("userId");
+    const prefs = await c.req.json();
+    const result = await UserPreferencesService.updateNotificationPrefs(userId, prefs);
+    return c.json({ success: true, result });
+  } catch (error: any) {
+    console.error('Error updating notification preferences:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ============================================
+// TRADING ACCOUNT ENDPOINTS
+// ============================================
+
+// Get user's trading account
+app.get("/make-server-5d4be467/trading-accounts/:userId", async (c) => {
+  try {
+    const userId = c.req.param("userId");
+    const account = await TradingAccountService.getByUserId(userId);
+    if (!account) return c.json({ error: "Account not found" }, 404);
+    return c.json(account);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Create trading account
+app.post("/make-server-5d4be467/trading-accounts", async (c) => {
+  try {
+    const { userId, ...data } = await c.req.json();
+    const account = await TradingAccountService.create(userId, data);
+    return c.json(account, 201);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Update trading account
+app.put("/make-server-5d4be467/trading-accounts/:userId", async (c) => {
+  try {
+    const userId = c.req.param("userId");
+    const updates = await c.req.json();
+    const account = await TradingAccountService.update(userId, updates);
+    return c.json(account);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Get all trading accounts (admin)
+app.get("/make-server-5d4be467/trading-accounts", async (c) => {
+  try {
+    const accounts = await TradingAccountService.getAll();
+    return c.json(accounts);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ============================================
+// PENDING ORDER ENDPOINTS
+// ============================================
+
+// Get pending orders for user
+app.get("/make-server-5d4be467/pending-orders/user/:userId", async (c) => {
+  try {
+    const userId = c.req.param("userId");
+    const orders = await PendingOrderService.getByUserId(userId);
+    return c.json(orders);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Get all pending orders (admin)
+app.get("/make-server-5d4be467/pending-orders", async (c) => {
+  try {
+    const orders = await PendingOrderService.getAll();
+    return c.json(orders);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Create pending order
+app.post("/make-server-5d4be467/pending-orders", async (c) => {
+  try {
+    const orderData = await c.req.json();
+    const order = await PendingOrderService.create(orderData);
+    return c.json(order, 201);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Update pending order
+app.put("/make-server-5d4be467/pending-orders/:id", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const updates = await c.req.json();
+    const order = await PendingOrderService.update(id, updates);
+    return c.json(order);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Delete pending order
+app.delete("/make-server-5d4be467/pending-orders/:id", async (c) => {
+  try {
+    const id = c.req.param("id");
+    await PendingOrderService.delete(id);
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ============================================
+// SESSION & LOGIN HISTORY ENDPOINTS
+// ============================================
+
+// Get active sessions for user
+app.get("/make-server-5d4be467/sessions/:userId", async (c) => {
+  try {
+    const userId = c.req.param("userId");
+    const sessions = await SessionService.getByUserId(userId);
+    return c.json(sessions);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Create session (on login)
+app.post("/make-server-5d4be467/sessions", async (c) => {
+  try {
+    const sessionData = await c.req.json();
+    const session = await SessionService.create(sessionData);
+    return c.json(session, 201);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Revoke session
+app.delete("/make-server-5d4be467/sessions/:sessionId", async (c) => {
+  try {
+    const sessionId = c.req.param("sessionId");
+    await SessionService.revoke(sessionId);
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Revoke all other sessions
+app.delete("/make-server-5d4be467/sessions/user/:userId/all-except/:sessionId", async (c) => {
+  try {
+    const userId = c.req.param("userId");
+    const sessionId = c.req.param("sessionId");
+    await SessionService.revokeAllExcept(userId, sessionId);
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Get login history for user
+app.get("/make-server-5d4be467/login-history/:userId", async (c) => {
+  try {
+    const userId = c.req.param("userId");
+    const limit = parseInt(c.req.query("limit") || "20");
+    const history = await LoginHistoryService.getByUserId(userId, limit);
+    return c.json(history);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Log activity/login
+app.post("/make-server-5d4be467/login-history", async (c) => {
+  try {
+    const logData = await c.req.json();
+    await LoginHistoryService.log(logData);
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ============================================
+// PASSWORD RESET ENDPOINTS
+// ============================================
+
+// Get all password reset requests (admin)
+app.get("/make-server-5d4be467/password-resets", async (c) => {
+  try {
+    const resets = await PasswordResetService.getAll();
+    return c.json(resets);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Create password reset request
+app.post("/make-server-5d4be467/password-resets", async (c) => {
+  try {
+    const resetData = await c.req.json();
+    const reset = await PasswordResetService.create(resetData);
+    return c.json(reset, 201);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Approve/Reject password reset
+app.put("/make-server-5d4be467/password-resets/:id/status", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const { status, resolvedBy, reason } = await c.req.json();
+    await PasswordResetService.updateStatus(id, status, resolvedBy, reason);
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ============================================
+// CONTACT SUBMISSION ENDPOINTS
+// ============================================
+
+// Get all contact submissions
+app.get("/make-server-5d4be467/contact-submissions", async (c) => {
+  try {
+    const submissions = await ContactSubmissionService.getAll();
+    return c.json(submissions);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Create contact submission (public)
+app.post("/make-server-5d4be467/contact-submissions", async (c) => {
+  try {
+    const submissionData = await c.req.json();
+    const submission = await ContactSubmissionService.create(submissionData);
+    return c.json(submission, 201);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ============================================
+// INVESTMENT WALLET ENDPOINTS
+// ============================================
+
+// Get user investment wallet
+app.get("/make-server-5d4be467/investment-wallets/:userId", async (c) => {
+  try {
+    const userId = c.req.param("userId");
+    const wallet = await InvestmentWalletService.getByUserId(userId);
+    if (!wallet) return c.json({ error: "Wallet not found" }, 404);
+    return c.json(wallet);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Update investment balances
+app.put("/make-server-5d4be467/investment-wallets/:userId/balances", async (c) => {
+  try {
+    const userId = c.req.param("userId");
+    const balances = await c.req.json();
+    const wallet = await InvestmentWalletService.updateBalances(userId, balances);
+    return c.json(wallet);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ============================================
+// CRM & EMAIL TEMPLATE ENDPOINTS
+// ============================================
+
+// CRM Messages
+app.get("/make-server-5d4be467/crm-messages", async (c) => {
+  try {
+    const messages = await CRMMessageService.getAll();
+    return c.json(messages);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.post("/make-server-5d4be467/crm-messages", async (c) => {
+  try {
+    const messageData = await c.req.json();
+    const message = await CRMMessageService.create(messageData);
+    return c.json(message, 201);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.post("/make-server-5d4be467/crm-messages/:id/send", async (c) => {
+  try {
+    const id = c.req.param("id");
+    await CRMMessageService.send(id);
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Email Templates
+app.get("/make-server-5d4be467/email-templates", async (c) => {
+  try {
+    const templates = await EmailTemplateService.getAll();
+    return c.json(templates);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.post("/make-server-5d4be467/email-templates", async (c) => {
+  try {
+    const templateData = await c.req.json();
+    const template = await EmailTemplateService.create(templateData);
+    return c.json(template, 201);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// SMTP Config
+app.get("/make-server-5d4be467/smtp-config", async (c) => {
+  try {
+    const config = await SMTPConfigService.get();
+    return c.json(config);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.put("/make-server-5d4be467/smtp-config", async (c) => {
+  try {
+    const config = await c.req.json();
+    const result = await SMTPConfigService.update(config);
+    return c.json(result);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ============================================
+// WITHDRAWAL METHOD ENDPOINTS
+// ============================================
+
+// Get user withdrawal methods
+app.get("/make-server-5d4be467/withdrawal-methods/:userId", async (c) => {
+  try {
+    const userId = c.req.param("userId");
+    const methods = await UserWithdrawalMethodService.getByUserId(userId);
+    return c.json(methods);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Create withdrawal method
+app.post("/make-server-5d4be467/withdrawal-methods", async (c) => {
+  try {
+    const methodData = await c.req.json();
+    const method = await UserWithdrawalMethodService.create(methodData);
+    return c.json(method, 201);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Set default withdrawal method
+app.put("/make-server-5d4be467/withdrawal-methods/:methodId/default", async (c) => {
+  try {
+    const methodId = c.req.param("methodId");
+    const { userId } = await c.req.json();
+    await UserWithdrawalMethodService.setDefault(userId, methodId);
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Delete withdrawal method
+app.delete("/make-server-5d4be467/withdrawal-methods/:methodId", async (c) => {
+  try {
+    const methodId = c.req.param("methodId");
+    await UserWithdrawalMethodService.delete(methodId);
+    return c.json({ success: true });
+  } catch (error: any) {
     return c.json({ error: error.message }, 500);
   }
 });

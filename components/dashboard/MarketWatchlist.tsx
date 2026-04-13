@@ -2,14 +2,16 @@ import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { useNavigate } from 'react-router-dom';
 import { useMarketData } from '../../contexts/MarketDataContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { formatPercentage, formatCurrency } from '../../utils/formatNumber';
 import { Plus, Sparkles, Star, TrendingUp, TrendingDown } from 'lucide-react';
 
 export default function MarketWatchlist() {
   const navigate = useNavigate();
+  const { currentUser, userPreferences, updatePreferences } = useAuth();
   const marketData = useMarketData();
   
-  // Complete asset definitions (same as MarketsPage)
+  // Complete asset definitions
   const allAssetDefinitions = [
     // Crypto
     { symbol: 'BTCUSD', name: 'Bitcoin', category: 'Crypto' },
@@ -78,19 +80,9 @@ export default function MarketWatchlist() {
     { symbol: 'NVDA-OPT', name: 'NVDA Options', category: 'Options' },
   ];
 
-  // Load favorites from localStorage
-  const [favorites, setFavorites] = useState<string[]>(() => {
-    const savedFavorites = localStorage.getItem('marketFavorites');
-    if (savedFavorites) {
-      try {
-        return JSON.parse(savedFavorites);
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  });
-
+  // Use favorites from userPreferences
+  const favorites = userPreferences?.watchlist || [];
+  
   // Filter to only show favorited assets
   const favoriteAssets = allAssetDefinitions.filter(asset => 
     favorites.includes(asset.symbol)
@@ -107,7 +99,7 @@ export default function MarketWatchlist() {
         marketData.unsubscribeFromSymbol(symbol);
       });
     };
-  }, [favorites.length]); // Re-subscribe when favorites change
+  }, [favorites.length]);
 
   // Get watchlist with real market data
   const watchlist = favoriteAssets.map(({ symbol, name, category }) => {
@@ -121,7 +113,7 @@ export default function MarketWatchlist() {
     };
   });
 
-  // Find top gainer and loser (only if we have favorites)
+  // Find top gainer and loser
   const topGainer = watchlist.length > 0 
     ? watchlist.reduce((max, item) => item.change > max.change ? item : max, watchlist[0])
     : null;
@@ -129,18 +121,17 @@ export default function MarketWatchlist() {
     ? watchlist.reduce((min, item) => item.change < min.change ? item : min, watchlist[0])
     : null;
 
-  // Toggle favorite and sync with localStorage
-  const toggleFavorite = (symbol: string) => {
-    setFavorites(prevFavorites => {
-      const updatedFavorites = prevFavorites.includes(symbol)
-        ? prevFavorites.filter(s => s !== symbol)
-        : [...prevFavorites, symbol];
-      
-      // Save to localStorage
+  // Toggle favorite and sync with relational backend
+  const toggleFavorite = async (symbol: string) => {
+    const updatedFavorites = favorites.includes(symbol)
+      ? favorites.filter((s: string) => s !== symbol)
+      : [...favorites, symbol];
+    
+    if (currentUser) {
+      await updatePreferences({ watchlist: updatedFavorites });
+    } else {
       localStorage.setItem('marketFavorites', JSON.stringify(updatedFavorites));
-      
-      return updatedFavorites;
-    });
+    }
   };
 
   return (

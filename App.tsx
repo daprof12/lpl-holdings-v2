@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+// Version: 1.0.1
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import ErrorBoundary from './components/common/ErrorBoundary';
@@ -84,9 +85,9 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <ThemeProvider>
-        <LanguageProvider>
-          <AuthProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <LanguageProvider>
             <TransactionProvider>
               <InvestmentProvider>
                 <MarketDataProvider>
@@ -170,9 +171,9 @@ export default function App() {
                 </MarketDataProvider>
               </InvestmentProvider>
             </TransactionProvider>
-          </AuthProvider>
-        </LanguageProvider>
-      </ThemeProvider>
+          </LanguageProvider>
+        </ThemeProvider>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }

@@ -1,18 +1,10 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useTrading } from './TradingContext';
 import { useAuth } from './AuthContext';
 import { useMarketData } from './MarketDataContext';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { api } from '../utils/supabase/api';
+import { serverUrl } from '../utils/supabase/client';
 import { toast } from 'sonner';
-import { setKV } from '../utils/supabase/client';
-
-// @refresh reset
-
-// ============================================
-// API CONFIGURATION
-// ============================================
-
-const serverUrl = `https://${projectId}.supabase.co/functions/v1/make-server-5d4be467`;
 
 // ============================================
 // TYPES
@@ -118,163 +110,37 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
   // API FUNCTIONS - Database Integration
   // ============================================
 
-  /**
-   * Fetch strategies from database for current user
-   */
-  const fetchStrategies = async (userId: string) => {
-    try {
-      const response = await fetch(`${serverUrl}/auto-trader/user/${userId}`, {
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`
-        }
-      });
-
-      if (!response.ok) {
-        console.error('Failed to fetch strategies:', response.statusText);
-        return [];
-      }
-
-      const dbStrategies = await response.json();
-      console.log('✅ Auto-trader strategies loaded from database:', dbStrategies.length);
-      
-      // Transform database format to app format
-      return dbStrategies.map((strat: any) => ({
-        id: strat.id,
-        userId: strat.user_id,
-        name: strat.name,
-        type: strat.strategy_type,
-        symbol: strat.symbol,
-        isActive: strat.is_active || false,
-        mode: strat.mode || 'paper',
-        investmentAmount: parseFloat(strat.investment_amount || 0),
-        maxDrawdown: parseFloat(strat.max_drawdown || 10),
-        stopLossPercent: parseFloat(strat.stop_loss || 5),
-        takeProfitPercent: parseFloat(strat.take_profit || 10),
-        leverage: parseInt(strat.leverage || 1),
-        parameters: strat.parameters ? JSON.parse(strat.parameters) : {},
-        totalTrades: parseInt(strat.total_trades || 0),
-        winningTrades: parseInt(strat.winning_trades || 0),
-        totalProfit: parseFloat(strat.total_profit || 0),
-        currentDrawdown: parseFloat(strat.current_drawdown || 0),
-        createdAt: new Date(strat.created_at),
-        lastTradeAt: strat.last_trade_at ? new Date(strat.last_trade_at) : undefined
-      }));
-    } catch (error) {
-      console.error('Error fetching strategies:', error);
-      return [];
-    }
-  };
-
-  /**
-   * Create strategy in database
-   */
-  const createStrategyInDatabase = async (strategy: Omit<StrategyConfig, 'id' | 'totalTrades' | 'winningTrades' | 'totalProfit' | 'currentDrawdown' | 'createdAt'>) => {
-    try {
-      const response = await fetch(`${serverUrl}/auto-trader`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          user_id: strategy.userId,
-          name: strategy.name,
-          strategy_type: strategy.type,
-          symbol: strategy.symbol,
-          is_active: strategy.isActive,
-          mode: strategy.mode,
-          investment_amount: strategy.investmentAmount,
-          max_drawdown: strategy.maxDrawdown,
-          stop_loss: strategy.stopLossPercent,
-          take_profit: strategy.takeProfitPercent,
-          leverage: strategy.leverage,
-          parameters: JSON.stringify(strategy.parameters)
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to create strategy');
-      }
-
-      const created = await response.json();
-      console.log('✅ Auto-trader strategy created in database:', created.id);
-      return created;
-    } catch (error) {
-      console.error('Error creating strategy:', error);
-      throw error;
-    }
-  };
-
-  /**
-   * Update strategy in database
-   */
-  const updateStrategyInDatabase = async (strategyId: string, updates: Partial<StrategyConfig>) => {
-    try {
-      const updateData: any = {};
-      
-      if (updates.name) updateData.name = updates.name;
-      if (updates.isActive !== undefined) updateData.is_active = updates.isActive;
-      if (updates.investmentAmount) updateData.investment_amount = updates.investmentAmount;
-      if (updates.parameters) updateData.parameters = JSON.stringify(updates.parameters);
-      if (updates.totalTrades !== undefined) updateData.total_trades = updates.totalTrades;
-      if (updates.winningTrades !== undefined) updateData.winning_trades = updates.winningTrades;
-      if (updates.totalProfit !== undefined) updateData.total_profit = updates.totalProfit;
-      if (updates.currentDrawdown !== undefined) updateData.current_drawdown = updates.currentDrawdown;
-
-      const response = await fetch(`${serverUrl}/auto-trader/${strategyId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(updateData)
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update strategy');
-      }
-
-      console.log('✅ Strategy updated in database:', strategyId);
-    } catch (error) {
-      console.error('Error updating strategy:', error);
-    }
-  };
-
-  /**
-   * Delete strategy from database
-   */
-  const deleteStrategyInDatabase = async (strategyId: string) => {
-    try {
-      const response = await fetch(`${serverUrl}/auto-trader/${strategyId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete strategy');
-      }
-
-      console.log('✅ Strategy deleted from database:', strategyId);
-    } catch (error) {
-      console.error('Error deleting strategy:', error);
-    }
-  };
-
-  /**
-   * Refresh strategies from database
-   */
+  // Refresh strategies v2.0
   const refreshStrategies = async () => {
     if (!currentUser?.id) return;
-    
     setLoading(true);
     try {
-      const dbStrategies = await fetchStrategies(currentUser.id);
-      setStrategies(dbStrategies);
+      const dbStrategies = await api.autoTrader.getByUserId(currentUser.id);
+      if (Array.isArray(dbStrategies)) {
+        setStrategies(dbStrategies.map((strat: any) => ({
+          id: strat.id,
+          userId: strat.user_id,
+          name: strat.name,
+          type: strat.strategy_type,
+          symbol: strat.symbol,
+          isActive: strat.is_active || false,
+          mode: strat.mode || 'paper',
+          investmentAmount: parseFloat(strat.investment_amount || 0),
+          maxDrawdown: parseFloat(strat.max_drawdown || 10),
+          stopLossPercent: parseFloat(strat.stop_loss || 5),
+          takeProfitPercent: parseFloat(strat.take_profit || 10),
+          leverage: parseInt(strat.leverage || 1),
+          parameters: strat.parameters ? JSON.parse(strat.parameters) : {},
+          totalTrades: parseInt(strat.total_trades || 0),
+          winningTrades: parseInt(strat.winning_trades || 0),
+          totalProfit: parseFloat(strat.total_profit || 0),
+          currentDrawdown: parseFloat(strat.current_drawdown || 0),
+          createdAt: new Date(strat.created_at),
+          lastTradeAt: strat.last_trade_at ? new Date(strat.last_trade_at) : undefined
+        })));
+      }
     } catch (error) {
-      console.error('Error refreshing strategies:', error);
+       console.error('Failed to refresh strategies:', error);
     } finally {
       setLoading(false);
       setIsHydrated(true);
@@ -285,72 +151,12 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
   // LOAD DATA FROM DATABASE ON MOUNT
   // ============================================
 
-  /**
-   * Load strategies when user is authenticated
-   */
   useEffect(() => {
-    const loadUserStrategies = async () => {
-      if (currentUser && currentUser.id) {
-        console.log('🔄 Loading auto-trader strategies for user:', currentUser.id);
-        await refreshStrategies();
-      }
-    };
-
-    loadUserStrategies();
+    if (currentUser?.id) refreshStrategies();
   }, [currentUser?.id]);
 
-  // Load strategies from localStorage (fallback)
-  useEffect(() => {
-    const stored = localStorage.getItem('gross_autotrader_strategies');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      // Convert date strings back to Date objects
-      const strategiesWithDates = parsed.map((s: any) => ({
-        ...s,
-        createdAt: new Date(s.createdAt),
-        lastTradeAt: s.lastTradeAt ? new Date(s.lastTradeAt) : undefined,
-      }));
-      setStrategies(strategiesWithDates);
-    }
-  }, []);
-
-  // Sync strategies to Supabase KV (Debounced)
-  const syncStrategiesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    if (isHydrated && strategies.length >= 0) {
-      localStorage.setItem('gross_autotrader_strategies', JSON.stringify(strategies));
-      
-      if (syncStrategiesTimeoutRef.current) clearTimeout(syncStrategiesTimeoutRef.current);
-      
-      syncStrategiesTimeoutRef.current = setTimeout(async () => {
-        try {
-          await setKV('gross_autotrader_strategies', strategies);
-          console.log('✅ Autotrader strategies synced to DB');
-        } catch (err) {
-          console.error('Failed to sync autotrader strategies:', err);
-        }
-      }, 3000);
-    }
-  }, [strategies]);
-
-  // Cross-tab sync via storage event
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'gross_autotrader_strategies' && e.newValue) {
-        try {
-          setStrategies(JSON.parse(e.newValue));
-        } catch (error) {
-          console.error('Cross-tab autotrader sync failed:', error);
-        }
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []);
+  // Legacy sync logic and real-time listeners removed
+  // All state changes are now triggered via API calls with local refresh
 
   // Calculate technical indicators
   const calculateIndicators = (symbol: string, prices: number[]): TechnicalIndicators => {
@@ -575,35 +381,30 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addStrategy = (strategy: Omit<StrategyConfig, 'id' | 'totalTrades' | 'winningTrades' | 'totalProfit' | 'currentDrawdown' | 'createdAt'>): string => {
-    const newStrategy: StrategyConfig = {
-      ...strategy,
-      id: `strategy-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      totalTrades: 0,
-      winningTrades: 0,
-      totalProfit: 0,
-      currentDrawdown: 0,
-      createdAt: new Date(),
-    };
-    
-    setStrategies(prev => [...prev, newStrategy]);
-    toast.success(`Strategy "${newStrategy.name}" created successfully`);
-    return newStrategy.id;
+    const id = `strat-${Date.now()}`;
+    api.autoTrader.create({
+      user_id: strategy.userId,
+      name: strategy.name,
+      strategy_type: strategy.type,
+      symbol: strategy.symbol,
+      is_active: strategy.isActive,
+      mode: strategy.mode,
+      investment_amount: strategy.investmentAmount,
+      max_drawdown: strategy.maxDrawdown,
+      stop_loss: strategy.stopLossPercent,
+      take_profit: strategy.takeProfitPercent,
+      leverage: strategy.leverage,
+      parameters: JSON.stringify(strategy.parameters)
+    }).then(() => refreshStrategies());
+    return id;
   };
 
   const updateStrategy = (strategyId: string, updates: Partial<StrategyConfig>) => {
-    setStrategies(prev => 
-      prev.map(s => s.id === strategyId ? { ...s, ...updates } : s)
-    );
+    api.autoTrader.update(strategyId, updates).then(() => refreshStrategies());
   };
 
   const deleteStrategy = (strategyId: string) => {
-    const strategy = strategies.find(s => s.id === strategyId);
-    if (strategy?.isActive) {
-      toast.error('Cannot delete active strategy. Please pause it first.');
-      return;
-    }
-    setStrategies(prev => prev.filter(s => s.id !== strategyId));
-    toast.success('Strategy deleted');
+    api.autoTrader.delete(strategyId).then(() => refreshStrategies());
   };
 
   const toggleStrategy = (strategyId: string, isActive: boolean) => {

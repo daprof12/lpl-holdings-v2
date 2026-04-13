@@ -302,6 +302,7 @@ const CATEGORY_COLOURS: Record<string, string> = {
 
 export default function MarketsPage() {
   const navigate  = useNavigate();
+  const { currentUser, userPreferences, updatePreferences } = useAuth();
   const marketData = useMarketData();
 
   const [searchQuery,    setSearchQuery]    = useState('');
@@ -309,23 +310,20 @@ export default function MarketsPage() {
   const [sortBy,         setSortBy]         = useState<'name' | 'price' | 'change'>('change');
   const [viewMode,       setViewMode]       = useState<'list' | 'grid'>('list');
 
-  // Favourites persisted in localStorage
-  const [favorites, setFavorites] = useState<Set<string>>(() => {
-    try {
-      const saved = localStorage.getItem('marketFavorites');
-      return saved ? new Set(JSON.parse(saved)) : new Set(['BTCUSD', 'ETHUSD', 'EURUSD', 'AAPL', 'TSLA', 'XAUUSD']);
-    } catch {
-      return new Set(['BTCUSD', 'ETHUSD', 'EURUSD', 'AAPL', 'TSLA', 'XAUUSD']);
-    }
-  });
+  // Favorites synchronized with relational backend
+  const favorites = useMemo(() => new Set<string>(userPreferences?.watchlist || []), [userPreferences?.watchlist]);
 
-  const toggleFavorite = (symbol: string) => {
-    setFavorites(prev => {
-      const next = new Set(prev);
-      next.has(symbol) ? next.delete(symbol) : next.add(symbol);
-      localStorage.setItem('marketFavorites', JSON.stringify([...next]));
-      return next;
-    });
+  const toggleFavorite = async (symbol: string) => {
+    const current = Array.from(favorites);
+    const updated = favorites.has(symbol)
+      ? current.filter(s => s !== symbol)
+      : [...current, symbol];
+    
+    if (currentUser) {
+      await updatePreferences({ watchlist: updated });
+    } else {
+      localStorage.setItem('marketFavorites', JSON.stringify(updated));
+    }
   };
 
   // Subscribe to all symbols once

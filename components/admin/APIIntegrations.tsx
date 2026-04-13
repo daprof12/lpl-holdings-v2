@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '../../utils/supabase/client';
 import { 
   Key, 
   Mail, 
@@ -49,23 +50,48 @@ export default function APIIntegrations() {
   const [showSendgridKey, setShowSendgridKey] = useState(false);
   const [showMailgunKey, setShowMailgunKey] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Load config from localStorage
+  // Load config from Supabase
   useEffect(() => {
-    const stored = localStorage.getItem('gross_api_config');
-    if (stored) {
+    const fetchConfig = async () => {
       try {
-        setConfig(JSON.parse(stored));
+        const { data, error } = await supabase
+          .from('global_settings')
+          .select('api_config')
+          .eq('id', 'global_settings')
+          .maybeSingle();
+
+        if (error) throw error;
+        if (data?.api_config) {
+          setConfig(data.api_config as APIConfig);
+        }
       } catch (error) {
         console.error('Failed to load API config:', error);
       }
-    }
+    };
+    fetchConfig();
   }, []);
 
-  // Save config to localStorage
-  const saveConfig = () => {
-    localStorage.setItem('gross_api_config', JSON.stringify(config));
-    toast.success('API configuration saved successfully');
+  // Save config to Supabase
+  const saveConfig = async () => {
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from('global_settings')
+        .upsert({ 
+          id: 'global_settings',
+          api_config: config 
+        });
+
+      if (error) throw error;
+      toast.success('API configuration saved successfully');
+    } catch (error) {
+      console.error('Failed to save API config:', error);
+      toast.error('Failed to save API configuration');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const testSendgrid = async () => {
@@ -356,9 +382,13 @@ export default function APIIntegrations() {
 
       {/* Save Button */}
       <div className="mt-6 flex justify-end">
-        <Button onClick={saveConfig} size="lg">
-          <Save className="w-5 h-5 mr-2" />
-          Save All Configurations
+        <Button onClick={saveConfig} size="lg" disabled={isSaving}>
+          {isSaving ? (
+            <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+          ) : (
+            <Save className="w-5 h-5 mr-2" />
+          )}
+          {isSaving ? 'Saving...' : 'Save All Configurations'}
         </Button>
       </div>
 

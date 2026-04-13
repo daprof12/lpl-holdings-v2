@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { formatCurrency } from '../../utils/formatNumber';
-import { getKV, setKV } from '../../utils/supabase/client';
+import { supabase } from '../../utils/supabase/client';
 
 interface TradingSettings {
   defaultLiveBalance: number;
@@ -23,11 +23,8 @@ export default function TradingSettings() {
   });
   const [selectedLiveUserId, setSelectedLiveUserId] = useState<string>('');
   const [customLiveBalance, setCustomLiveBalance] = useState<string>('10000');
-  const [investmentAccess, setInvestmentAccess] = useState<Record<string, boolean>>({});
   const [autoTradeEnabled, setAutoTradeEnabled] = useState<boolean>(false);
   const [signalEnabled, setSignalEnabled] = useState<boolean>(false);
-  const [autoTradeAccess, setAutoTradeAccess] = useState<Record<string, boolean>>({});
-  const [signalAccess, setSignalAccess] = useState<Record<string, boolean>>({});
 
   // Modal states for balance management
   const [modifyBalanceModal, setModifyBalanceModal] = useState(false);
@@ -39,68 +36,23 @@ export default function TradingSettings() {
   const [transferTo, setTransferTo] = useState<'wallet' | 'ecn' | 'ipo' | 'portfolio'>('ecn');
   const [transferAmount, setTransferAmount] = useState<string>('');
 
-  // Load settings from database as priority, or localStorage as fallback
+  // Load settings from database
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        // 1. Core trading settings
-        const dbSettings = await getKV('admin_trading_settings');
-        if (dbSettings) {
-          setSettings(dbSettings);
-          localStorage.setItem('admin_trading_settings', JSON.stringify(dbSettings));
-        } else {
-          const stored = localStorage.getItem('admin_trading_settings');
-          if (stored) setSettings(JSON.parse(stored));
-        }
+        const { data, error } = await supabase
+          .from('global_settings')
+          .select('*')
+          .eq('id', 'global_settings')
+          .maybeSingle();
 
-        // 2. Investment access
-        const dbInvestmentAccess = await getKV('investment_access');
-        if (dbInvestmentAccess) {
-          setInvestmentAccess(dbInvestmentAccess);
-          localStorage.setItem('investment_access', JSON.stringify(dbInvestmentAccess));
-        } else {
-          const storedAccess = localStorage.getItem('investment_access');
-          if (storedAccess) setInvestmentAccess(JSON.parse(storedAccess));
-        }
-
-        // 3. Auto trade toggle
-        const dbAutoTradeEnabled = await getKV('auto_trade_enabled');
-        if (dbAutoTradeEnabled !== null) {
-          setAutoTradeEnabled(dbAutoTradeEnabled);
-          localStorage.setItem('auto_trade_enabled', String(dbAutoTradeEnabled));
-        } else {
-          const storedAutoTrade = localStorage.getItem('auto_trade_enabled');
-          if (storedAutoTrade !== null) setAutoTradeEnabled(storedAutoTrade === 'true');
-        }
-
-        // 4. Signal toggle
-        const dbSignalEnabled = await getKV('signal_enabled');
-        if (dbSignalEnabled !== null) {
-          setSignalEnabled(dbSignalEnabled);
-          localStorage.setItem('signal_enabled', String(dbSignalEnabled));
-        } else {
-          const storedSignal = localStorage.getItem('signal_enabled');
-          if (storedSignal !== null) setSignalEnabled(storedSignal === 'true');
-        }
-
-        // 5. Auto trade access
-        const dbAutoTradeAccess = await getKV('auto_trade_access');
-        if (dbAutoTradeAccess) {
-          setAutoTradeAccess(dbAutoTradeAccess);
-          localStorage.setItem('auto_trade_access', JSON.stringify(dbAutoTradeAccess));
-        } else {
-          const storedAutoTradeAccess = localStorage.getItem('auto_trade_access');
-          if (storedAutoTradeAccess) setAutoTradeAccess(JSON.parse(storedAutoTradeAccess));
-        }
-
-        // 6. Signal access
-        const dbSignalAccess = await getKV('signal_access');
-        if (dbSignalAccess) {
-          setSignalAccess(dbSignalAccess);
-          localStorage.setItem('signal_access', JSON.stringify(dbSignalAccess));
-        } else {
-          const storedSignalAccess = localStorage.getItem('signal_access');
-          if (storedSignalAccess) setSignalAccess(JSON.parse(storedSignalAccess));
+        if (error) throw error;
+        if (data) {
+          if (data.trading_config) {
+            setSettings(data.trading_config as TradingSettings);
+          }
+          setAutoTradeEnabled(!!data.trading_config?.autoTradeEnabled);
+          setSignalEnabled(!!data.trading_config?.signalEnabled);
         }
       } catch (error) {
         console.error('Failed to load settings from DB:', error);
@@ -110,17 +62,29 @@ export default function TradingSettings() {
     loadSettings();
   }, []);
 
-  const handleSaveSettings = () => {
-    localStorage.setItem('admin_trading_settings', JSON.stringify(settings));
-    setKV('admin_trading_settings', settings).catch(console.error);
-    toast.success('Default balances updated successfully');
-    
-    // Trigger a storage event so TradingContext picks up the change
-    window.dispatchEvent(new Event('storage'));
+  const handleSaveSettings = async () => {
+    try {
+      const { error } = await supabase
+        .from('global_settings')
+        .upsert({ 
+          id: 'global_settings',
+          trading_config: { 
+            ...settings, 
+            autoTradeEnabled,
+            signalEnabled 
+          }
+        });
+
+      if (error) throw error;
+      toast.success('Global trading settings saved to database');
+    } catch (err) {
+      console.error('Save failed:', err);
+      toast.error('Failed to save settings');
+    }
   };
 
 
-  const handleResetUserLiveBalance = () => {
+  const handleResetUserLiveBalance = async () => {
     if (!selectedLiveUserId) {
       toast.error('Please select a user');
       return;
@@ -132,38 +96,35 @@ export default function TradingSettings() {
       return;
     }
 
-    // Update the live account for this user specifically
-    const liveAccount = {
-      balance: balance,
-      equity: balance,
-      realizedPnL: 0,
-      unrealizedPnL: 0,
-      margin: 0,
-      availableFunds: balance,
-      bonus: 0,
-    };
+    try {
+      // 1. Update main user balance in relational DB
+      await api.users.updateBalance(selectedLiveUserId, balance);
+      
+      // 2. Update Trading Account record
+      await api.tradingAccounts.update(selectedLiveUserId, {
+        balance: balance,
+        available_funds: balance,
+        equity: balance
+      });
 
-    localStorage.setItem(`gross_live_account_${selectedLiveUserId}`, JSON.stringify(liveAccount));
-    // Also update global key for legacy support, but ideally per-user key is used
-    localStorage.setItem('gross_live_account', JSON.stringify(liveAccount));
-    setKV(`gross_live_account_${selectedLiveUserId}`, liveAccount).catch(console.error);
-    
-    // Update AuthContext user object so it's reflected in users list
-    updateUser(selectedLiveUserId, { balance: balance, liveBalance: balance });
-    
-    // Trigger storage event
-    window.dispatchEvent(new Event('storage'));
-    
-    const user = users.find(u => u.id === selectedLiveUserId);
-    toast.success(`Live balance reset to $${balance.toFixed(2)} for ${user?.email || 'user'}`);
-    
-    // Send notification to user
-    addNotification(selectedLiveUserId, {
-      type: 'warning',
-      title: 'Balance Reset',
-      message: `Your live balance has been reset to $${formatCurrency(balance)}.`,
-      channels: ['in-app'],
-    });
+      // 3. Clear positions/orders in DB (Assumes positions API exists for bulk clear if needed)
+      // For now, we update local context
+      updateUser(selectedLiveUserId, { balance: balance, liveBalance: balance });
+      
+      const user = users.find(u => u.id === selectedLiveUserId);
+      toast.success(`Live balance reset to $${balance.toFixed(2)} for ${user?.email || 'user'}`);
+      
+      // Send notification to user
+      addNotification(selectedLiveUserId, {
+        type: 'warning',
+        title: 'Balance Reset',
+        message: `Your live balance has been reset to $${formatCurrency(balance)}.`,
+        channels: ['in-app'],
+      });
+    } catch (err) {
+      console.error('Failed to reset balance:', err);
+      toast.error('Failed to reset balance in database');
+    }
   };
 
   const handleResetAllUsersLiveBalance = () => {
@@ -193,84 +154,64 @@ export default function TradingSettings() {
     toast.success(`All users' live balances reset to $${settings.defaultLiveBalance.toFixed(2)}`);
   };
 
-  const toggleInvestmentAccess = (userId: string, enabled: boolean) => {
-    const updated = { ...investmentAccess, [userId]: enabled };
-    setInvestmentAccess(updated);
-    localStorage.setItem('investment_access', JSON.stringify(updated));
-    setKV('investment_access', updated).catch(console.error);
-    
-    // Trigger custom event for same-window updates
-    window.dispatchEvent(new CustomEvent('investment_access_changed', { 
-      detail: { userId, enabled, accessMap: updated } 
-    }));
-    
-    const user = users.find(u => u.id === userId);
-    toast.success(
-      `Investment access ${enabled ? 'enabled' : 'disabled'} for ${user?.email || 'user'}`
-    );
+  const toggleInvestmentAccess = async (userId: string, enabled: boolean) => {
+    try {
+      await updateUser(userId, { hasInvestmentAccess: enabled });
+      
+      const user = users.find(u => u.id === userId);
+      toast.success(
+        `Investment access ${enabled ? 'enabled' : 'disabled'} for ${user?.email || 'user'}`
+      );
+    } catch (err) {
+      console.error('Failed to toggle investment access:', err);
+      toast.error('Failed to update access in database');
+    }
   };
 
-  const enableAllInvestmentAccess = () => {
+  const enableAllInvestmentAccess = async () => {
     if (!confirm('Are you sure you want to enable investment access for ALL users?')) {
       return;
     }
 
-    const updated: Record<string, boolean> = {};
-    users.filter(u => u.role === 'user').forEach(user => {
-      updated[user.id] = true;
-    });
-
-    setInvestmentAccess(updated);
-    localStorage.setItem('investment_access', JSON.stringify(updated));
-    setKV('investment_access', updated).catch(console.error);
-    
-    // Trigger custom event for same-window updates
-    window.dispatchEvent(new CustomEvent('investment_access_changed', { 
-      detail: { accessMap: updated } 
-    }));
-    
-    toast.success('Investment access enabled for all users');
+    try {
+      const targetUsers = users.filter(u => u.role === 'user');
+      await Promise.all(targetUsers.map(u => updateUser(u.id, { hasInvestmentAccess: true })));
+      toast.success('Investment access enabled for all users');
+    } catch (err) {
+      console.error('Bulk update failed:', err);
+      toast.error('Failed to update all users');
+    }
   };
 
-  const disableAllInvestmentAccess = () => {
+  const disableAllInvestmentAccess = async () => {
     if (!confirm('Are you sure you want to disable investment access for ALL users?')) {
       return;
     }
 
-    setInvestmentAccess({});
-    localStorage.setItem('investment_access', JSON.stringify({}));
-    setKV('investment_access', {}).catch(console.error);
-    
-    // Trigger custom event for same-window updates
-    window.dispatchEvent(new CustomEvent('investment_access_changed', { 
-      detail: { accessMap: {} } 
-    }));
-    
-    toast.success('Investment access disabled for all users');
+    try {
+      const targetUsers = users.filter(u => u.role === 'user');
+      await Promise.all(targetUsers.map(u => updateUser(u.id, { hasInvestmentAccess: false })));
+      toast.success('Investment access disabled for all users');
+    } catch (err) {
+      console.error('Bulk update failed:', err);
+      toast.error('Failed to update all users');
+    }
   };
 
-  // Helper function to get user balances
+  // Helper function to get user balances from source of truth
   const getUserBalances = (userId: string) => {
-    // Try per-user key first, fallback to AuthContext's users array
-    const storedLive = localStorage.getItem(`gross_live_account_${userId}`);
-    let walletBalance = 0;
+    const user = users.find(u => u.id === userId);
     
-    if (storedLive) {
-      walletBalance = JSON.parse(storedLive).balance;
-    } else {
-      const user = users.find(u => u.id === userId);
-      walletBalance = user?.balance ?? (user?.liveBalance ?? 0);
-    }
-
-    // Get ECN and IPO balances
-    const investmentBalances = localStorage.getItem(`investment_balances_${userId}`);
-    const { ecn = 5000, ipo = 3000, portfolio = 0 } = investmentBalances ? JSON.parse(investmentBalances) : {};
+    const walletBalance = user?.liveBalance ?? user?.balance ?? 0;
+    const ecn = user?.investmentBalances?.ecn ?? 0;
+    const ipo = user?.investmentBalances?.ipo ?? 0;
+    const portfolio = user?.investmentBalances?.portfolio ?? 0;
 
     return { wallet: walletBalance, ecn, ipo, portfolio };
   };
 
   // Modify balance function
-  const handleModifyBalance = () => {
+  const handleModifyBalance = async () => {
     if (!selectedUserForBalance || !balanceAmount) {
       toast.error('Please select a user and enter an amount');
       return;
@@ -282,68 +223,54 @@ export default function TradingSettings() {
       return;
     }
 
-    const user = users.find(u => u.id === selectedUserForBalance);
-    
-    if (balanceType === 'wallet') {
-      // Update per-user wallet account
-      const liveAccount = {
-        balance: amount,
-        equity: amount,
-        realizedPnL: 0,
-        unrealizedPnL: 0,
-        margin: 0,
-        availableFunds: amount,
-        bonus: 0,
-      };
-      
-      localStorage.setItem(`gross_live_account_${selectedUserForBalance}`, JSON.stringify(liveAccount));
-      // For backwards compat and real-time triggers
-      localStorage.setItem('gross_live_account', JSON.stringify(liveAccount));
-      
-      // Sync to main user record
-      updateUser(selectedUserForBalance, { balance: amount, liveBalance: amount });
-      
-      window.dispatchEvent(new Event('storage'));
-      toast.success(`Wallet balance updated to $${amount.toFixed(2)} for ${user?.email || 'user'}`);
-      
-      // Send notification to user
-      addNotification(selectedUserForBalance, {
-        type: 'info',
-        title: 'Balance Updated',
-        message: `Your wallet balance has been updated to $${formatCurrency(amount)}.`,
-        channels: ['in-app'],
-      });
-    } else {
-      // Update ECN or IPO balance
-      const balances = getUserBalances(selectedUserForBalance);
-      balances[balanceType] = amount;
-      localStorage.setItem(`investment_balances_${selectedUserForBalance}`, JSON.stringify({ 
-        ecn: balances.ecn, 
-        ipo: balances.ipo, 
-        portfolio: balances.portfolio 
-      }));
-      
-      // Also update portfolio/balance record in User if needed (usually it's separate)
-      
-      window.dispatchEvent(new Event('storage'));
-      toast.success(`${balanceType.toUpperCase()} balance updated to $${amount.toFixed(2)} for ${user?.email || 'user'}`);
-      
-      // Send notification to user
-      addNotification(selectedUserForBalance, {
-        type: 'info',
-        title: 'Balance Updated',
-        message: `Your ${balanceType.toUpperCase()} balance has been updated to $${formatCurrency(amount)}.`,
-        channels: ['in-app'],
-      });
-    }
+    try {
+      if (balanceType === 'wallet') {
+        // 1. Update per-user wallet account in DB
+        await api.users.updateBalance(selectedUserForBalance, amount);
+        await api.tradingAccounts.update(selectedUserForBalance, { 
+          balance: amount, 
+          available_funds: amount,
+          equity: amount 
+        });
+        
+        // 2. Sync to local context
+        updateUser(selectedUserForBalance, { balance: amount, liveBalance: amount });
+        
+        toast.success(`Wallet balance updated to $${amount.toFixed(2)}`);
+      } else {
+        // Update ECN, IPO, or Portfolio balance in DB
+        const updates = { [balanceType]: amount };
+        await api.investmentWallets.update(selectedUserForBalance, updates);
+        
+        // Sync to local context
+        const user = users.find(u => u.id === selectedUserForBalance);
+        if (user) {
+          const newInvestments = { ...(user.investmentBalances || { ipo: 0, ecn: 0, portfolio: 0 }), ...updates };
+          updateUser(selectedUserForBalance, { investmentBalances: newInvestments });
+        }
+        
+        toast.success(`${balanceType.toUpperCase()} balance updated to $${amount.toFixed(2)}`);
+      }
 
-    setModifyBalanceModal(false);
-    setBalanceAmount('');
-    setSelectedUserForBalance('');
+      // Send notification
+      addNotification(selectedUserForBalance, {
+        type: 'info',
+        title: 'Balance Updated',
+        message: `Your ${balanceType === 'wallet' ? 'wallet' : balanceType.toUpperCase()} balance has been updated to $${formatCurrency(amount)}.`,
+        channels: ['in-app'],
+      });
+
+      setModifyBalanceModal(false);
+      setBalanceAmount('');
+      setSelectedUserForBalance('');
+    } catch (err) {
+      console.error('Modify balance failed:', err);
+      toast.error('Failed to update balance in database');
+    }
   };
 
   // Transfer funds function
-  const handleTransferFunds = () => {
+  const handleTransferFunds = async () => {
     if (!selectedUserForBalance || !transferAmount) {
       toast.error('Please select a user and enter an amount');
       return;
@@ -360,182 +287,148 @@ export default function TradingSettings() {
       return;
     }
 
-    const user = users.find(u => u.id === selectedUserForBalance);
-    const balances = getUserBalances(selectedUserForBalance);
+    try {
+      const user = users.find(u => u.id === selectedUserForBalance);
+      const balances = getUserBalances(selectedUserForBalance);
 
-    if (balances[transferFrom] < amount) {
-      toast.error(`Insufficient balance in ${transferFrom} wallet`);
-      return;
-    }
+      if (balances[transferFrom] < amount) {
+        toast.error(`Insufficient balance in ${transferFrom} wallet`);
+        return;
+      }
 
-    // Deduct from source
-    balances[transferFrom] -= amount;
-    // Add to destination
-    balances[transferTo] += amount;
+      // 1. Deduct from source
+      if (transferFrom === 'wallet') {
+        const newVal = balances.wallet - amount;
+        await api.users.updateBalance(selectedUserForBalance, newVal);
+        await api.tradingAccounts.update(selectedUserForBalance, { balance: newVal, available_funds: newVal, equity: newVal });
+      } else {
+        await api.investmentWallets.update(selectedUserForBalance, { [transferFrom]: balances[transferFrom] - amount });
+      }
 
-    // Update localStorage with per-user key
-    if (transferFrom === 'wallet' || transferTo === 'wallet') {
-      const liveAccount = {
-        balance: balances.wallet,
-        equity: balances.wallet,
-        realizedPnL: 0,
-        unrealizedPnL: 0,
-        margin: 0,
-        availableFunds: balances.wallet,
-        bonus: 0,
-      };
-      localStorage.setItem(`gross_live_account_${selectedUserForBalance}`, JSON.stringify(liveAccount));
-      // Fallback/Legacy
-      localStorage.setItem('gross_live_account', JSON.stringify(liveAccount));
+      // 2. Add to destination
+      if (transferTo === 'wallet') {
+        const newVal = balances.wallet + amount;
+        await api.users.updateBalance(selectedUserForBalance, newVal);
+        await api.tradingAccounts.update(selectedUserForBalance, { balance: newVal, available_funds: newVal, equity: newVal });
+      } else {
+        await api.investmentWallets.update(selectedUserForBalance, { [transferTo]: balances[transferTo] + amount });
+      }
+
+      // 3. Update local context
+      const newBalances = { ...balances };
+      newBalances[transferFrom] -= amount;
+      newBalances[transferTo] += amount;
       
-      // Update global user record
-      updateUser(selectedUserForBalance, { balance: balances.wallet, liveBalance: balances.wallet });
+      updateUser(selectedUserForBalance, { 
+        balance: newBalances.wallet, 
+        liveBalance: newBalances.wallet,
+        investmentBalances: { ipo: newBalances.ipo, ecn: newBalances.ecn, portfolio: newBalances.portfolio }
+      });
+
+      toast.success(`Transferred $${amount.toFixed(2)} from ${transferFrom} to ${transferTo}`);
+      
+      setTransferFundsModal(false);
+      setTransferAmount('');
+      setSelectedUserForBalance('');
+    } catch (err) {
+      console.error('Transfer failed:', err);
+      toast.error('Failed to process transfer in database');
     }
-
-    localStorage.setItem(`investment_balances_${selectedUserForBalance}`, JSON.stringify({ ecn: balances.ecn, ipo: balances.ipo, portfolio: balances.portfolio }));
-    window.dispatchEvent(new Event('storage'));
-
-    toast.success(`Transferred $${amount.toFixed(2)} from ${transferFrom} to ${transferTo} for ${user?.email || 'user'}`);
-    
-    setTransferFundsModal(false);
-    setTransferAmount('');
-    setSelectedUserForBalance('');
   };
 
   // Toggle Auto Trade Feature
-  const toggleAutoTrade = (enabled: boolean) => {
+  const toggleAutoTrade = async (enabled: boolean) => {
     setAutoTradeEnabled(enabled);
-    localStorage.setItem('auto_trade_enabled', String(enabled));
-    setKV('auto_trade_enabled', enabled).catch(console.error);
-    window.dispatchEvent(new Event('storage'));
-    toast.success(`Auto Trade feature ${enabled ? 'enabled' : 'disabled'} globally`);
+    try {
+      await supabase.from('global_settings').upsert({
+        id: 'global_settings',
+        trading_config: { ...settings, autoTradeEnabled: enabled, signalEnabled }
+      });
+      toast.success(`Auto Trade feature ${enabled ? 'enabled' : 'disabled'} globally`);
+    } catch (e) {
+      toast.error('Failed to update auto trade setting');
+    }
   };
 
   // Toggle Signal Feature
-  const toggleSignal = (enabled: boolean) => {
+  const toggleSignal = async (enabled: boolean) => {
     setSignalEnabled(enabled);
-    localStorage.setItem('signal_enabled', String(enabled));
-    setKV('signal_enabled', enabled).catch(console.error);
-    window.dispatchEvent(new Event('storage'));
-    toast.success(`Signal feature ${enabled ? 'enabled' : 'disabled'} globally`);
+    try {
+      await supabase.from('global_settings').upsert({
+        id: 'global_settings',
+        trading_config: { ...settings, autoTradeEnabled, signalEnabled: enabled }
+      });
+      toast.success(`Signal feature ${enabled ? 'enabled' : 'disabled'} globally`);
+    } catch (e) {
+      toast.error('Failed to update signal setting');
+    }
   };
 
   // Toggle Auto Trade Access for individual user
-  const toggleAutoTradeAccess = (userId: string, enabled: boolean) => {
-    const updated = { ...autoTradeAccess, [userId]: enabled };
-    setAutoTradeAccess(updated);
-    localStorage.setItem('auto_trade_access', JSON.stringify(updated));
-    setKV('auto_trade_access', updated).catch(console.error);
-    
-    // Trigger custom event for same-window updates
-    window.dispatchEvent(new CustomEvent('auto_trade_access_changed', { 
-      detail: { userId, enabled, accessMap: updated } 
-    }));
-    
-    const user = users.find(u => u.id === userId);
-    toast.success(
-      `Auto Trade access ${enabled ? 'enabled' : 'disabled'} for ${user?.email || 'user'}`
-    );
+  const toggleAutoTradeAccess = async (userId: string, enabled: boolean) => {
+    try {
+      await updateUser(userId, { hasAutoTradeAccess: enabled });
+      
+      const user = users.find(u => u.id === userId);
+      toast.success(
+        `Auto Trade access ${enabled ? 'enabled' : 'disabled'} for ${user?.email || 'user'}`
+      );
+    } catch (err) {
+      console.error('Toggle failed:', err);
+      toast.error('Update failed');
+    }
   };
 
   // Toggle Signal Access for individual user
-  const toggleSignalAccess = (userId: string, enabled: boolean) => {
-    const updated = { ...signalAccess, [userId]: enabled };
-    setSignalAccess(updated);
-    localStorage.setItem('signal_access', JSON.stringify(updated));
-    setKV('signal_access', updated).catch(console.error);
-    
-    // Trigger custom event for same-window updates
-    window.dispatchEvent(new CustomEvent('signal_access_changed', { 
-      detail: { userId, enabled, accessMap: updated } 
-    }));
-    
-    const user = users.find(u => u.id === userId);
-    toast.success(
-      `Signal access ${enabled ? 'enabled' : 'disabled'} for ${user?.email || 'user'}`
-    );
+  const toggleSignalAccess = async (userId: string, enabled: boolean) => {
+    try {
+      await updateUser(userId, { hasSignalAccess: enabled });
+      
+      const user = users.find(u => u.id === userId);
+      toast.success(
+        `Signal access ${enabled ? 'enabled' : 'disabled'} for ${user?.email || 'user'}`
+      );
+    } catch (err) {
+      console.error('Toggle failed:', err);
+      toast.error('Update failed');
+    }
   };
 
-  // Enable All Auto Trade Access
-  const enableAllAutoTradeAccess = () => {
-    if (!confirm('Are you sure you want to enable Auto Trade access for ALL users?')) {
-      return;
-    }
-
-    const updated: Record<string, boolean> = {};
-    users.filter(u => u.role === 'user').forEach(user => {
-      updated[user.id] = true;
-    });
-
-    setAutoTradeAccess(updated);
-    localStorage.setItem('auto_trade_access', JSON.stringify(updated));
-    setKV('auto_trade_access', updated).catch(console.error);
-    
-    // Trigger custom event for same-window updates
-    window.dispatchEvent(new CustomEvent('auto_trade_access_changed', { 
-      detail: { accessMap: updated } 
-    }));
-    
-    toast.success('Auto Trade access enabled for all users');
+  // Bulk updates mapping to relational flags
+  const enableAllAutoTradeAccess = async () => {
+    if (!confirm('Are you sure?')) return;
+    try {
+      const targets = users.filter(u => u.role === 'user');
+      await Promise.all(targets.map(u => updateUser(u.id, { hasAutoTradeAccess: true })));
+      toast.success('Enabled for all');
+    } catch (e) { toast.error('Bulk update failed'); }
   };
 
-  // Disable All Auto Trade Access
-  const disableAllAutoTradeAccess = () => {
-    if (!confirm('Are you sure you want to disable Auto Trade access for ALL users?')) {
-      return;
-    }
-
-    setAutoTradeAccess({});
-    localStorage.setItem('auto_trade_access', JSON.stringify({}));
-    setKV('auto_trade_access', {}).catch(console.error);
-    
-    // Trigger custom event for same-window updates
-    window.dispatchEvent(new CustomEvent('auto_trade_access_changed', { 
-      detail: { accessMap: {} } 
-    }));
-    
-    toast.success('Auto Trade access disabled for all users');
+  const disableAllAutoTradeAccess = async () => {
+    if (!confirm('Are you sure?')) return;
+    try {
+      const targets = users.filter(u => u.role === 'user');
+      await Promise.all(targets.map(u => updateUser(u.id, { hasAutoTradeAccess: false })));
+      toast.success('Disabled for all');
+    } catch (e) { toast.error('Bulk update failed'); }
   };
 
-  // Enable All Signal Access
-  const enableAllSignalAccess = () => {
-    if (!confirm('Are you sure you want to enable Signal access for ALL users?')) {
-      return;
-    }
-
-    const updated: Record<string, boolean> = {};
-    users.filter(u => u.role === 'user').forEach(user => {
-      updated[user.id] = true;
-    });
-
-    setSignalAccess(updated);
-    localStorage.setItem('signal_access', JSON.stringify(updated));
-    setKV('signal_access', updated).catch(console.error);
-    
-    // Trigger custom event for same-window updates
-    window.dispatchEvent(new CustomEvent('signal_access_changed', { 
-      detail: { accessMap: updated } 
-    }));
-    
-    toast.success('Signal access enabled for all users');
+  const enableAllSignalAccess = async () => {
+    if (!confirm('Are you sure?')) return;
+    try {
+      const targets = users.filter(u => u.role === 'user');
+      await Promise.all(targets.map(u => updateUser(u.id, { hasSignalAccess: true })));
+      toast.success('Enabled for all');
+    } catch (e) { toast.error('Bulk update failed'); }
   };
 
-  // Disable All Signal Access
-  const disableAllSignalAccess = () => {
-    if (!confirm('Are you sure you want to disable Signal access for ALL users?')) {
-      return;
-    }
-
-    setSignalAccess({});
-    localStorage.setItem('signal_access', JSON.stringify({}));
-    setKV('signal_access', {}).catch(console.error);
-    
-    // Trigger custom event for same-window updates
-    window.dispatchEvent(new CustomEvent('signal_access_changed', { 
-      detail: { accessMap: {} } 
-    }));
-    
-    toast.success('Signal access disabled for all users');
+  const disableAllSignalAccess = async () => {
+    if (!confirm('Are you sure?')) return;
+    try {
+      const targets = users.filter(u => u.role === 'user');
+      await Promise.all(targets.map(u => updateUser(u.id, { hasSignalAccess: false })));
+      toast.success('Disabled for all');
+    } catch (e) { toast.error('Bulk update failed'); }
   };
 
   return (
@@ -950,10 +843,10 @@ export default function TradingSettings() {
                       <td className="py-4 px-4 text-center">
                         <div className="flex items-center justify-center gap-3">
                           <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {investmentAccess[user.id] ? 'Enabled' : 'Disabled'}
+                            {user.hasInvestmentAccess ? 'Enabled' : 'Disabled'}
                           </span>
                           <Switch
-                            checked={investmentAccess[user.id] || false}
+                            checked={user.hasInvestmentAccess || false}
                             onCheckedChange={(checked) => toggleInvestmentAccess(user.id, checked)}
                           />
                         </div>
@@ -1117,10 +1010,10 @@ export default function TradingSettings() {
                       <td className="py-4 px-4 text-center">
                         <div className="flex items-center justify-center gap-3">
                           <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {autoTradeAccess[user.id] ? 'Enabled' : 'Disabled'}
+                            {user.hasAutoTradeAccess ? 'Enabled' : 'Disabled'}
                           </span>
                           <Switch
-                            checked={autoTradeAccess[user.id] || false}
+                            checked={user.hasAutoTradeAccess || false}
                             onCheckedChange={(checked) => toggleAutoTradeAccess(user.id, checked)}
                           />
                         </div>
@@ -1284,10 +1177,10 @@ export default function TradingSettings() {
                       <td className="py-4 px-4 text-center">
                         <div className="flex items-center justify-center gap-3">
                           <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {signalAccess[user.id] ? 'Enabled' : 'Disabled'}
+                            {user.hasSignalAccess ? 'Enabled' : 'Disabled'}
                           </span>
                           <Switch
-                            checked={signalAccess[user.id] || false}
+                            checked={user.hasSignalAccess || false}
                             onCheckedChange={(checked) => toggleSignalAccess(user.id, checked)}
                           />
                         </div>

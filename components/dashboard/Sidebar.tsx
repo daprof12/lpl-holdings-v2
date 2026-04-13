@@ -40,69 +40,6 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     (!n.userId || n.userId === currentUser?.id)
   ).length;
 
-  // State for feature access
-  const [autoTradeAccess, setAutoTradeAccess] = useState<boolean>(false);
-  const [signalAccess, setSignalAccess] = useState<boolean>(false);
-  const [investmentAccess, setInvestmentAccess] = useState<boolean>(false);
-
-  // Load user access settings from localStorage
-  useEffect(() => {
-    const loadAccessSettings = () => {
-      if (!currentUser) return;
-
-      // Load auto trade access
-      const autoTradeAccessData = localStorage.getItem('auto_trade_access');
-      if (autoTradeAccessData) {
-        try {
-          const accessMap = JSON.parse(autoTradeAccessData);
-          setAutoTradeAccess(accessMap[currentUser.id] === true);
-        } catch (e) {
-          setAutoTradeAccess(false);
-        }
-      } else {
-        setAutoTradeAccess(false);
-      }
-
-      // Load signal access
-      const signalAccessData = localStorage.getItem('signal_access');
-      if (signalAccessData) {
-        try {
-          const accessMap = JSON.parse(signalAccessData);
-          setSignalAccess(accessMap[currentUser.id] === true);
-        } catch (e) {
-          setSignalAccess(false);
-        }
-      } else {
-        setSignalAccess(false);
-      }
-
-      // Load investment access
-      const investmentAccessData = localStorage.getItem('investment_access');
-      if (investmentAccessData) {
-        try {
-          const accessMap = JSON.parse(investmentAccessData);
-          setInvestmentAccess(accessMap[currentUser.id] === true);
-        } catch (e) {
-          setInvestmentAccess(false);
-        }
-      } else {
-        setInvestmentAccess(false);
-      }
-    };
-
-    loadAccessSettings();
-
-    // Listen for storage changes
-    const handleStorageChange = () => {
-      loadAccessSettings();
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, [currentUser]);
-
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard', visible: true },
     { icon: LineChart, label: 'Markets', path: '/markets', visible: true },
@@ -110,9 +47,9 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     { icon: Briefcase, label: 'Portfolio', path: '/portfolio', visible: true },
     { icon: Wallet, label: 'Deposit/Withdraw', path: '/wallet', visible: true },
     { icon: History, label: 'History', path: '/history', visible: true },
-    { icon: Bot, label: 'AI Auto Trader', path: '/auto-trader', visible: autoTradeAccess },
-    { icon: Radio, label: 'Signals', path: '/signals', visible: signalAccess },
-    { icon: TrendingDown, label: 'Investment Offers', path: '/investments', visible: true }, // Always visible
+    { icon: Bot, label: 'AI Auto Trader', path: '/auto-trader', visible: currentUser?.hasAutoTradeAccess },
+    { icon: Radio, label: 'Signals', path: '/signals', visible: currentUser?.hasSignalAccess },
+    { icon: TrendingDown, label: 'Investment Offers', path: '/investments', visible: currentUser?.hasInvestmentAccess },
   ];
 
   const bottomItems = [

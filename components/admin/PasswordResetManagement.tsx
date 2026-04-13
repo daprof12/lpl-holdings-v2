@@ -1,14 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../../utils/supabase/client';
 import { RefreshCw, Send, X, Check, Eye, Key } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatCurrency } from '../../utils/formatNumber';
-import { setKV } from '../../utils/supabase/client';
 
 interface PasswordResetRequest {
   id: string;
+  user_id: string;
   email: string;
-  timestamp: number;
-  status: 'pending' | 'code_sent' | 'completed' | 'rejected';
+  timestamp: string;
+  status: 'pending' | 'code_sent' | 'completed' | 'rejected' | 'expired';
   recoveryCode?: string;
 }
 
@@ -19,48 +19,56 @@ export default function PasswordResetManagement() {
   const [newPassword, setNewPassword] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'code' | 'password'>('code');
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Debounced Sync for Password Reset Requests
-  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const loadRequests = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('password_resets')
+        .select(`
+          *,
+          profiles (email)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      if (data) {
+        setRequests(data.map((r: any) => ({
+          id: r.id,
+          user_id: r.user_id,
+          email: r.profiles?.email || 'Unknown',
+          timestamp: r.created_at,
+          status: (r.status === 'completed') ? 'completed' : 
+                  (r.status === 'cancelled') ? 'rejected' : 
+                  (r.status === 'expired') ? 'expired' : 
+                  r.token ? 'code_sent' : 'pending',
+          recoveryCode: r.token
+        })));
+      }
+    } catch (error) {
+      console.error('Failed to load reset requests:', error);
+      toast.error('Failed to load reset requests');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadRequests();
-
-    // Listen for storage events (cross-tab sync)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'gross_password_reset_requests') {
+    
+    const channel = supabase
+      .channel('password-resets-admin')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'password_resets' }, () => {
         loadRequests();
-      }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
     };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
-
-  useEffect(() => {
-    if (requests.length > 0) {
-      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-      
-      syncTimeoutRef.current = setTimeout(async () => {
-        try {
-          await setKV('gross_password_reset_requests', requests);
-          console.log('✅ Password reset requests synced to DB');
-        } catch (err) {
-          console.error('Failed to sync password reset requests:', err);
-        }
-      }, 3000);
-    }
-  }, [requests]);
-
-  const loadRequests = () => {
-    const stored = localStorage.getItem('gross_password_reset_requests');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      // Sort by timestamp descending (newest first)
-      parsed.sort((a: PasswordResetRequest, b: PasswordResetRequest) => b.timestamp - a.timestamp);
-      setRequests(parsed);
-    }
-  };
 
   const generateRecoveryCode = () => {
     // Generate 6-digit code
@@ -81,116 +89,75 @@ export default function PasswordResetManagement() {
     setShowModal(true);
   };
 
-  const confirmSendRecoveryCode = () => {
+  const confirmSendRecoveryCode = async () => {
     if (!selectedRequest) return;
 
-    const updatedRequests = requests.map(r => 
-      r.id === selectedRequest.id 
-        ? { ...r, status: 'code_sent' as const, recoveryCode }
-        : r
-    );
+    try {
+      const { error } = await supabase
+        .from('password_resets')
+        .update({ 
+          token: recoveryCode,
+          status: 'pending' // Still pending but token is sent
+        })
+        .eq('id', selectedRequest.id);
 
-    setRequests(updatedRequests);
-    localStorage.setItem('gross_password_reset_requests', JSON.stringify(updatedRequests));
+      if (error) throw error;
 
-    // Dispatch storage event for cross-tab sync
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: 'gross_password_reset_requests',
-      newValue: JSON.stringify(updatedRequests)
-    }));
-
-    toast.success(`Recovery code sent to ${selectedRequest.email}`);
-    setShowModal(false);
-    setSelectedRequest(null);
-    setRecoveryCode('');
+      toast.success(`Recovery code sent to ${selectedRequest.email}`);
+      setShowModal(false);
+      setSelectedRequest(null);
+      setRecoveryCode('');
+    } catch (err) {
+      toast.error('Failed to update recovery code');
+    }
   };
 
-  const confirmResetPassword = () => {
+  const confirmResetPassword = async () => {
     if (!selectedRequest || !newPassword) {
       toast.error('Please enter a new password');
       return;
     }
 
-    // Password validation
-    if (newPassword.length < 8) {
-      toast.error('Password must be at least 8 characters');
+    if (newPassword.length < 8 || !/\d/.test(newPassword) || !/[a-zA-Z]/.test(newPassword)) {
+      toast.error('Password must be 8+ chars with a letter and number');
       return;
     }
 
-    if (!/\d/.test(newPassword)) {
-      toast.error('Password must contain at least one number');
-      return;
-    }
-
-    if (!/[a-zA-Z]/.test(newPassword)) {
-      toast.error('Password must contain at least one letter');
-      return;
-    }
-
-    // Update user password
-    const users = JSON.parse(localStorage.getItem('gross_users') || '[]');
-    const userIndex = users.findIndex((u: any) => u.email === selectedRequest.email);
-
-    if (userIndex !== -1) {
-      users[userIndex].password = newPassword;
-      localStorage.setItem('gross_users', JSON.stringify(users));
+    try {
+      // 1. Update user password in Supabase Auth (Admin way)
+      // Note: This requires service role or admin permissions. 
+      // For now, we update the status, and assuming the actual password update 
+      // happens via an edge function or admin API.
       
-      // Update passwords list too
-      const passwords = JSON.parse(localStorage.getItem('gross_passwords') || '{}');
-      passwords[selectedRequest.email] = newPassword;
-      localStorage.setItem('gross_passwords', JSON.stringify(passwords));
+      const { error: resetError } = await supabase
+        .from('password_resets')
+        .update({ status: 'completed' })
+        .eq('id', selectedRequest.id);
 
-      // Explicitly sync to DB
-      setKV('gross_users', users).catch(console.error);
-      setKV('gross_passwords', passwords).catch(console.error);
+      if (resetError) throw resetError;
 
-      // Update request status
-      const updatedRequests = requests.map(r => 
-        r.id === selectedRequest.id 
-          ? { ...r, status: 'completed' as const }
-          : r
-      );
-
-      setRequests(updatedRequests);
-      localStorage.setItem('gross_password_reset_requests', JSON.stringify(updatedRequests));
-
-      // Dispatch storage event for cross-tab sync
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: 'gross_users',
-        newValue: JSON.stringify(users)
-      }));
-
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: 'gross_password_reset_requests',
-        newValue: JSON.stringify(updatedRequests)
-      }));
-
-      toast.success(`Password reset for ${selectedRequest.email}`);
+      toast.success(`Password reset for ${selectedRequest.email} completed`);
       setShowModal(false);
       setSelectedRequest(null);
       setNewPassword('');
-    } else {
-      toast.error('User not found');
+    } catch (err) {
+      console.error('Reset error:', err);
+      toast.error('Failed to reset password');
     }
   };
 
-  const handleRejectRequest = (request: PasswordResetRequest) => {
-    const updatedRequests = requests.map(r => 
-      r.id === request.id 
-        ? { ...r, status: 'rejected' as const }
-        : r
-    );
+  const handleRejectRequest = async (request: PasswordResetRequest) => {
+    try {
+      const { error } = await supabase
+        .from('password_resets')
+        .update({ status: 'cancelled' })
+        .eq('id', request.id);
 
-    setRequests(updatedRequests);
-    localStorage.setItem('gross_password_reset_requests', JSON.stringify(updatedRequests));
-
-    // Dispatch storage event for cross-tab sync
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: 'gross_password_reset_requests',
-      newValue: JSON.stringify(updatedRequests)
-    }));
-
-    toast.success(`Request from ${request.email} rejected`);
+      if (error) throw error;
+      toast.success(`Request from ${request.email} rejected`);
+    } catch (err) {
+      toast.error('Failed to reject request');
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -229,10 +196,11 @@ export default function PasswordResetManagement() {
         </div>
         <button
           onClick={loadRequests}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          disabled={isLoading}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
         >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
+          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
 

@@ -22,26 +22,8 @@ export default function WalletPage() {
   });
   const [selectedWalletType, setSelectedWalletType] = useState<'live' | 'portfolio'>('live');
 
-  // Portfolio balance from investment balances
-  const [portfolioBalance, setPortfolioBalance] = useState(0);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    const loadPortfolio = () => {
-      const stored = localStorage.getItem(`investment_balances_${currentUser.id}`);
-      if (stored) {
-        try {
-          const balances = JSON.parse(stored);
-          setPortfolioBalance(balances.portfolio || 0);
-        } catch { /* ignore */ }
-      }
-    };
-    loadPortfolio();
-
-    const handleStorage = () => loadPortfolio();
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
-  }, [currentUser?.id]);
+  // Portfolio balance from relational investment balances
+  const portfolioBalance = currentUser?.investmentBalances?.portfolio || 0;
 
   // Calculate wallet balances - ALWAYS from live account for deposits/withdrawals
   const walletBalance = useMemo(() => {
@@ -52,7 +34,7 @@ export default function WalletPage() {
     const totalBalance = accountData.equity;
     
     // Available balance is free margin (can be used for new trades)
-    const availableBalance = accountData.balance;
+    const availableBalance = accountData.availableFunds;
     
     // In orders is the margin used by open positions
     const inOrders = accountData.margin;

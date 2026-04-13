@@ -40,6 +40,17 @@ export default function InvestmentsPage() {
     createSellRequest
   } = useInvestments();
 
+  // Helper to get effective current value (dynamic for ECN unless custom)
+  const getEffectiveValue = (inv: any) => {
+    if (inv.offerType === 'ECN' && !inv.isCustomValue) {
+      const offer = investmentOffers.find(o => o.id === inv.offerId);
+      if (offer && offer.marketPrice) {
+        return inv.units * offer.marketPrice;
+      }
+    }
+    return inv.currentValue;
+  };
+
   // Helper functions for toast notifications
   const showSuccessToast = (message: string) => toast.success(message);
   const showErrorToast = (message: string) => toast.error(message);
@@ -66,61 +77,16 @@ export default function InvestmentsPage() {
   
   // Check user access
   useEffect(() => {
-    if (!currentUser) {
-      setHasAccess(false);
-      return;
+    if (currentUser) {
+      setHasAccess(currentUser.hasInvestmentAccess || false);
     }
-
-    const loadAccessSettings = () => {
-      const investmentAccessData = localStorage.getItem('investment_access');
-      if (investmentAccessData) {
-        try {
-          const accessMap = JSON.parse(investmentAccessData);
-          const userHasAccess = accessMap[currentUser.id] === true;
-          setHasAccess(userHasAccess);
-          console.log('Investment Access Check:', {
-            userId: currentUser.id,
-            userEmail: currentUser.email,
-            accessMap,
-            userHasAccess
-          });
-        } catch (e) {
-          console.error('Error parsing investment access:', e);
-          setHasAccess(false);
-        }
-      } else {
-        setHasAccess(false);
-      }
-    };
-
-    loadAccessSettings();
-
-    // Listen for custom investment access change event (same window)
-    const handleAccessChange = (event: Event) => {
-      console.log('Investment access changed event detected!', event);
-      loadAccessSettings();
-    };
-
-    // Listen for storage changes (cross-tab)
-    const handleStorageChange = () => {
-      console.log('Storage change detected (cross-tab), reloading access settings...');
-      loadAccessSettings();
-    };
-
-    window.addEventListener('investment_access_changed', handleAccessChange);
-    window.addEventListener('storage', handleStorageChange);
-    
-    return () => {
-      window.removeEventListener('investment_access_changed', handleAccessChange);
-      window.removeEventListener('storage', handleStorageChange);
-    };
   }, [currentUser]);
   
-  // Investment-specific wallet balances are now part of the currentUser object in AuthContext
-  const portfolioBalance = currentUser?.investmentBalances?.portfolio || 0;
-  const ecnBalance = currentUser?.investmentBalances?.ecn || 0;
-  const ipoBalance = currentUser?.investmentBalances?.ipo || 0;
-
+  // Local state for investment balances to ensure real-time updates
+  const investmentBalances = currentUser?.investmentBalances || { portfolio: 0, ecn: 0, ipo: 0 };
+  const portfolioBalance = investmentBalances.portfolio;
+  const ecnBalance = investmentBalances.ecn;
+  const ipoBalance = investmentBalances.ipo;
   // Transfer state
   const [transferAmount, setTransferAmount] = useState('');
   const [fromWallet, setFromWallet] = useState<'portfolio' | 'ecn' | 'ipo'>('portfolio');
@@ -137,7 +103,7 @@ export default function InvestmentsPage() {
   const [sellModalOpen, setSellModalOpen] = useState(false);
   const [selectedInvestment, setSelectedInvestment] = useState<any>(null);
   const [sellUnits, setSellUnits] = useState('');
-  const [sellWallet, setSellWallet] = useState<'portfolio' | 'ecn' | 'ipo'>('portfolio');
+  const [sellWallet, setSellWallet] = useState<'portfolio' | 'ecn' | 'ipo' | 'wallet'>('portfolio');
   const [isSelling, setIsSelling] = useState(false);
 
   const handleTransfer = () => {
@@ -216,12 +182,17 @@ export default function InvestmentsPage() {
       }
 
       const totalCost = units * selectedOffer.price;
-      const balances = { portfolio: portfolioBalance, ecn: ecnBalance, ipo: ipoBalance };
+      const balances = { 
+        portfolio: portfolioBalance, 
+        ecn: ecnBalance, 
+        ipo: ipoBalance,
+        wallet: currentUser?.liveBalance || 0 
+      };
 
       console.log('Total cost:', totalCost);
-      console.log('Current balance:', balances[paymentWallet]);
+      console.log('Current balance:', balances[paymentWallet as keyof typeof balances]);
 
-      if (balances[paymentWallet] < totalCost) {
+      if (balances[paymentWallet as keyof typeof balances] < totalCost) {
         showErrorToast('Insufficient balance');
         setIsBuying(false);
         return;
@@ -700,7 +671,7 @@ export default function InvestmentsPage() {
                       <td className="px-4 py-3 font-semibold text-green-600 dark:text-green-400">
                         {inv.offerType === 'IPO' && !inv.showValueAndDate 
                           ? '—' 
-                          : `$${formatCurrency(inv.currentValue)}`}
+                          : `$${formatCurrency(getEffectiveValue(inv))}`}
                       </td>
                       {historyTypeTab === 'IPO' ? (
                         <>
@@ -850,12 +821,13 @@ export default function InvestmentsPage() {
                   <Label>Payment Wallet</Label>
                   <select
                     value={paymentWallet}
-                    onChange={(e) => setPaymentWallet(e.target.value as 'portfolio' | 'ecn' | 'ipo')}
+                    onChange={(e) => setPaymentWallet(e.target.value as 'portfolio' | 'ecn' | 'ipo' | 'wallet')}
                     className="w-full mt-1 p-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700"
                   >
                     <option value="portfolio">Portfolio Balance (${formatCurrency(portfolioBalance)})</option>
                     <option value="ipo">IPO Balance (${formatCurrency(ipoBalance)})</option>
                     <option value="ecn">ECN Balance (${formatCurrency(ecnBalance)})</option>
+                    <option value="wallet">Wallet Balance (${formatCurrency(currentUser?.liveBalance || 0)})</option>
                   </select>
                 </div>
                 {buyUnits && parseInt(buyUnits) > 0 && (
@@ -920,19 +892,20 @@ export default function InvestmentsPage() {
                   <Label>Receive in Wallet</Label>
                   <select
                     value={sellWallet}
-                    onChange={(e) => setSellWallet(e.target.value as 'portfolio' | 'ecn' | 'ipo')}
+                    onChange={(e) => setSellWallet(e.target.value as 'portfolio' | 'ecn' | 'ipo' | 'wallet')}
                     className="w-full mt-1 p-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700"
                   >
                     <option value="portfolio">Portfolio Balance</option>
                     <option value="ipo">IPO Balance</option>
                     <option value="ecn">ECN Balance</option>
+                    <option value="wallet">Wallet Balance</option>
                   </select>
                 </div>
                 {sellUnits && parseInt(sellUnits) > 0 && (
                   <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
                     <div className="text-sm text-gray-600 dark:text-gray-400">You will receive</div>
                     <div className="text-2xl font-bold text-green-600">
-                      ${formatCurrency((selectedInvestment.currentValue / selectedInvestment.units) * parseInt(sellUnits))}
+                      ${formatCurrency((getEffectiveValue(selectedInvestment) / selectedInvestment.units) * parseInt(sellUnits))}
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                       After sell request is completed

@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../../utils/supabase/client';
 import { 
   Mail, 
   MessageSquare, 
@@ -25,61 +26,73 @@ import {
 import { toast } from 'sonner';
 import { useTickets } from '../../contexts/TicketContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { setKV } from '../../utils/supabase/client';
 
 interface ContactSubmission {
   id: string;
   name: string;
   email: string;
   message: string;
-  status: 'unread' | 'read' | 'replied';
-  createdAt: number;
-  replied: boolean;
-  repliedAt?: number;
-  ticketId?: string;
+  subject?: string;
+  status: 'pending' | 'read' | 'replied' | 'archived';
+  createdAt: string;
+  metadata: any;
 }
 
 export default function ContactSubmissions() {
   const [submissions, setSubmissions] = useState<ContactSubmission[]>([]);
   const [filteredSubmissions, setFilteredSubmissions] = useState<ContactSubmission[]>([]);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'unread' | 'read' | 'replied'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'read' | 'replied'>('all');
   const [selectedSubmission, setSelectedSubmission] = useState<ContactSubmission | null>(null);
   const [showReplyDialog, setShowReplyDialog] = useState(false);
   const [replyMessage, setReplyMessage] = useState('');
+  const [loading, setLoading] = useState(true);
   
   const { createTicket } = useTickets();
   const { currentUser } = useAuth();
 
-  // Load submissions from localStorage
-  useEffect(() => {
-    loadSubmissions();
-    
-    // Listen for storage changes
-    const handleStorageChange = () => {
-      loadSubmissions();
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+  // Load submissions from Supabase
+  const fetchSubmissions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contact_submissions')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-  // Debounced Sync to Supabase
-  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    if (submissions.length > 0) {
-      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-      
-      syncTimeoutRef.current = setTimeout(async () => {
-        try {
-          await setKV('gross_contact_submissions', submissions);
-          console.log('✅ Contact submissions synced to DB');
-        } catch (err) {
-          console.error('Failed to sync contact submissions:', err);
-        }
-      }, 3000);
+      if (error) throw error;
+      if (data) {
+        setSubmissions(data.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          email: s.email,
+          message: s.message,
+          subject: s.subject,
+          status: s.status,
+          createdAt: s.created_at,
+          metadata: s.metadata
+        })));
+      }
+    } catch (err) {
+      console.error('Failed to load submissions:', err);
+    } finally {
+      setLoading(false);
     }
-  }, [submissions]);
+  };
+
+  useEffect(() => {
+    fetchSubmissions();
+
+    // Subscribe to changes
+    const channel = supabase
+      .channel('contact_submissions_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'contact_submissions' }, () => {
+        fetchSubmissions();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Filter submissions
   useEffect(() => {
@@ -90,28 +103,23 @@ export default function ContactSubmissions() {
     }
   }, [submissions, statusFilter]);
 
-  const loadSubmissions = () => {
-    const stored = localStorage.getItem('gross_contact_submissions');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      // Sort by newest first
-      parsed.sort((a: ContactSubmission, b: ContactSubmission) => b.createdAt - a.createdAt);
-      setSubmissions(parsed);
+  const markAsRead = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('contact_submissions')
+        .update({ status: 'read' })
+        .eq('id', id)
+        .eq('status', 'pending');
+      
+      if (error) throw error;
+    } catch (err) {
+      console.error('Failed to mark as read:', err);
     }
-  };
-
-  const markAsRead = (id: string) => {
-    const updated = submissions.map(s => 
-      s.id === id && s.status === 'unread' ? { ...s, status: 'read' as const } : s
-    );
-    setSubmissions(updated);
-    localStorage.setItem('gross_contact_submissions', JSON.stringify(updated));
-    window.dispatchEvent(new Event('storage'));
   };
 
   const handleViewSubmission = (submission: ContactSubmission) => {
     setSelectedSubmission(submission);
-    if (submission.status === 'unread') {
+    if (submission.status === 'pending') {
       markAsRead(submission.id);
     }
   };
@@ -122,63 +130,73 @@ export default function ContactSubmissions() {
     setReplyMessage(`Dear ${submission.name},\n\nThank you for contacting us.\n\n`);
   };
 
-  const handleSendReply = () => {
+  const handleSendReply = async () => {
     if (!selectedSubmission || !replyMessage.trim()) {
       toast.error('Please enter a reply message');
       return;
     }
 
-    // Create a support ticket with the reply
-    createTicket({
-      subject: `Re: Contact Form - ${selectedSubmission.name}`,
-      category: 'other',
-      priority: 'medium',
-      message: `Original Message from ${selectedSubmission.name} (${selectedSubmission.email}):\n\n${selectedSubmission.message}\n\n---\n\nAdmin Reply:\n\n${replyMessage}`,
-      userId: currentUser?.id || 'admin',
-      userEmail: selectedSubmission.email,
-      userName: selectedSubmission.name
-    });
+    try {
+      // 1. Create a support ticket
+      await createTicket({
+        subject: `Re: Contact Form - ${selectedSubmission.name}`,
+        category: 'other',
+        priority: 'medium',
+        message: `Original Message from ${selectedSubmission.name} (${selectedSubmission.email}):\n\n${selectedSubmission.message}\n\n---\n\nAdmin Reply:\n\n${replyMessage}`,
+        userId: currentUser?.id || 'admin',
+        userEmail: selectedSubmission.email,
+        userName: selectedSubmission.name
+      });
 
-    // Update submission status
-    const updated = submissions.map(s => 
-      s.id === selectedSubmission.id 
-        ? { ...s, status: 'replied' as const, replied: true, repliedAt: Date.now() } 
-        : s
-    );
-    setSubmissions(updated);
-    localStorage.setItem('gross_contact_submissions', JSON.stringify(updated));
-    window.dispatchEvent(new Event('storage'));
+      // 2. Update submission status in DB
+      const { error } = await supabase
+        .from('contact_submissions')
+        .update({ status: 'replied' })
+        .eq('id', selectedSubmission.id);
 
-    toast.success('Reply sent successfully! A support ticket has been created.');
-    setShowReplyDialog(false);
-    setReplyMessage('');
-    setSelectedSubmission(null);
+      if (error) throw error;
+
+      toast.success('Reply sent successfully! A support ticket has been created.');
+      setShowReplyDialog(false);
+      setReplyMessage('');
+      setSelectedSubmission(null);
+    } catch (err) {
+      console.error('Failed to send reply:', err);
+      toast.error('Failed to process reply');
+    }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this submission?')) {
-      const updated = submissions.filter(s => s.id !== id);
-      setSubmissions(updated);
-      localStorage.setItem('gross_contact_submissions', JSON.stringify(updated));
-      window.dispatchEvent(new Event('storage'));
-      toast.success('Submission deleted successfully');
+      try {
+        const { error } = await supabase
+          .from('contact_submissions')
+          .delete()
+          .eq('id', id);
+        
+        if (error) throw error;
+        toast.success('Submission deleted successfully');
+      } catch (err) {
+        console.error('Delete failed:', err);
+        toast.error('Failed to delete submission');
+      }
     }
   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'unread':
-        return <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">Unread</span>;
+      case 'pending':
+        return <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">Pending</span>;
       case 'read':
         return <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">Read</span>;
       case 'replied':
         return <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400">Replied</span>;
       default:
-        return null;
+        return <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-900/20 dark:text-gray-400">{status}</span>;
     }
   };
 
-  const unreadCount = submissions.filter(s => s.status === 'unread').length;
+  const pendingCount = submissions.filter(s => s.status === 'pending').length;
   const readCount = submissions.filter(s => s.status === 'read').length;
   const repliedCount = submissions.filter(s => s.status === 'replied').length;
 
@@ -214,8 +232,8 @@ export default function ContactSubmissions() {
               <Mail className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Unread</div>
-              <div className="text-2xl">{unreadCount}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400">Pending</div>
+              <div className="text-2xl">{pendingCount}</div>
             </div>
           </div>
         </div>
@@ -286,58 +304,58 @@ export default function ContactSubmissions() {
                 </tr>
               ) : (
                 filteredSubmissions.map((submission) => (
-                  <tr 
-                    key={submission.id} 
-                    className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 ${
-                      submission.status === 'unread' ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''
-                    }`}
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4 text-gray-400" />
-                        <span className="font-medium">{submission.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <Mail className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-600 dark:text-gray-400">{submission.email}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="max-w-xs truncate text-sm text-gray-600 dark:text-gray-400">
-                        {submission.message}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {getStatusBadge(submission.status)}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
-                      <div className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        {new Date(submission.createdAt).toLocaleDateString()}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleViewSubmission(submission)}
-                          title="View"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        {!submission.replied && (
+                    <tr 
+                      key={submission.id} 
+                      className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 ${
+                        submission.status === 'pending' ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''
+                      }`}
+                    >
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-gray-400" />
+                          <span className="font-medium">{submission.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Mail className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm text-gray-600 dark:text-gray-400">{submission.email}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="max-w-xs truncate text-sm text-gray-600 dark:text-gray-400">
+                          {submission.message}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {getStatusBadge(submission.status)}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-4 h-4" />
+                          {new Date(submission.createdAt).toLocaleDateString()}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleReplyClick(submission)}
-                            title="Reply"
+                            onClick={() => handleViewSubmission(submission)}
+                            title="View"
                           >
-                            <Reply className="w-4 h-4 text-blue-600" />
+                            <Eye className="w-4 h-4" />
                           </Button>
-                        )}
+                          {submission.status !== 'replied' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleReplyClick(submission)}
+                              title="Reply"
+                            >
+                              <Reply className="w-4 h-4 text-blue-600" />
+                            </Button>
+                          )}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -405,7 +423,7 @@ export default function ContactSubmissions() {
             <Button variant="outline" onClick={() => setSelectedSubmission(null)}>
               Close
             </Button>
-            {selectedSubmission && !selectedSubmission.replied && (
+            {selectedSubmission && selectedSubmission.status !== 'replied' && (
               <Button onClick={() => {
                 setShowReplyDialog(true);
                 setReplyMessage(`Dear ${selectedSubmission.name},\n\nThank you for contacting us.\n\n`);

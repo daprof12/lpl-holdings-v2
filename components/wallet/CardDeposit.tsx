@@ -9,58 +9,36 @@ import { showSuccessToast, showErrorToast } from '../common/ToastNotifications';
 import { DepositMethod } from '../admin/DepositMethodsManagement';
 import { formatCurrency } from '../../utils/formatNumber';
 
-export default function CardDeposit({ walletType = 'live' }: { walletType?: 'live' | 'portfolio' }) {
+export default function CardDeposit({ walletType = 'live', methods }: { walletType?: 'live' | 'portfolio', methods: DepositMethod[] }) {
   const [amount, setAmount] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [cvv, setCvv] = useState('');
   const [cardholderName, setCardholderName] = useState('');
   const [saveCard, setSaveCard] = useState(false);
-  const [cardMethods, setCardMethods] = useState<DepositMethod[]>([]);
   const [selectedProcessor, setSelectedProcessor] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { currentUser: user } = useAuth();
-  const { addTransaction, getRecentDeposits } = useTransactions();
+  const { createDeposit, getRecentDeposits } = useTransactions();
 
-  // Load card/processor deposit methods from localStorage
+  // Set default selection to first available processor
   useEffect(() => {
-    const loadDepositMethods = () => {
-      const stored = localStorage.getItem('depositMethods');
-      if (stored) {
-        try {
-          const allMethods: DepositMethod[] = JSON.parse(stored);
-          const cardOnly = allMethods.filter(m => m.type === 'card' && m.enabled);
-          setCardMethods(cardOnly);
-          
-          // Set default selection to first available processor
-          if (cardOnly.length > 0 && !selectedProcessor) {
-            setSelectedProcessor(cardOnly[0].id);
-          }
-        } catch (error) {
-          console.error('Failed to load deposit methods:', error);
-        }
-      }
-    };
-
-    loadDepositMethods();
-    
-    // Listen for changes to deposit methods
-    const handleStorageChange = () => loadDepositMethods();
-    window.addEventListener('storage', handleStorageChange);
-    
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+    if (methods.length > 0 && !selectedProcessor) {
+      setSelectedProcessor(methods[0].id);
+    }
+  }, [methods]);
 
   // Get recent card deposits for current user
   const recentDeposits = user ? getRecentDeposits(user.id, 'card') : [];
 
   // Get current processor
-  const currentProcessor = cardMethods.find(m => m.id === selectedProcessor);
+  const currentProcessor = methods.find(m => m.id === selectedProcessor);
   const processingFeePercent = currentProcessor?.processingFee || 2.5;
   const fee = parseFloat(amount) * (processingFeePercent / 100);
   const total = parseFloat(amount) + fee;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!amount || parseFloat(amount) < 10) {
@@ -78,28 +56,41 @@ export default function CardDeposit({ walletType = 'live' }: { walletType?: 'liv
       return;
     }
 
-    // Create transaction
-    const txId = addTransaction({
-      userId: user.id,
-      type: 'deposit',
-      method: 'card',
-      amount: parseFloat(amount),
-      currency: 'USD',
-      usdEquivalent: parseFloat(amount),
-      status: 'pending',
-      cardLast4: cardNumber.slice(-4),
-      walletType,
-    });
+    setIsSubmitting(true);
 
-    showSuccessToast(`Card deposit submitted! Transaction ID: ${txId.slice(0, 12)}...`);
-    
-    // Reset form
-    setAmount('');
-    setCardNumber('');
-    setExpiryDate('');
-    setCvv('');
-    setCardholderName('');
-    setSaveCard(false);
+    try {
+      // Create transaction in relational DB
+      const result = await createDeposit({
+        amount: parseFloat(amount),
+        payment_method: 'card',
+        currency: 'USD',
+        cardLast4: cardNumber.slice(-4),
+        walletType,
+        metadata: {
+          processor: selectedProcessor,
+          saveCard
+        }
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to submit deposit');
+      }
+
+      showSuccessToast(`Card deposit submitted successfully!`);
+      
+      // Reset form
+      setAmount('');
+      setCardNumber('');
+      setExpiryDate('');
+      setCvv('');
+      setCardholderName('');
+      setSaveCard(false);
+    } catch (error) {
+      console.error('Card deposit error:', error);
+      showErrorToast((error as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const quickAmounts = [50, 100, 250, 500, 1000, 2500];

@@ -4,10 +4,13 @@ import { Upload, FileText, CheckCircle2, XCircle, TrendingUp } from 'lucide-reac
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
+import { useAuth } from '../../contexts/AuthContext';
+import { api } from '../../utils/supabase/api';
 const logoImage = "/logo.png";
 
 export default function KYCVerification() {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [documentType, setDocumentType] = useState('');
   const [frontPhoto, setFrontPhoto] = useState<File | null>(null);
   const [backPhoto, setBackPhoto] = useState<File | null>(null);
@@ -40,18 +43,38 @@ export default function KYCVerification() {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!documentType || !frontPhoto || !selfiePhoto) {
       alert('Please complete all required fields');
       return;
     }
 
-    localStorage.setItem('kycStatus', 'pending');
+    if (currentUser) {
+      try {
+        await api.kyc.create({
+          userId: currentUser.id,
+          documentType,
+          status: 'pending',
+          submittedAt: new Date().toISOString(),
+        });
+        // Also update the user profile status for quick access
+        await api.users.update(currentUser.id, { kyc_status: 'pending' });
+      } catch (err) {
+        console.error('Failed to submit KYC:', err);
+      }
+    }
+
     navigate('/2fa-setup');
   };
 
-  const handleSkip = () => {
-    localStorage.setItem('kycStatus', 'not_submitted');
+  const handleSkip = async () => {
+    if (currentUser) {
+      try {
+        await api.users.update(currentUser.id, { kyc_status: 'not_submitted' });
+      } catch (err) {
+        console.error('Failed to skip KYC:', err);
+      }
+    }
     navigate('/2fa-setup');
   };
 

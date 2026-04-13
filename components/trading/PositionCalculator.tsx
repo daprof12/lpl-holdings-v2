@@ -24,10 +24,14 @@ export default function PositionCalculator({ currentPrice, onApplyToOrder }: Pos
   const [leverage, setLeverage] = useState('1');
   const [orderType, setOrderType] = useState<'buy' | 'sell'>('buy');
 
-  // Update entry price when currentPrice changes
+  const [isManualEntry, setIsManualEntry] = useState(false);
+
+  // Update entry price when currentPrice changes, but only if not manually edited
   useEffect(() => {
-    setEntryPrice(currentPrice.toString());
-  }, [currentPrice]);
+    if (!isManualEntry) {
+      setEntryPrice(currentPrice.toString());
+    }
+  }, [currentPrice, isManualEntry]);
 
   const calculate = () => {
     const entry = parseFloat(entryPrice) || 0;
@@ -111,7 +115,10 @@ export default function PositionCalculator({ currentPrice, onApplyToOrder }: Pos
               type="number"
               step="0.01"
               value={entryPrice}
-              onChange={(e) => setEntryPrice(e.target.value)}
+              onChange={(e) => {
+                setEntryPrice(e.target.value);
+                setIsManualEntry(true);
+              }}
               className="mt-1"
             />
           </div>

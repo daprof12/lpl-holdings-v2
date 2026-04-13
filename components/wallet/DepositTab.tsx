@@ -19,6 +19,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useTransactions } from '../../contexts/TransactionProvider';
 import { toast } from 'sonner';
 import { formatCurrency } from '../../utils/formatNumber';
+import { api } from '../../utils/supabase/api';
 
 interface DepositTabProps {
   availableBalance: number;
@@ -52,15 +53,8 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
   const { currentUser, updateProfile, addNotification } = useAuth();
   const { addTransaction } = useTransactions();
   const [selectedMethod, setSelectedMethod] = useState<'crypto' | 'card' | 'bank' | null>(null);
-  const [availableMethods, setAvailableMethods] = useState<{
-    crypto: DepositMethod[];
-    card: DepositMethod[];
-    bank: DepositMethod[];
-  }>({
-    crypto: [],
-    card: [],
-    bank: [],
-  });
+  const [availableMethods, setAvailableMethods] = useState<DepositMethod[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // KYC Dialog state
   const [showKYCDialog, setShowKYCDialog] = useState(false);
@@ -79,103 +73,47 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
     selfieDocument: '',
   });
 
-  // Load available deposit methods from localStorage
+  // Load available deposit methods from Supabase
   useEffect(() => {
-    const loadDepositMethods = () => {
-      const stored = localStorage.getItem('depositMethods');
-
-      // Default seed — same as DepositMethodsManagement defaults
-      const defaultMethods: DepositMethod[] = [
-        { id: 'dm_btc_1', type: 'crypto', enabled: true, cryptoType: 'BTC', walletAddress: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', network: 'Bitcoin', minDeposit: 0.0001 },
-        { id: 'dm_eth_1', type: 'crypto', enabled: true, cryptoType: 'ETH', walletAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb', network: 'Ethereum', minDeposit: 0.01 },
-        { id: 'dm_usdt_1', type: 'crypto', enabled: true, cryptoType: 'USDT', walletAddress: 'TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS', network: 'Tron (TRC20)', minDeposit: 10 },
-        { id: 'dm_bank_1', type: 'bank', enabled: true, bankName: 'JPMorgan Chase Bank', accountName: 'Gross Trading Platform LLC', accountNumber: '****5678', routingNumber: '021000021', swiftCode: 'CHASUS33' },
-        { id: 'dm_card_1', type: 'card', enabled: true, processorName: 'Stripe', processorType: 'credit_card', publicKey: 'pk_live_XXXXXXXXXXXXXXXXXXXXXXXX', processingFee: 2.9 },
-      ];
-
-      let allMethods: DepositMethod[] = defaultMethods;
-
-      if (!stored) {
-        // Seed localStorage so admin panel is consistent
-        localStorage.setItem('depositMethods', JSON.stringify(defaultMethods));
-      } else {
-        try {
-          allMethods = JSON.parse(stored);
-        } catch (error) {
-          console.error('Failed to parse deposit methods:', error);
-        }
+    const fetchMethods = async () => {
+      try {
+        const methods = await api.paymentMethods.getAll();
+        setAvailableMethods(methods.filter((m: any) => m.enabled));
+      } catch (error) {
+        console.error('Failed to fetch deposit methods:', error);
+      } finally {
+        setLoading(false);
       }
-
-      // Only treat user as having specific config when they have a NON-EMPTY enabledDepositMethods array
-      const userEnabledMethods = currentUser?.enabledDepositMethods || [];
-      const hasUserSpecificConfig =
-        currentUser &&
-        Array.isArray(currentUser.enabledDepositMethods) &&
-        currentUser.enabledDepositMethods.length > 0;
-
-      let filteredCrypto: DepositMethod[] = [];
-      let filteredCard: DepositMethod[] = [];
-      let filteredBank: DepositMethod[] = [];
-
-      if (hasUserSpecificConfig) {
-        // User has explicit per-user restrictions — honour them
-        // Note: m.enabled is the GLOBAL status set by admin
-        filteredCrypto = allMethods.filter(m => m.type === 'crypto' && userEnabledMethods.includes('crypto'));
-        filteredCard   = allMethods.filter(m => m.type === 'card'   && userEnabledMethods.includes('credit_card'));
-        filteredBank   = allMethods.filter(m => m.type === 'bank'   && userEnabledMethods.includes('bank_transfer'));
-      } else {
-        // Show all methods, we will handle the "enabled" status in the UI
-        filteredCrypto = allMethods.filter(m => m.type === 'crypto');
-        filteredCard   = allMethods.filter(m => m.type === 'card');
-        filteredBank   = allMethods.filter(m => m.type === 'bank');
-      }
-
-      setAvailableMethods({
-        crypto: filteredCrypto,
-        card:   filteredCard,
-        bank:   filteredBank,
-      });
     };
 
-    loadDepositMethods();
-  }, [currentUser?.enabledDepositMethods, currentUser?.cryptoWallets]);
+    fetchMethods();
+  }, []);
 
   // Build deposit methods array dynamically based on what's available
-  const depositMethods = [
+  const depositMethodOptions = [
     {
       id: 'crypto' as const,
       name: 'Cryptocurrency',
       icon: Bitcoin,
-      description: currentUser?.cryptoWallets 
-        ? `${Object.keys(currentUser.cryptoWallets).length} crypto wallet${Object.keys(currentUser.cryptoWallets).length > 1 ? 's' : ''} available`
-        : `${availableMethods.crypto.length} crypto option${availableMethods.crypto.length > 1 ? 's' : ''} available`,
-      fee: '0%',
-      processingTime: 'Instant - 30 min',
-      minDeposit: availableMethods.crypto.length > 0 ? `$${Math.min(...availableMethods.crypto.map(m => (m.minDeposit || 0.001) * 45000))}` : '$10',
+      description: 'Instant crypto deposits via BTC, ETH, USDT',
       color: 'from-orange-500 to-orange-600',
-      isAvailable: availableMethods.crypto.some(m => m.enabled)
+      isAvailable: availableMethods.some(m => m.type === 'crypto')
     },
     {
       id: 'card' as const,
       name: 'Credit/Debit Card',
       icon: CreditCard,
-      description: `${availableMethods.card.length} processor${availableMethods.card.length > 1 ? 's' : ''} available`,
-      fee: availableMethods.card.length > 0 ? `${availableMethods.card[0].processingFee || 2.5}%` : '2.5%',
-      processingTime: 'Instant',
-      minDeposit: '$50',
+      description: 'Instant deposit with credit/debit card',
       color: 'from-blue-500 to-blue-600',
-      isAvailable: availableMethods.card.some(m => m.enabled)
+      isAvailable: availableMethods.some(m => m.type === 'card')
     },
     {
       id: 'bank' as const,
       name: 'Bank Transfer',
       icon: Building2,
-      description: `${availableMethods.bank.length} bank option${availableMethods.bank.length > 1 ? 's' : ''} available`,
-      fee: '0%',
-      processingTime: '1-3 business days',
-      minDeposit: '$100',
+      description: 'Secure bank wire transfer (1-3 days)',
       color: 'from-green-500 to-green-600',
-      isAvailable: availableMethods.bank.some(m => m.enabled)
+      isAvailable: availableMethods.some(m => m.type === 'bank')
     },
   ];
 
@@ -213,51 +151,50 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
     }
 
     // Create KYC submission
-    const kycSubmission: KYCData = {
-      userId: currentUser.id,
+    const kycSubmission = {
+      user_id: currentUser.id,
       ...kycFormData,
-      status: 'pending',
-      submittedAt: new Date(),
+      status: 'pending'
     };
 
-    // Save to localStorage for admin review
-    const existingKYC = localStorage.getItem('kycSubmissions');
-    const kycSubmissions = existingKYC ? JSON.parse(existingKYC) : [];
-    
-    // Remove any existing submission from this user
-    const filteredSubmissions = kycSubmissions.filter((s: KYCData) => s.userId !== currentUser.id);
-    filteredSubmissions.push(kycSubmission);
-    
-    localStorage.setItem('kycSubmissions', JSON.stringify(filteredSubmissions));
+    // Save to Relational DB and handle UI updates
+    const submitKYC = async () => {
+      try {
+        await api.kyc.create(kycSubmission);
+        
+        // Update local profile and add notification
+        await updateProfile(currentUser.id, { kycStatus: 'pending' });
+        await addNotification(currentUser.id, {
+          type: 'info',
+          title: 'KYC Verification Submitted',
+          message: 'Your KYC verification has been submitted and is pending review. This usually takes 1-2 business days.',
+        });
 
-    // Update user KYC status to pending
-    updateProfile(currentUser.id, { kycStatus: 'pending' });
+        toast.success('KYC verification submitted successfully! Awaiting approval.');
+        setShowKYCDialog(false);
+        
+        // Reset form
+        setKYCFormData({
+          fullName: '',
+          dateOfBirth: '',
+          nationality: '',
+          address: '',
+          city: '',
+          state: '',
+          zipCode: '',
+          country: '',
+          idType: 'passport',
+          idNumber: '',
+          idDocument: '',
+          selfieDocument: '',
+        });
+      } catch (err) {
+        console.error('KYC Submission Error:', err);
+        toast.error('Failed to submit KYC verification');
+      }
+    };
 
-    // Add notification
-    addNotification(currentUser.id, {
-      type: 'info',
-      title: 'KYC Verification Submitted',
-      message: 'Your KYC verification has been submitted and is pending review. This usually takes 1-2 business days.',
-    });
-
-    toast.success('KYC verification submitted successfully! Awaiting approval.');
-    setShowKYCDialog(false);
-    
-    // Reset form
-    setKYCFormData({
-      fullName: '',
-      dateOfBirth: '',
-      nationality: '',
-      address: '',
-      city: '',
-      state: '',
-      zipCode: '',
-      country: '',
-      idType: 'passport',
-      idNumber: '',
-      idDocument: '',
-      selfieDocument: '',
-    });
+    submitKYC();
   };
 
   if (selectedMethod) {
@@ -265,14 +202,30 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
       <div>
         <button
           onClick={() => setSelectedMethod(null)}
-          className="mb-6 text-blue-600 dark:text-blue-400 hover:underline"
+          className="mb-6 text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-2"
         >
-          ← Back to deposit methods
+          <ArrowRight className="w-4 h-4 rotate-180" />
+          Back to deposit methods
         </button>
 
-        {selectedMethod === 'crypto' && <CryptoDeposit walletType={walletType} />}
-        {selectedMethod === 'card' && <CardDeposit walletType={walletType} />}
-        {selectedMethod === 'bank' && <BankDeposit walletType={walletType} />}
+        {selectedMethod === 'crypto' && (
+          <CryptoDeposit 
+            walletType={walletType} 
+            methods={availableMethods.filter(m => m.type === 'crypto')}
+          />
+        )}
+        {selectedMethod === 'card' && (
+          <CardDeposit 
+            walletType={walletType} 
+            methods={availableMethods.filter(m => m.type === 'card')}
+          />
+        )}
+        {selectedMethod === 'bank' && (
+          <BankDeposit 
+            walletType={walletType} 
+            methods={availableMethods.filter(m => m.type === 'bank')}
+          />
+        )}
       </div>
     );
   }
@@ -338,67 +291,36 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
 
       {/* Deposit Methods */}
       <div className="grid md:grid-cols-3 gap-6 mb-8">
-        {depositMethods.length > 0 ? (
-          depositMethods.map((method) => {
-            const Icon = method.icon;
-            
-            return (
-              <div
-                key={method.id}
-                onClick={() => method.isAvailable && setSelectedMethod(method.id as any)}
-                className={`bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm transition-all border-2 relative ${
-                  method.isAvailable 
-                    ? 'hover:shadow-md cursor-pointer border-transparent hover:border-blue-500' 
-                    : 'opacity-60 cursor-not-allowed border-gray-100 dark:border-slate-700'
-                }`}
-              >
-                {!method.isAvailable && (
-                  <div className="absolute inset-0 z-10 bg-white/40 dark:bg-slate-800/40 rounded-xl flex items-center justify-center p-6 text-center">
-                    <div className="bg-white dark:bg-slate-900 px-4 py-2 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 text-xs font-bold text-red-600 dark:text-red-400">
-                      Deposit method currently not available
-                    </div>
-                  </div>
-                )}
-                
-                <div className={`w-12 h-12 bg-gradient-to-br ${method.color} rounded-lg flex items-center justify-center mb-4 ${!method.isAvailable ? 'grayscale' : ''}`}>
-                  <Icon className="w-6 h-6 text-white" />
+        {depositMethodOptions.map((method) => (
+          <button
+            key={method.id}
+            onClick={() => method.isAvailable && setSelectedMethod(method.id)}
+            className={`p-6 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border-2 transition-all text-left relative overflow-hidden group ${
+              method.isAvailable 
+                ? 'border-transparent hover:border-blue-500 cursor-pointer' 
+                : 'border-transparent opacity-60 cursor-not-allowed'
+            }`}
+          >
+            {!method.isAvailable && (
+              <div className="absolute inset-0 bg-gray-100/50 dark:bg-slate-900/50 z-10 flex items-center justify-center">
+                <div className="bg-white dark:bg-slate-800 px-3 py-1 rounded-full text-xs font-bold text-gray-400 border border-gray-200 dark:border-slate-700">
+                  Coming Soon
                 </div>
-
-                <h3 className="text-lg font-semibold mb-2">{method.name}</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{method.description}</p>
-
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Fee:</span>
-                    <span className="font-semibold">{method.fee}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Processing:</span>
-                    <span className="font-semibold">{method.processingTime}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Min Deposit:</span>
-                    <span className="font-semibold">{method.minDeposit}</span>
-                  </div>
-                </div>
-
-                <Button className="w-full mt-4" disabled={!method.isAvailable}>
-                  {method.isAvailable ? 'Select Method' : 'Unavailable'}
-                </Button>
               </div>
-            );
-          })
-        ) : (
-          <div className="col-span-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-8 border border-yellow-200 dark:border-yellow-800">
-            <div className="text-center">
-              <Wallet className="w-12 h-12 mx-auto mb-4 text-yellow-600 dark:text-yellow-400" />
-              <h3 className="text-lg font-semibold mb-2 text-yellow-600 dark:text-yellow-400">No Deposit Methods Available</h3>
-              <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                The platform administrator has not configured any deposit methods yet. Please contact support for assistance.
-              </p>
+            )}
+            
+            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${method.color} flex items-center justify-center mb-4 transition-transform group-hover:scale-110`}>
+              <method.icon className="w-6 h-6 text-white" />
             </div>
-          </div>
-        )}
+            <h3 className="text-lg font-semibold mb-2">{method.name}</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">{method.description}</p>
+            
+            <div className="mt-4 flex items-center text-sm font-medium text-blue-600 dark:text-blue-400">
+              {method.isAvailable ? 'Deposit Now' : 'Not Available'}
+              <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
+            </div>
+          </button>
+        ))}
       </div>
 
       {/* KYC Verification Dialog */}

@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from './AuthContext';
-import { supabase, getKV, setKV } from '../utils/supabase/client';
+import { supabase, serverUrl, publicAnonKey } from '../utils/supabase/client';
+import { api } from '../utils/supabase/api';
 
 // ============================================
 // TYPES
@@ -116,28 +117,7 @@ const CRM_KEY       = 'gross_crm_messages';
 const TEMPLATES_KEY = 'gross_email_templates';
 const SMTP_KEY      = 'gross_smtp_config';
 
-function deduplicateById<T extends { id: string }>(items: T[]): T[] {
-  const seen = new Set<string>();
-  return items.filter(item => {
-    if (seen.has(item.id)) return false;
-    seen.add(item.id);
-    return true;
-  });
-}
-
-function loadNotifications(): Notification[] {
-  try {
-    const raw = localStorage.getItem(NOTIF_KEY);
-    if (!raw) return [];
-    const parsed = (JSON.parse(raw) as any[]).map(n => ({
-      ...n,
-      timestamp: new Date(n.timestamp),
-    }));
-    return deduplicateById(parsed);
-  } catch {
-    return [];
-  }
-}
+// Legacy load helpers removed - using API directly
 
 function loadCRMMessages(): CRMMessage[] {
   try {
@@ -157,7 +137,7 @@ function loadCRMMessages(): CRMMessage[] {
 // ─── Provider ───────────────────────────────────────────────────────────────
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const [notifications, setNotifications] = useState<Notification[]>(loadNotifications);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [crmMessages,   setCrmMessages]   = useState<CRMMessage[]>(loadCRMMessages);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
   const [smtpConfig, setSmtpConfig] = useState<SMTPConfig | null>(null);
@@ -181,95 +161,79 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const loadFromDB = async () => {
       try {
         setLoading(true);
-        console.log('🔄 Loading notifications from database...');
+        console.log('🔄 Loading notification data from relational API...');
         
-        const dbNotifs = await getKV(NOTIF_KEY);
-        if (dbNotifs) {
-          const parsed = (dbNotifs as any[]).map(n => ({
-            ...n,
-            timestamp: new Date(n.timestamp),
-          }));
-          setNotifications(deduplicateById(parsed));
+        const [dbNotifs, dbCrm, dbTemplates, dbSmtp] = await Promise.all([
+          api.notifications.getAll(),
+          api.crm.getAll(),
+          api.emailTemplates.getAll(),
+          api.smtpConfig.get()
+        ]);
+
+        if (Array.isArray(dbNotifs)) {
+          setNotifications(dbNotifs.map((n: any) => ({
+            id: n.id,
+            type: n.type,
+            title: n.title,
+            message: n.message,
+            timestamp: new Date(n.timestamp || n.created_at),
+            read: n.read_status || false,
+            userId: n.user_id,
+            channels: n.channels || ['in-app'],
+            isVisibleToUser: n.is_visible_to_user ?? true,
+            relatedId: n.related_id,
+            metadata: n.metadata
+          })));
         }
 
-        const dbCrm = await getKV(CRM_KEY);
-        if (dbCrm) {
-          const parsed = (dbCrm as any[]).map(m => ({
-            ...m,
-            createdAt:    new Date(m.createdAt),
-            sentAt:       m.sentAt       ? new Date(m.sentAt)       : undefined,
-            scheduledFor: m.scheduledFor ? new Date(m.scheduledFor) : undefined,
-          }));
-          setCrmMessages(parsed);
+        if (Array.isArray(dbCrm)) {
+          setCrmMessages(dbCrm.map((m: any) => ({
+            id: m.id,
+            type: m.type,
+            title: m.title,
+            message: m.message,
+            recipientType: m.recipient_type,
+            recipientIds: m.recipient_ids || [],
+            channels: m.channels || ['in-app'],
+            scheduledFor: m.scheduled_for ? new Date(m.scheduled_for) : undefined,
+            status: m.status,
+            createdAt: new Date(m.created_at),
+            sentAt: m.sent_at ? new Date(m.sent_at) : undefined,
+            metadata: m.metadata
+          })));
         }
 
-        const dbTemplates = await getKV(TEMPLATES_KEY);
-        if (dbTemplates) {
-          setEmailTemplates((dbTemplates as any[]).map(t => ({ ...t, lastModified: new Date(t.lastModified) })));
-        } else {
-          // Initialize default premium templates (Netflix style structure)
-          const defaults: EmailTemplate[] = [
-            { 
-              id: 'tpl-deposit-01', 
-              name: 'Premium Deposit Confirmation', 
-              category: 'deposit', 
-              subject: 'Deposit Successful - Your funds are ready',
-              heroTitle: 'Funds Added Successfully',
-              logoUrl: '/logo.png',
-              accentColor: '#E50914', // Brand Red
-              blocks: [
-                { id: 'b1', type: 'text', content: 'Hey there,\n\nYour deposit has been successfully processed and is now available in your Live Balance. You can start trading on indices, crypto, and stocks immediately.' },
-                { id: 'b2', type: 'button', content: { label: 'Go to Dashboard', url: '/dashboard' } },
-                { id: 'b3', type: 'feature_list', content: [
-                  { icon: 'shield', title: 'Secure Transaction', text: 'All operations are protected with 256-bit encryption.' },
-                  { icon: 'zap', title: 'Instant Access', text: 'Funds are ready for immediate market participation.' }
-                ]},
-                { id: 'b4', type: 'footer', content: 'This is an automated confirmation of your deposit.' }
-              ],
-              lastModified: new Date() 
+        if (Array.isArray(dbTemplates)) {
+          setEmailTemplates(dbTemplates.map((t: any) => ({
+            id: t.id,
+            name: t.name,
+            category: t.category,
+            subject: t.subject,
+            logoUrl: t.logo_url,
+            heroImage: t.hero_image,
+            heroTitle: t.hero_title,
+            blocks: t.blocks || [],
+            footerText: t.footer_text,
+            accentColor: t.accent_color,
+            lastModified: new Date(t.updated_at || t.created_at)
+          })));
+        }
+
+        if (dbSmtp) {
+          setSmtpConfig({
+            host: dbSmtp.host,
+            port: parseInt(dbSmtp.port),
+            secure: dbSmtp.secure,
+            auth: {
+              user: dbSmtp.auth_user,
+              pass: dbSmtp.auth_pass
             },
-            { 
-              id: 'tpl-withdraw-01', 
-              name: 'Withdrawal Processing', 
-              category: 'withdrawal', 
-              subject: 'Update on your withdrawal request',
-              heroTitle: 'Processing Your Request',
-              logoUrl: '/logo.png',
-              accentColor: '#000000',
-              blocks: [
-                { id: 'b1', type: 'text', content: 'Hello,\n\nWe have received your withdrawal request and our team is currently processing it. You will receive another update once the funds have been dispatched to your chosen method.' },
-                { id: 'b2', type: 'button', content: { label: 'Track Status', url: '/wallet' } },
-                { id: 'b3', type: 'footer', content: 'Processing time usually takes 30 mins - 2 hours.' }
-              ],
-              lastModified: new Date() 
-            },
-            { 
-              id: 'tpl-promo-01', 
-              name: 'Special Promotion - Bonus', 
-              category: 'promotion', 
-              subject: 'Exclusive Trading Bonus Just for You!',
-              heroTitle: 'Unlock Your 50% Bonus',
-              logoUrl: '/logo.png',
-              accentColor: '#E50914',
-              blocks: [
-                { id: 'b1', type: 'text', content: 'We noticed you haven\'t traded in a while. To get you back in the game, we are offering an exclusive 50% bonus on your next deposit of $500 or more.' },
-                { id: 'b2', type: 'button', content: { label: 'Claim My Bonus', url: '/deposit' } },
-                { id: 'b3', type: 'feature_list', content: [
-                  { icon: 'star', title: 'Unlimited Potential', text: 'Trade over 2000+ assets with low spreads.' },
-                  { icon: 'percent', title: 'Low Fees', text: 'Zero commission on major pairings this month.' }
-                ]},
-                { id: 'b4', type: 'footer', content: 'Offer valid for the next 48 hours only.' }
-              ],
-              lastModified: new Date() 
-            }
-          ];
-          setEmailTemplates(defaults);
+            fromEmail: dbSmtp.from_email,
+            fromName: dbSmtp.from_name
+          });
         }
-
-        const dbSmtp = await getKV(SMTP_KEY);
-        if (dbSmtp) setSmtpConfig(dbSmtp as SMTPConfig);
         
-        console.log('✅ Notifications loaded from DB');
+        console.log('✅ Notification data loaded');
       } catch (error) {
         console.error('Failed to load notifications from database:', error);
       } finally {
@@ -281,94 +245,32 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     loadFromDB();
   }, []);
 
-  // Real-time synchronization
-  useEffect(() => {
-    const channel = supabase
-      .channel('public:kv_store_notifications')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'kv_store_5d4be467' 
-      }, (payload: any) => {
-        const { key, value } = payload.new;
-        
-        if (key === NOTIF_KEY) {
-          try {
-            const parsed = (value as any[]).map(n => ({
-              ...n,
-              timestamp: new Date(n.timestamp),
-            }));
-            setNotifications(deduplicateById(parsed));
-          } catch (err) {
-            console.error('Real-time notifs sync error:', err);
-          }
-        }
-        
-        if (key === CRM_KEY) {
-          try {
-            const parsed = (value as any[]).map(m => ({
-              ...m,
-              createdAt:    new Date(m.createdAt),
-              sentAt:       m.sentAt       ? new Date(m.sentAt)       : undefined,
-              scheduledFor: m.scheduledFor ? new Date(m.scheduledFor) : undefined,
-            }));
-            setCrmMessages(parsed);
-          } catch (err) {
-            console.error('Real-time CRM sync error:', err);
-          }
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  // Sync to DB (Debounced)
-  const syncNotifsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const syncCrmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    if (loading || !isHydrated) return;
-    
-    if (syncNotifsTimeoutRef.current) clearTimeout(syncNotifsTimeoutRef.current);
-    
-    syncNotifsTimeoutRef.current = setTimeout(async () => {
-      try {
-        await setKV(NOTIF_KEY, notifications);
-        console.log('✅ Notifications synced to DB');
-      } catch (err) {
-        console.error('Failed to sync notifications:', err);
-      }
-    }, 2000);
-  }, [notifications]);
-
-  useEffect(() => {
-    if (loading || !isHydrated) return;
-    
-    if (syncCrmTimeoutRef.current) clearTimeout(syncCrmTimeoutRef.current);
-    
-    syncCrmTimeoutRef.current = setTimeout(async () => {
-      try {
-        await setKV(CRM_KEY, crmMessages);
-        console.log('✅ CRM messages synced to DB');
-      } catch (err) {
-        console.error('Failed to sync CRM messages:', err);
-      }
-    }, 2000);
-  }, [crmMessages]);
-
-  // When the logged-in user changes, re-read persisted notifications
-  // (no network call – localStorage is the source of truth)
+  // Refresh notifications v2.0
   const refreshNotifications = useCallback(async () => {
-    setLoading(true);
-    try {
-      setNotifications(loadNotifications());
-    } finally {
-      setLoading(false);
+    if (currentUser?.id) {
+       setLoading(true);
+       try {
+         const dbNotifs = await api.notifications.getAll();
+         if (Array.isArray(dbNotifs)) {
+            setNotifications(dbNotifs.map((n: any) => ({
+              id: n.id,
+              type: n.type,
+              title: n.title,
+              message: n.message,
+              timestamp: new Date(n.timestamp || n.created_at),
+              read: n.read_status || false,
+              userId: n.user_id,
+              channels: n.channels || ['in-app'],
+              isVisibleToUser: n.is_visible_to_user ?? true,
+              relatedId: n.related_id,
+              metadata: n.metadata
+            })));
+         }
+       } finally {
+         setLoading(false);
+       }
     }
-  }, []);
+  }, [currentUser?.id]);
 
   useEffect(() => {
     if (currentUser?.id) {
@@ -379,156 +281,240 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // ─── Notification CRUD ──────────────────────────────────────────────────
 
   const addNotification = useCallback(
-    (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>): string => {
-      const id = `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const newNotification: Notification = {
-        ...notification,
-        id,
-        timestamp: new Date(),
-        read: false,
-        // User-targeted notifications are hidden by default until admin enables them
-        isVisibleToUser: notification.isVisibleToUser ?? (notification.userId ? false : true),
-      };
+    async (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>): Promise<string> => {
+      try {
+        const res = await api.notifications.create({
+          type: notification.type,
+          title: notification.title,
+          message: notification.message,
+          user_id: notification.userId,
+          channels: notification.channels,
+          is_visible_to_user: notification.isVisibleToUser ?? true,
+          related_id: notification.relatedId,
+          metadata: notification.metadata
+        });
 
-      setNotifications(prev => {
-        const next = [newNotification, ...prev];
-        // Persist synchronously so the same-tab poller never sees stale data
-        localStorage.setItem(NOTIF_KEY, JSON.stringify(next));
-        return next;
-      });
+        if (res && res.id) {
+          refreshNotifications();
 
-      // Show a toast for in-app channel
-      if (notification.channels.includes('in-app')) {
-        const type = notification.type;
-        if (type === 'error') {
-          toast.error(notification.title, { description: notification.message });
-        } else if (type === 'success') {
-          toast.success(notification.title, { description: notification.message });
-        } else if (type === 'warning') {
-          toast.warning(notification.title, { description: notification.message });
-        } else {
-          toast.info(notification.title, { description: notification.message });
+          if (notification.channels.includes('in-app')) {
+            toast.info(notification.title, { description: notification.message });
+          }
+          return res.id;
         }
+      } catch (err) {
+        console.error('Failed to create notification:', err);
       }
-
-      return id;
+      return '';
     },
-    []
+    [refreshNotifications]
   );
 
-  const markAsRead = useCallback((notificationId: string) => {
-    setNotifications(prev =>
-      prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
-    );
+  const markAsRead = useCallback(async (notificationId: string) => {
+    try {
+      await api.notifications.update(notificationId, { read_status: true });
+      setNotifications(prev =>
+        prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
+      );
+    } catch (err) {
+      console.error('Failed to mark as read:', err);
+    }
   }, []);
 
-  const markAllAsRead = useCallback(() => {
-    setNotifications(prev => prev.map(n => {
-      // Only mark as read if it's a broadcast notification or targeted at the current user
-      if (!n.userId || n.userId === currentUser?.id) {
-        return { ...n, read: true };
-      }
-      return n;
-    }));
-  }, [currentUser?.id]);
-
-  const deleteNotification = useCallback((notificationId: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== notificationId));
+  const markAllAsRead = useCallback(async () => {
+    try {
+      // In a real app we'd have a bulk update endpoint
+      // For now we'll just update local state and let the server catch up or do individual calls
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    } catch (err) {}
   }, []);
 
-  const clearAll = useCallback(() => {
-    setNotifications([]);
+  const deleteNotification = useCallback(async (notificationId: string) => {
+    try {
+      await api.notifications.delete(notificationId);
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+    } catch (err) {
+      console.error('Failed to delete notification:', err);
+    }
+  }, []);
+
+  const clearAll = useCallback(async () => {
+    try {
+      // Logic for bulk delete
+      setNotifications([]);
+    } catch (err) {}
   }, []);
 
   // ─── CRM ────────────────────────────────────────────────────────────────
 
   const createCRMMessage = useCallback(
-    (message: Omit<CRMMessage, 'id' | 'createdAt' | 'status'>): string => {
-      const id = `crm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const newMessage: CRMMessage = {
-        ...message,
-        id,
-        createdAt: new Date(),
-        status: 'draft',
-      };
-      setCrmMessages(prev => [newMessage, ...prev]);
-      toast.success('Message created successfully');
-      return id;
+    async (message: Omit<CRMMessage, 'id' | 'createdAt' | 'status'>): Promise<string> => {
+      try {
+        const res = await api.crm.create({
+          type: message.type,
+          title: message.title,
+          message: message.message,
+          recipient_type: message.recipientType,
+          recipient_ids: message.recipientIds,
+          channels: message.channels,
+          scheduled_for: message.scheduledFor,
+          status: 'draft',
+          metadata: message.metadata
+        });
+        if (res && res.id) {
+          toast.success('Message created');
+          // Reload
+          const allCrm = await api.crm.getAll();
+          if (Array.isArray(allCrm)) setCrmMessages(allCrm.map((m: any) => ({
+            id: m.id,
+            type: m.type,
+            title: m.title,
+            message: m.message,
+            recipientType: m.recipient_type,
+            recipientIds: m.recipient_ids || [],
+            channels: m.channels || ['in-app'],
+            scheduledFor: m.scheduled_for ? new Date(m.scheduled_for) : undefined,
+            status: m.status,
+            createdAt: new Date(m.created_at),
+            sentAt: m.sent_at ? new Date(m.sent_at) : undefined,
+            metadata: m.metadata
+          })));
+          return res.id;
+        }
+      } catch (err) {
+        console.error('Failed to create CRM message:', err);
+      }
+      return '';
     },
     []
   );
 
-  const updateCRMMessage = useCallback((id: string, updates: Partial<CRMMessage>) => {
-    setCrmMessages(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
-    toast.success('Message updated');
+  const updateCRMMessage = useCallback(async (id: string, updates: Partial<CRMMessage>) => {
+    try {
+      const dbUpdates: any = {};
+      if (updates.title) dbUpdates.title = updates.title;
+      if (updates.message) dbUpdates.message = updates.message;
+      if (updates.status) dbUpdates.status = updates.status;
+      if (updates.sentAt) dbUpdates.sent_at = updates.sentAt;
+
+      await api.crm.update(id, dbUpdates);
+      setCrmMessages(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+      toast.success('Message updated');
+    } catch (err) {
+      console.error('Failed to update CRM message:', err);
+    }
   }, []);
 
   const sendCRMMessage = useCallback(
-    (id: string) => {
-      const message = crmMessages.find(m => m.id === id);
-      if (!message) {
-        toast.error('Message not found');
-        return;
-      }
+    async (id: string) => {
+      try {
+        const message = crmMessages.find(m => m.id === id);
+        if (!message) return;
 
-      // Mark as sent
-      setCrmMessages(prev =>
-        prev.map(m => m.id === id ? { ...m, status: 'sent', sentAt: new Date() } : m)
-      );
+        // In a real app the server would handle the sending logic
+        // For now we'll simulate it by updating status and creating notifications
+        await api.crm.update(id, { status: 'sent', sent_at: new Date() });
+        
+        const notifType: NotificationType =
+          message.type === 'promo'        ? 'promo'
+          : message.type === 'announcement' ? 'announcement'
+          : message.type === 'offer'        ? 'offer'
+          : 'info';
 
-      // Derive notification type
-      const notifType: NotificationType =
-        message.type === 'promo'        ? 'promo'
-        : message.type === 'announcement' ? 'announcement'
-        : message.type === 'offer'        ? 'offer'
-        : 'info';
-
-      if (message.recipientType === 'all') {
-        addNotification({
-          type: notifType,
-          title: message.title,
-          message: message.message,
-          channels: message.channels,
-          metadata: message.metadata,
-        });
-      } else {
-        message.recipientIds.forEach(userId => {
-          addNotification({
+        if (message.recipientType === 'all') {
+          await addNotification({
             type: notifType,
             title: message.title,
             message: message.message,
-            userId,
             channels: message.channels,
             metadata: message.metadata,
           });
-        });
-      }
-
-      const externalChannels = message.channels
-        .filter(c => c !== 'in-app')
-        .map(c => c.toUpperCase())
-        .join(', ');
-
-      if (externalChannels) {
-        toast.success(
-          `Message sent via ${externalChannels} to ${
-            message.recipientType === 'all' ? 'all users' : `${message.recipientIds.length} user(s)`
-          }`
+        } else {
+          for (const userId of message.recipientIds) {
+            await addNotification({
+              type: notifType,
+              title: message.title,
+              message: message.message,
+              userId,
+              channels: message.channels,
+              metadata: message.metadata,
+            });
+          }
+        }
+        
+        setCrmMessages(prev =>
+          prev.map(m => m.id === id ? { ...m, status: 'sent', sentAt: new Date() } : m)
         );
-      } else {
-        toast.success(
-          `In-app notification sent to ${
-            message.recipientType === 'all' ? 'all users' : `${message.recipientIds.length} user(s)`
-          }`
-        );
+        toast.success('Message sent');
+      } catch (err) {
+        console.error('Failed to send CRM message:', err);
       }
     },
     [crmMessages, addNotification]
   );
 
-  const deleteCRMMessage = useCallback((id: string) => {
-    setCrmMessages(prev => prev.filter(m => m.id !== id));
-    toast.success('Message deleted');
+  const deleteCRMMessage = useCallback(async (id: string) => {
+    try {
+      await api.crm.delete(id);
+      setCrmMessages(prev => prev.filter(m => m.id !== id));
+      toast.success('Message deleted');
+    } catch (err) {
+      console.error('Failed to delete CRM message:', err);
+    }
+  }, []);
+
+  // Templates
+  const saveEmailTemplate = useCallback(async (template: any) => {
+    try {
+      if (template.id && emailTemplates.find(t => t.id === template.id)) {
+        await api.emailTemplates.update(template.id, template);
+      } else {
+        await api.emailTemplates.create(template);
+      }
+      // Reload
+      const all = await api.emailTemplates.getAll();
+      if (Array.isArray(all)) setEmailTemplates(all.map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        category: t.category,
+        subject: t.subject,
+        logoUrl: t.logo_url,
+        blocks: t.blocks || [],
+        accentColor: t.accent_color,
+        lastModified: new Date(t.updated_at || t.created_at)
+      })));
+      toast.success('Template saved');
+    } catch (err) {
+      console.error('Failed to save template:', err);
+    }
+  }, [emailTemplates]);
+
+  const deleteEmailTemplate = useCallback(async (id: string) => {
+    try {
+      await api.emailTemplates.delete(id);
+      setEmailTemplates(prev => prev.filter(t => t.id !== id));
+      toast.success('Template deleted');
+    } catch (err) {
+      console.error('Failed to delete template:', err);
+    }
+  }, []);
+
+  const saveSMTPConfig = useCallback(async (config: SMTPConfig) => {
+    try {
+      await api.smtpConfig.update({
+        host: config.host,
+        port: config.port.toString(),
+        secure: config.secure,
+        auth_user: config.auth.user,
+        auth_pass: config.auth.pass,
+        from_email: config.fromEmail,
+        from_name: config.fromName
+      });
+      setSmtpConfig(config);
+      toast.success('SMTP Config updated');
+    } catch (err) {
+      console.error('Failed to save SMTP config:', err);
+    }
   }, []);
 
   // Only show notifications for THIS user (or broadcast ones)
@@ -562,21 +548,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         sendCRMMessage,
         deleteCRMMessage,
         emailTemplates,
-        saveEmailTemplate: (template: any) => {
-          const next = [...emailTemplates.filter(t => t.id !== template.id), { ...template, lastModified: new Date() }];
-          setEmailTemplates(next);
-          setKV(TEMPLATES_KEY, next);
-        },
-        deleteEmailTemplate: (id: string) => {
-          const next = emailTemplates.filter(t => t.id !== id);
-          setEmailTemplates(next);
-          setKV(TEMPLATES_KEY, next);
-        },
+        saveEmailTemplate,
+        deleteEmailTemplate,
         smtpConfig,
-        saveSMTPConfig: (config: SMTPConfig) => {
-          setSmtpConfig(config);
-          setKV(SMTP_KEY, config);
-        },
+        saveSMTPConfig,
         refreshNotifications,
       }}
     >

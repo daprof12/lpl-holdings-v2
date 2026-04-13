@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../../utils/supabase/client';
 import { Plus, Edit, Trash2, TrendingUp, TrendingDown, Signal } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -10,7 +11,7 @@ import {
   DialogDescription,
 } from '../ui/dialog';
 import { formatCurrency } from '../../utils/formatNumber';
-import { setKV } from '../../utils/supabase/client';
+import { toast } from 'sonner';
 
 interface TradingSignal {
   id: string;
@@ -25,8 +26,6 @@ interface TradingSignal {
   subscribers: number;
 }
 
-const STORAGE_KEY = 'gross_trading_signals';
-
 export default function SignalManagement() {
   const [showDialog, setShowDialog] = useState(false);
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create');
@@ -35,69 +34,51 @@ export default function SignalManagement() {
   const [signals, setSignals] = useState<TradingSignal[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load signals on mount
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        setSignals(JSON.parse(stored));
-      } catch (e) {
-        console.error('Failed to parse signals:', e);
+  // Load signals from Supabase
+  const fetchSignals = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('signals')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      if (data) {
+        setSignals(data.map((s: any) => ({
+          id: s.id,
+          asset: s.symbol,
+          type: s.type,
+          entryPrice: parseFloat(s.entry_price),
+          stopLoss: parseFloat(s.stop_loss),
+          takeProfit: parseFloat(s.take_profit),
+          confidence: s.confidence,
+          status: s.status,
+          createdAt: new Date(s.created_at).toLocaleString(),
+          subscribers: s.subscribers || 0
+        })));
       }
+    } catch (e) {
+      console.error('Failed to load signals:', e);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchSignals();
+
+    // Subscribe to changes
+    const channel = supabase
+      .channel('signals-admin')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'signals' }, () => {
+        fetchSignals();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
-
-  // Debounced Sync to Supabase
-  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  useEffect(() => {
-    if (loading) return;
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(signals));
-    
-    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-    syncTimeoutRef.current = setTimeout(async () => {
-      try {
-        await setKV(STORAGE_KEY, signals);
-        console.log('✅ Trading signals synced to DB');
-      } catch (err) {
-        console.error('Failed to sync signals:', err);
-      }
-    }, 3000);
-  }, [signals, loading]);
-
-  // Initial dummy signals if list is empty (for demo)
-  useEffect(() => {
-    if (!loading && signals.length === 0) {
-      const initial = [
-        {
-          id: '1',
-          asset: 'BTCUSD',
-          type: 'buy' as const,
-          entryPrice: 92000,
-          stopLoss: 90500,
-          takeProfit: 95000,
-          confidence: 85,
-          status: 'active' as const,
-          createdAt: '2024-12-06 08:00:00',
-          subscribers: 1247,
-        },
-        {
-          id: '2',
-          asset: 'EURUSD',
-          type: 'sell' as const,
-          entryPrice: 1.0560,
-          stopLoss: 1.0590,
-          takeProfit: 1.0500,
-          confidence: 72,
-          status: 'active' as const,
-          createdAt: '2024-12-06 09:30:00',
-          subscribers: 892,
-        }
-      ];
-      setSignals(initial);
-    }
-  }, [loading, signals.length]);
 
   const [formData, setFormData] = useState({
     asset: '',
@@ -135,43 +116,49 @@ export default function SignalManagement() {
     setShowDialog(true);
   };
 
-  const handleDelete = (signalId: string) => {
+  const handleDelete = async (signalId: string) => {
     if (confirm('Are you sure you want to delete this signal?')) {
-      setSignals(signals.filter(s => s.id !== signalId));
+      try {
+        const { error } = await supabase
+          .from('signals')
+          .delete()
+          .eq('id', signalId);
+        if (error) throw error;
+        toast.success('Signal deleted');
+      } catch (err) {
+        toast.error('Failed to delete signal');
+      }
     }
   };
 
-  const handleSubmit = () => {
-    if (dialogMode === 'create') {
-      const newSignal: TradingSignal = {
-        id: Date.now().toString(),
-        asset: formData.asset,
+  const handleSubmit = async () => {
+    try {
+      const payload = {
+        symbol: formData.asset,
         type: formData.type as 'buy' | 'sell',
-        entryPrice: parseFloat(formData.entryPrice),
-        stopLoss: parseFloat(formData.stopLoss),
-        takeProfit: parseFloat(formData.takeProfit),
+        entry_price: parseFloat(formData.entryPrice),
+        stop_loss: parseFloat(formData.stopLoss),
+        take_profit: parseFloat(formData.takeProfit),
         confidence: parseInt(formData.confidence),
-        status: 'active',
-        createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        subscribers: 0,
+        status: 'active' as const,
       };
-      setSignals([newSignal, ...signals]);
-    } else if (dialogMode === 'edit' && selectedSignal) {
-      setSignals(signals.map(s =>
-        s.id === selectedSignal.id
-          ? {
-              ...s,
-              asset: formData.asset,
-              type: formData.type as 'buy' | 'sell',
-              entryPrice: parseFloat(formData.entryPrice),
-              stopLoss: parseFloat(formData.stopLoss),
-              takeProfit: parseFloat(formData.takeProfit),
-              confidence: parseInt(formData.confidence),
-            }
-          : s
-      ));
+
+      if (dialogMode === 'create') {
+        const { error } = await supabase.from('signals').insert([payload]);
+        if (error) throw error;
+        toast.success('Signal created successfully');
+      } else if (dialogMode === 'edit' && selectedSignal) {
+        const { error } = await supabase
+          .from('signals')
+          .update(payload)
+          .eq('id', selectedSignal.id);
+        if (error) throw error;
+        toast.success('Signal updated successfully');
+      }
+      setShowDialog(false);
+    } catch (err) {
+      toast.error('Failed to save signal');
     }
-    setShowDialog(false);
   };
 
   return (

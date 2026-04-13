@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { toast } from 'sonner';
-import { setKV } from '../../utils/supabase/client';
+import { api } from '../../utils/supabase/api';
 
 export interface DepositMethod {
   id: string;
@@ -58,82 +58,75 @@ export default function DepositMethodsManagement() {
   const [methodType, setMethodType] = useState<'crypto' | 'bank' | 'card'>('crypto');
   const [formData, setFormData] = useState<Partial<DepositMethod>>({});
 
-  // Load deposit methods from localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem('depositMethods');
-    if (stored) {
-      try {
-        setDepositMethods(JSON.parse(stored));
-      } catch (error) {
-        console.error('Failed to load deposit methods:', error);
+  // Load deposit methods from API
+  const fetchMethods = async () => {
+    try {
+      const data = await api.paymentMethods.getAll();
+      if (Array.isArray(data)) {
+        const mapped = data.map((m: any) => ({
+          id: m.id,
+          type: m.type,
+          enabled: m.is_active,
+          cryptoType: m.currency,
+          minDeposit: m.min_amount,
+          processingFee: m.fee_percentage,
+          notes: m.processing_time, // Using processing_time for notes as a fallback or if fits
+          ...(m.details || {})
+        }));
+        setDepositMethods(mapped);
       }
-    } else {
-      // Initialize with default methods
-      const defaultMethods: DepositMethod[] = [
-        {
-          id: 'dm_btc_1',
-          type: 'crypto',
-          enabled: true,
-          cryptoType: 'BTC',
-          walletAddress: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
-          network: 'Bitcoin',
-          minDeposit: 0.0001,
-          notes: 'Bitcoin deposits confirmed after 3 confirmations',
-        },
-        {
-          id: 'dm_eth_1',
-          type: 'crypto',
-          enabled: true,
-          cryptoType: 'ETH',
-          walletAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
-          network: 'Ethereum',
-          minDeposit: 0.01,
-          notes: 'Ethereum deposits confirmed after 12 confirmations',
-        },
-        {
-          id: 'dm_usdt_1',
-          type: 'crypto',
-          enabled: true,
-          cryptoType: 'USDT',
-          walletAddress: 'TYASr5UV6HEcXatwdFQfmLVUqQQQMUxHLS',
-          network: 'Tron (TRC20)',
-          minDeposit: 10,
-          notes: 'USDT TRC20 - Low fees and fast confirmation',
-        },
-        {
-          id: 'dm_bank_1',
-          type: 'bank',
-          enabled: false,
-          bankName: 'JPMorgan Chase Bank',
-          accountName: 'Gross Trading Platform LLC',
-          accountNumber: '****5678',
-          routingNumber: '021000021',
-          swiftCode: 'CHASUS33',
-          bankAddress: '270 Park Avenue, New York, NY 10017',
-          notes: 'Wire transfers typically process within 1-3 business days',
-        },
-        {
-          id: 'dm_card_1',
-          type: 'card',
-          enabled: false,
-          processorName: 'Stripe',
-          processorType: 'credit_card',
-          publicKey: 'pk_live_XXXXXXXXXXXXXXXXXXXXXXXX',
-          processingFee: 2.9,
-          notes: 'Instant deposits with 2.9% + $0.30 fee',
-        },
-      ];
-      localStorage.setItem('depositMethods', JSON.stringify(defaultMethods));
-      setDepositMethods(defaultMethods);
+    } catch (error) {
+      console.error('Failed to load deposit methods:', error);
+      toast.error('Failed to load deposit methods');
     }
+  };
+
+  useEffect(() => {
+    fetchMethods();
   }, []);
 
-  const saveDepositMethods = (methods: DepositMethod[]) => {
-    localStorage.setItem('depositMethods', JSON.stringify(methods));
-    setKV('depositMethods', methods).catch(console.error);
-    setDepositMethods(methods);
-    // Trigger storage event for real-time updates
-    window.dispatchEvent(new Event('storage'));
+  const saveDepositMethods = async (method: Partial<DepositMethod>, isUpdate = false) => {
+    try {
+      const payload = {
+        type: method.type,
+        name: method.type === 'crypto' ? method.cryptoType : (method.type === 'bank' ? method.bankName : method.processorName),
+        currency: method.cryptoType || 'USD',
+        is_active: method.enabled,
+        min_amount: method.minDeposit,
+        fee_percentage: method.processingFee,
+        processing_time: method.notes || '',
+        details: {
+           walletAddress: method.walletAddress,
+           network: method.network,
+           qrCode: method.qrCode,
+           depositFeeType: method.depositFeeType,
+           depositFee: method.depositFee,
+           withdrawalFeeType: method.withdrawalFeeType,
+           withdrawalFee: method.withdrawalFee,
+           bankName: method.bankName,
+           accountName: method.accountName,
+           accountNumber: method.accountNumber,
+           routingNumber: method.routingNumber,
+           swiftCode: method.swiftCode,
+           iban: method.iban,
+           bankAddress: method.bankAddress,
+           processorName: method.processorName,
+           processorType: method.processorType,
+           publicKey: method.publicKey,
+           merchantId: method.merchantId,
+        }
+      };
+
+      if (isUpdate && method.id) {
+        await api.paymentMethods.update(method.id, payload);
+      } else {
+        await api.paymentMethods.create(payload);
+      }
+      fetchMethods();
+    } catch (error) {
+      console.error('Failed to save deposit method:', error);
+      toast.error('Failed to save deposit method');
+    }
   };
 
   // Filter methods
@@ -149,48 +142,54 @@ export default function DepositMethodsManagement() {
     return matchesSearch && matchesType;
   });
 
-  const handleAddMethod = () => {
-    const newMethod: DepositMethod = {
-      id: `dm_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+  const handleAddMethod = async () => {
+    const newMethod: Partial<DepositMethod> = {
       type: methodType,
       enabled: true,
       ...formData,
-    } as DepositMethod;
+    };
 
-    saveDepositMethods([...depositMethods, newMethod]);
+    await saveDepositMethods(newMethod);
     toast.success('Deposit method added successfully');
     setShowAddDialog(false);
     resetForm();
   };
 
-  const handleEditMethod = () => {
+  const handleEditMethod = async () => {
     if (!selectedMethod) return;
 
-    const updatedMethods = depositMethods.map(m =>
-      m.id === selectedMethod.id ? { ...m, ...formData } : m
-    );
-    
-    saveDepositMethods(updatedMethods);
+    await saveDepositMethods({ ...selectedMethod, ...formData }, true);
     toast.success('Deposit method updated successfully');
     setShowEditDialog(false);
     setSelectedMethod(null);
     resetForm();
   };
 
-  const handleDeleteMethod = (id: string) => {
+  const handleDeleteMethod = async (id: string) => {
     if (!confirm('Are you sure you want to delete this deposit method? Users will no longer be able to use it for deposits.')) return;
     
-    const updatedMethods = depositMethods.filter(m => m.id !== id);
-    saveDepositMethods(updatedMethods);
-    toast.success('Deposit method deleted successfully');
+    try {
+      await api.paymentMethods.delete(id);
+      toast.success('Deposit method deleted successfully');
+      fetchMethods();
+    } catch (error) {
+      console.error('Failed to delete deposit method:', error);
+      toast.error('Failed to delete deposit method');
+    }
   };
 
-  const handleToggleStatus = (id: string) => {
-    const updatedMethods = depositMethods.map(m =>
-      m.id === id ? { ...m, enabled: !m.enabled } : m
-    );
-    saveDepositMethods(updatedMethods);
-    toast.success('Deposit method status updated');
+  const handleToggleStatus = async (id: string) => {
+    const method = depositMethods.find(m => m.id === id);
+    if (!method) return;
+
+    try {
+      await api.paymentMethods.update(id, { is_active: !method.enabled });
+      toast.success('Deposit method status updated');
+      fetchMethods();
+    } catch (error) {
+      console.error('Failed to update status:', error);
+      toast.error('Failed to update status');
+    }
   };
 
   const resetForm = () => {

@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Search, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { setKV } from '../../utils/supabase/client';
+import { supabase } from '../../utils/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import {
 import { initialAssets, deriveFullLeverage } from '../../data/assets';
 import type { AssetData } from '../../data/assets';
 import { formatCurrency } from '../../utils/formatNumber';
+import { toast } from 'sonner';
 
 export type { AssetData };
 
@@ -31,38 +32,23 @@ interface AdminAsset extends Omit<AssetData, 'leverage' | 'status'> {
 }
 
 /** Convert a source AssetData (3-tier base + optional overrides) to full 5-tier AdminAsset */
-function toAdminAsset(asset: AssetData): AdminAsset {
-  const full = deriveFullLeverage(asset.leverage);
+function toAdminAsset(asset: any): AdminAsset {
+  const full = typeof asset.leverage === 'string' ? JSON.parse(asset.leverage) : deriveFullLeverage(asset.leverage);
   return {
-    id: asset.id,
+    id: asset.id || asset.symbol,
     symbol: asset.symbol,
     name: asset.name,
     category: asset.category,
-    exchange: asset.exchange,
-    price: asset.price,
-    change24h: asset.change24h,
-    volume: asset.volume,
+    exchange: asset.exchange || '',
+    price: parseFloat(asset.price || 0),
+    change24h: parseFloat(asset.change_24h || asset.change24h || 0),
+    volume: asset.volume || '0',
     leverage: full,
-    enabled: asset.status === 'active',
+    enabled: asset.status === 'active' || asset.enabled === true,
   };
 }
 
-const STORAGE_KEY = 'gross_admin_assets';
 const PAGE_SIZE_KEY = 'gross_admin_assets_page_size';
-
-/** Load assets from localStorage, falling back to initialAssets */
-function loadPersistedAssets(): AdminAsset[] {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored) as AdminAsset[];
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch {
-    // ignore parse errors
-  }
-  return initialAssets.map(toAdminAsset);
-}
 
 export default function AssetManagement() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -71,6 +57,7 @@ export default function AssetManagement() {
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create');
   const [selectedAsset, setSelectedAsset] = useState<AdminAsset | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
   const [rowsPerPage, setRowsPerPage] = useState(() => {
     try {
       const stored = localStorage.getItem(PAGE_SIZE_KEY);
@@ -78,42 +65,58 @@ export default function AssetManagement() {
     } catch { return 15; }
   });
 
-  // Load assets from localStorage (persisted) or initialAssets (default)
-  const [assets, setAssets] = useState<AdminAsset[]>(loadPersistedAssets);
+  const [assets, setAssets] = useState<AdminAsset[]>([]);
 
-  // Persist assets to localStorage and Supabase KV on every change
-  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const persistAssets = useCallback((updated: AdminAsset[]) => {
-    setAssets(updated);
+  // 1. Fetch assets from Supabase
+  const fetchAssets = async () => {
+    setIsLoading(true);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      
-      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-      syncTimeoutRef.current = setTimeout(async () => {
-        try {
-          await setKV(STORAGE_KEY, updated);
-          console.log('✅ Admin assets synced to DB');
-        } catch (err) {
-          console.error('Failed to sync assets:', err);
-        }
-      }, 3000);
-    } catch {
-      // storage full — silently fail
-    }
-  }, []);
+      const { data, error } = await supabase
+        .from('market_assets')
+        .select('*')
+        .order('symbol', { ascending: true });
 
-  // Cross-tab sync via storage event
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue) as AdminAsset[];
-          if (Array.isArray(parsed)) setAssets(parsed);
-        } catch { /* ignore */ }
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setAssets(data.map(toAdminAsset));
+      } else {
+        // Seed if empty
+        const seeded = initialAssets.map(toAdminAsset);
+        await supabase.from('market_assets').insert(initialAssets.map(a => ({
+          symbol: a.symbol,
+          name: a.name,
+          category: a.category,
+          exchange: a.exchange || '',
+          price: a.price,
+          status: 'active',
+          leverage: JSON.stringify(deriveFullLeverage(a.leverage))
+        })));
+        setAssets(seeded);
+        toast.info('Seeded default assets to database');
       }
+    } catch (err) {
+      console.error('Failed to fetch assets:', err);
+      toast.error('Failed to load assets from database');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAssets();
+
+    // Subscribe to changes
+    const channel = supabase
+      .channel('market-assets-admin')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'market_assets' }, () => {
+        fetchAssets();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
     };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   const [formData, setFormData] = useState({
@@ -185,51 +188,62 @@ export default function AssetManagement() {
     setShowDialog(true);
   };
 
-  const handleDelete = (assetId: string) => {
-    if (confirm('Are you sure you want to delete this asset?')) {
-      persistAssets(assets.filter(a => a.id !== assetId));
+  const handleDelete = async (symbol: string) => {
+    if (confirm(`Are you sure you want to delete ${symbol}?`)) {
+      try {
+        const { error } = await supabase
+          .from('market_assets')
+          .delete()
+          .eq('symbol', symbol);
+        if (error) throw error;
+        toast.success(`${symbol} deleted successfully`);
+      } catch (err) {
+        toast.error('Failed to delete asset');
+      }
     }
   };
 
-  const handleToggleStatus = (assetId: string) => {
-    persistAssets(assets.map(a =>
-      a.id === assetId
-        ? { ...a, enabled: !a.enabled }
-        : a
-    ));
+  const handleToggleStatus = async (asset: AdminAsset) => {
+    try {
+      const { error } = await supabase
+        .from('market_assets')
+        .update({ status: asset.enabled ? 'inactive' : 'active' })
+        .eq('symbol', asset.symbol);
+      if (error) throw error;
+    } catch (err) {
+      toast.error('Failed to toggle asset status');
+    }
   };
 
-  const handleSubmit = () => {
-    if (dialogMode === 'create') {
-      const newAsset: AdminAsset = {
-        id: Date.now().toString(),
+  const handleSubmit = async () => {
+    try {
+      const payload = {
         symbol: formData.symbol.toUpperCase(),
         name: formData.name,
         category: formData.category,
         exchange: formData.exchange,
         price: parseFloat(formData.price),
-        change24h: 0,
-        volume: '0',
-        leverage: { ...formData.leverage },
-        enabled: true,
+        leverage: JSON.stringify(formData.leverage),
+        status: 'active'
       };
-      persistAssets([...assets, newAsset]);
-    } else if (dialogMode === 'edit' && selectedAsset) {
-      persistAssets(assets.map(a =>
-        a.id === selectedAsset.id
-          ? {
-              ...a,
-              symbol: formData.symbol.toUpperCase(),
-              name: formData.name,
-              category: formData.category,
-              exchange: formData.exchange,
-              price: parseFloat(formData.price),
-              leverage: { ...formData.leverage },
-            }
-          : a
-      ));
+
+      if (dialogMode === 'create') {
+        const { error } = await supabase.from('market_assets').insert([payload]);
+        if (error) throw error;
+        toast.success('Asset created successfully');
+      } else if (dialogMode === 'edit' && selectedAsset) {
+        const { error } = await supabase
+          .from('market_assets')
+          .update(payload)
+          .eq('symbol', selectedAsset.symbol);
+        if (error) throw error;
+        toast.success('Asset updated successfully');
+      }
+      setShowDialog(false);
+    } catch (err) {
+      console.error('Submit error:', err);
+      toast.error('Failed to save asset');
     }
-    setShowDialog(false);
   };
 
   // Counts per category
@@ -390,38 +404,38 @@ export default function AssetManagement() {
                       </span>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <button
-                      onClick={() => handleToggleStatus(asset.id)}
-                      className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        asset.enabled
-                          ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
-                          : 'bg-gray-100 dark:bg-gray-900/20 text-gray-600 dark:text-gray-400'
-                      }`}
-                    >
-                      {asset.enabled ? 'Active' : 'Inactive'}
-                    </button>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(asset)}
-                        title="Edit Asset"
+                    <td className="px-6 py-4">
+                      <button
+                        onClick={() => handleToggleStatus(asset)}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                          asset.enabled
+                            ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
+                            : 'bg-gray-100 dark:bg-gray-900/20 text-gray-600 dark:text-gray-400'
+                        }`}
                       >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(asset.id)}
-                        title="Delete Asset"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </td>
+                        {asset.enabled ? 'Active' : 'Inactive'}
+                      </button>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(asset)}
+                          title="Edit Asset"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(asset.symbol)}
+                          title="Delete Asset"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </td>
                 </tr>
               ))}
             </tbody>

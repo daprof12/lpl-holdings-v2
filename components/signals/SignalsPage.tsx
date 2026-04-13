@@ -19,43 +19,16 @@ export default function SignalsPage() {
 
   // Check user access
   useEffect(() => {
-    if (!currentUser) {
-      navigate('/dashboard');
-      return;
-    }
-
-    const loadAccessSettings = () => {
-      const signalAccessData = localStorage.getItem('signal_access');
-      if (signalAccessData) {
-        try {
-          const accessMap = JSON.parse(signalAccessData);
-          const userHasAccess = accessMap[currentUser.id] === true;
-          setHasAccess(userHasAccess);
-          
-          if (!userHasAccess) {
-            navigate('/dashboard');
-          }
-        } catch (e) {
-          navigate('/dashboard');
-        }
-      } else {
-        navigate('/dashboard');
-      }
-    };
-
-    loadAccessSettings();
-
-    // Listen for custom signal access change event (same window)
-    const handleAccessChange = (event: Event) => {
-      console.log('Signal access changed event detected!', event);
-      loadAccessSettings();
-    };
-
-    window.addEventListener('signal_access_changed', handleAccessChange);
+    if (!currentUser) return;
     
-    return () => {
-      window.removeEventListener('signal_access_changed', handleAccessChange);
-    };
+    const userHasAccess = currentUser.hasSignalAccess === true;
+    setHasAccess(userHasAccess);
+    
+    if (!userHasAccess && currentUser.id) {
+      // Small delay to prevent redirect loops
+      const timer = setTimeout(() => navigate('/dashboard'), 100);
+      return () => clearTimeout(timer);
+    }
   }, [currentUser, navigate]);
 
   // If no access, show restricted message

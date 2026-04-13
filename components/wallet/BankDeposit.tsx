@@ -34,49 +34,27 @@ const copyToClipboard = async (text: string) => {
   }
 };
 
-export default function BankDeposit({ walletType = 'live' }: { walletType?: 'live' | 'portfolio' }) {
+export default function BankDeposit({ walletType = 'live', methods }: { walletType?: 'live' | 'portfolio', methods: DepositMethod[] }) {
   const [selectedMethodId, setSelectedMethodId] = useState<string>('');
   const [amount, setAmount] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
-  const [bankMethods, setBankMethods] = useState<DepositMethod[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { currentUser: user } = useAuth();
-  const { addTransaction, getRecentDeposits } = useTransactions();
+  const { createDeposit, getRecentDeposits } = useTransactions();
 
-  // Load bank deposit methods from localStorage
+  // Set default selection to first available bank
   useEffect(() => {
-    const loadDepositMethods = () => {
-      const stored = localStorage.getItem('depositMethods');
-      if (stored) {
-        try {
-          const allMethods: DepositMethod[] = JSON.parse(stored);
-          const bankOnly = allMethods.filter(m => m.type === 'bank' && m.enabled);
-          setBankMethods(bankOnly);
-          
-          // Set default selection to first available bank
-          if (bankOnly.length > 0 && !selectedMethodId) {
-            setSelectedMethodId(bankOnly[0].id);
-          }
-        } catch (error) {
-          console.error('Failed to load deposit methods:', error);
-        }
-      }
-    };
-
-    loadDepositMethods();
-    
-    // Listen for changes to deposit methods
-    const handleStorageChange = () => loadDepositMethods();
-    window.addEventListener('storage', handleStorageChange);
-    
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+    if (methods.length > 0 && !selectedMethodId) {
+      setSelectedMethodId(methods[0].id);
+    }
+  }, [methods]);
 
   // Get recent bank deposits for current user
   const recentDeposits = user ? getRecentDeposits(user.id, 'bank') : [];
 
   // Get currently selected bank method
-  const currentMethod = bankMethods.find(m => m.id === selectedMethodId);
+  const currentMethod = methods.find(m => m.id === selectedMethodId);
 
   const handleCopy = (text: string, field: string) => {
     copyToClipboard(text)
@@ -103,17 +81,17 @@ export default function BankDeposit({ walletType = 'live' }: { walletType?: 'liv
     </button>
   );
 
-  const handlePaymentConfirmation = () => {
+  const handlePaymentConfirmation = async () => {
     if (!amount || parseFloat(amount) <= 0) {
       toast.error('Please enter a valid deposit amount');
       return;
     }
 
-    const methodData = bankMethods.find(m => m.id === selectedMethodId);
-    const minAmount = selectedMethodId === 'sepa' ? 100 : selectedMethodId === 'ach' ? 100 : 1000;
-    
-    if (parseFloat(amount) < minAmount) {
-      toast.error(`Minimum deposit is ${methodData?.minDeposit}`);
+    const methodData = methods.find(m => m.id === selectedMethodId);
+    if (!methodData) return;
+
+    if (parseFloat(amount) < (methodData.minDeposit || 100)) {
+      toast.error(`Minimum deposit is ${methodData.minDeposit}`);
       return;
     }
 
@@ -122,32 +100,44 @@ export default function BankDeposit({ walletType = 'live' }: { walletType?: 'liv
       return;
     }
 
-    // Create transaction
-    const txId = addTransaction({
-      userId: user.id,
-      type: 'deposit',
-      method: 'bank',
-      amount: parseFloat(amount),
-      currency: 'USD',
-      usdEquivalent: parseFloat(amount),
-      status: 'pending',
-      bankName: currentMethod?.bankName,
-      accountNumber: 'accountNumber' in currentMethod ? currentMethod.accountNumber : currentMethod.iban,
-      walletType,
-    });
+    setIsSubmitting(true);
 
-    toast.success(`Bank transfer deposit submitted! Transaction ID: ${txId.slice(0, 12)}...`);
-    setAmount('');
+    try {
+      // Create transaction in relational DB
+      const result = await createDeposit({
+        amount: parseFloat(amount),
+        payment_method: 'bank',
+        currency: 'USD',
+        bankName: methodData.bankName,
+        accountNumber: 'accountNumber' in methodData ? (methodData as any).accountNumber : (methodData as any).iban,
+        walletType,
+        metadata: {
+          methodId: selectedMethodId
+        }
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to submit deposit');
+      }
+
+      toast.success(`Bank transfer deposit submitted successfully!`);
+      setAmount('');
+    } catch (error) {
+      console.error('Bank deposit error:', error);
+      toast.error((error as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="max-w-3xl">
       {/* Method Selection */}
-      {bankMethods.length > 0 && (
+      {methods.length > 0 && (
         <div className="mb-6">
           <Label className="mb-3 block">Select Bank Account</Label>
           <div className="grid md:grid-cols-2 gap-4">
-            {bankMethods.map((method) => (
+            {methods.map((method) => (
               <button
                 key={method.id}
                 onClick={() => setSelectedMethodId(method.id)}
@@ -170,7 +160,7 @@ export default function BankDeposit({ walletType = 'live' }: { walletType?: 'liv
         </div>
       )}
 
-      {bankMethods.length === 0 && (
+      {methods.length === 0 && (
         <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-6 mb-6 border border-yellow-200 dark:border-yellow-800">
           <p className="text-yellow-600 dark:text-yellow-400">
             No bank deposit methods configured. Please contact support.

@@ -178,6 +178,161 @@ export const UserPreferencesService = {
 
     if (error) throw new Error(`Failed to update favorites: ${error.message}`);
   },
+
+  async updateNotificationPrefs(userId: string, prefs: any): Promise<any> {
+    const { data, error } = await supabase
+      .from('user_preferences')
+      .update({
+        notification_prefs: prefs,
+        updated_at: getCurrentTimestamp(),
+      })
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to update notification prefs: ${error.message}`);
+    return data;
+  },
+};
+
+// ============================================
+// USER SESSIONS SERVICE
+// ============================================
+export const SessionService = {
+  async getByUserId(userId: string): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('user_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .order('last_active_at', { ascending: false });
+
+    if (error) throw new Error(`Failed to fetch sessions: ${error.message}`);
+    return data || [];
+  },
+
+  async create(sessionData: any): Promise<any> {
+    const session = {
+      id: generateId('sess'),
+      ...sessionData,
+      is_active: true,
+      created_at: getCurrentTimestamp(),
+      last_active_at: getCurrentTimestamp(),
+    };
+
+    const { data, error } = await supabase
+      .from('user_sessions')
+      .insert(session)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create session: ${error.message}`);
+    return data;
+  },
+
+  async revoke(sessionId: string): Promise<void> {
+    const { error } = await supabase
+      .from('user_sessions')
+      .update({
+        is_active: false,
+        updated_at: getCurrentTimestamp(),
+      })
+      .eq('id', sessionId);
+
+    if (error) throw new Error(`Failed to revoke session: ${error.message}`);
+  },
+
+  async revokeAllExcept(userId: string, currentSessionId: string): Promise<void> {
+    const { error } = await supabase
+      .from('user_sessions')
+      .update({
+        is_active: false,
+        updated_at: getCurrentTimestamp(),
+      })
+      .eq('user_id', userId)
+      .neq('id', currentSessionId);
+
+    if (error) throw new Error(`Failed to revoke sessions: ${error.message}`);
+  },
+};
+
+// ============================================
+// LOGIN HISTORY SERVICE
+// ============================================
+export const LoginHistoryService = {
+  async getByUserId(userId: string, limit: number = 20): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('login_history')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw new Error(`Failed to fetch login history: ${error.message}`);
+    return data || [];
+  },
+
+  async log(logData: any): Promise<void> {
+    const log = {
+      id: generateId('log'),
+      ...logData,
+      created_at: getCurrentTimestamp(),
+    };
+
+    const { error } = await supabase
+      .from('login_history')
+      .insert(log);
+
+    if (error) throw new Error(`Failed to log activity: ${error.message}`);
+  },
+};
+
+// ============================================
+// PASSWORD RESET SERVICE
+// ============================================
+export const PasswordResetService = {
+  async getAll(): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('password_resets')
+      .select('*, users(name, email)')
+      .order('requested_at', { ascending: false });
+
+    if (error) throw new Error(`Failed to fetch password resets: ${error.message}`);
+    return data || [];
+  },
+
+  async create(resetData: any): Promise<any> {
+    const reset = {
+      id: generateId('prr'),
+      ...resetData,
+      status: 'pending',
+      requested_at: getCurrentTimestamp(),
+      expires_at: getCurrentTimestamp() + (24 * 60 * 60 * 1000), // 24 hours
+    };
+
+    const { data, error } = await supabase
+      .from('password_resets')
+      .insert(reset)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create reset request: ${error.message}`);
+    return data;
+  },
+
+  async updateStatus(id: string, status: string, resolvedBy?: string, reason?: string): Promise<void> {
+    const { error } = await supabase
+      .from('password_resets')
+      .update({
+        status,
+        resolved_at: getCurrentTimestamp(),
+        resolved_by: resolvedBy,
+        rejection_reason: reason,
+      })
+      .eq('id', id);
+
+    if (error) throw new Error(`Failed to update reset status: ${error.message}`);
+  },
 };
 
 // ============================================
@@ -672,5 +827,353 @@ export const TradeHistoryService = {
 
     if (error) throw new Error(`Failed to create trade history: ${error.message}`);
     return data;
+  },
+};
+
+// ============================================
+// CONTACT SUBMISSIONS SERVICE
+// ============================================
+export const ContactSubmissionService = {
+  async getAll(): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('contact_submissions')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(`Failed to fetch submissions: ${error.message}`);
+    return data || [];
+  },
+
+  async create(submissionData: any): Promise<any> {
+    const submission = {
+      id: generateId('con'),
+      ...submissionData,
+      status: 'new',
+      created_at: getCurrentTimestamp(),
+      updated_at: getCurrentTimestamp(),
+    };
+
+    const { data, error } = await supabase
+      .from('contact_submissions')
+      .insert(submission)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create submission: ${error.message}`);
+    return data;
+  },
+
+  async updateStatus(id: string, status: string): Promise<void> {
+    const { error } = await supabase
+      .from('contact_submissions')
+      .update({
+        status,
+        updated_at: getCurrentTimestamp(),
+      })
+      .eq('id', id);
+
+    if (error) throw new Error(`Failed to update submission status: ${error.message}`);
+  },
+};
+
+// ============================================
+// INVESTMENT WALLETS SERVICE
+// ============================================
+export const InvestmentWalletService = {
+  async getByUserId(userId: string): Promise<any | null> {
+    const { data, error } = await supabase
+      .from('investment_wallets')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw new Error(`Failed to fetch investment wallet: ${error.message}`);
+    }
+    return data;
+  },
+
+  async create(userId: string): Promise<any> {
+    const wallet = {
+      user_id: userId,
+      portfolio: 0,
+      ecn: 0,
+      ipo: 0,
+      updated_at: getCurrentTimestamp(),
+    };
+
+    const { data, error } = await supabase
+      .from('investment_wallets')
+      .insert(wallet)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create investment wallet: ${error.message}`);
+    return data;
+  },
+
+  async updateBalances(userId: string, balances: any): Promise<any> {
+    const { data, error } = await supabase
+      .from('investment_wallets')
+      .update({
+        ...balances,
+        updated_at: getCurrentTimestamp(),
+      })
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to update investment wallet: ${error.message}`);
+    return data;
+  },
+};
+
+// ============================================
+// CRM MESSAGING SERVICE
+// ============================================
+export const CRMMessageService = {
+  async getAll(): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('crm_messages')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(`Failed to fetch CRM messages: ${error.message}`);
+    return data || [];
+  },
+
+  async getById(id: string): Promise<any | null> {
+    const { data, error } = await supabase
+      .from('crm_messages')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw new Error(`Failed to fetch CRM message: ${error.message}`);
+    }
+    return data;
+  },
+
+  async create(messageData: any): Promise<any> {
+    const message = {
+      id: generateId('crm'),
+      ...messageData,
+      status: messageData.status || 'draft',
+      created_at: getCurrentTimestamp(),
+    };
+
+    const { data, error } = await supabase
+      .from('crm_messages')
+      .insert(message)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create CRM message: ${error.message}`);
+    return data;
+  },
+
+  async update(id: string, updates: any): Promise<any> {
+    const { data, error } = await supabase
+      .from('crm_messages')
+      .update({
+        ...updates,
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to update CRM message: ${error.message}`);
+    return data;
+  },
+
+  async send(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('crm_messages')
+      .update({
+        status: 'sent',
+        sent_at: getCurrentTimestamp(),
+      })
+      .eq('id', id);
+
+    if (error) throw new Error(`Failed to send CRM message: ${error.message}`);
+  },
+};
+
+// ============================================
+// EMAIL TEMPLATES SERVICE
+// ============================================
+export const EmailTemplateService = {
+  async getAll(): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('email_templates')
+      .select('*')
+      .order('last_modified', { ascending: false });
+
+    if (error) throw new Error(`Failed to fetch email templates: ${error.message}`);
+    return data || [];
+  },
+
+  async getById(id: string): Promise<any | null> {
+    const { data, error } = await supabase
+      .from('email_templates')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw new Error(`Failed to fetch email template: ${error.message}`);
+    }
+    return data;
+  },
+
+  async create(templateData: any): Promise<any> {
+    const template = {
+      id: generateId('tpl'),
+      ...templateData,
+      created_at: getCurrentTimestamp(),
+      last_modified: getCurrentTimestamp(),
+    };
+
+    const { data, error } = await supabase
+      .from('email_templates')
+      .insert(template)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create email template: ${error.message}`);
+    return data;
+  },
+
+  async update(id: string, updates: any): Promise<any> {
+    const { data, error } = await supabase
+      .from('email_templates')
+      .update({
+        ...updates,
+        last_modified: getCurrentTimestamp(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to update email template: ${error.message}`);
+    return data;
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('email_templates')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw new Error(`Failed to delete email template: ${error.message}`);
+  },
+};
+
+// ============================================
+// SMTP CONFIG SERVICE
+// ============================================
+export const SMTPConfigService = {
+  async get(): Promise<any | null> {
+    const { data, error } = await supabase
+      .from('smtp_config')
+      .select('*')
+      .eq('id', 'global_smtp')
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw new Error(`Failed to fetch SMTP config: ${error.message}`);
+    }
+    return data;
+  },
+
+  async update(config: any): Promise<any> {
+    const { data, error } = await supabase
+      .from('smtp_config')
+      .upsert({
+        id: 'global_smtp',
+        ...config,
+        updated_at: getCurrentTimestamp(),
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to update SMTP config: ${error.message}`);
+    return data;
+  },
+};
+
+// ============================================
+// USER WITHDRAWAL METHODS SERVICE
+// ============================================
+export const UserWithdrawalMethodService = {
+  async getByUserId(userId: string): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('user_withdrawal_methods')
+      .select('*')
+      .eq('user_id', userId)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(`Failed to fetch withdrawal methods: ${error.message}`);
+    return data || [];
+  },
+
+  async create(methodData: any): Promise<any> {
+    const method = {
+      id: generateId('wdm'),
+      ...methodData,
+      created_at: getCurrentTimestamp(),
+      updated_at: getCurrentTimestamp(),
+    };
+
+    const { data, error } = await supabase
+      .from('user_withdrawal_methods')
+      .insert(method)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create withdrawal method: ${error.message}`);
+    return data;
+  },
+
+  async update(id: string, updates: any): Promise<any> {
+    const { data, error } = await supabase
+      .from('user_withdrawal_methods')
+      .update({
+        ...updates,
+        updated_at: getCurrentTimestamp(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to update withdrawal method: ${error.message}`);
+    return data;
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('user_withdrawal_methods')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw new Error(`Failed to delete withdrawal method: ${error.message}`);
+  },
+
+  async setDefault(userId: string, id: string): Promise<void> {
+    // First, unset all as default
+    await supabase
+      .from('user_withdrawal_methods')
+      .update({ is_default: false })
+      .eq('user_id', userId);
+
+    // Then set the one as default
+    const { error } = await supabase
+      .from('user_withdrawal_methods')
+      .update({ is_default: true })
+      .eq('id', id);
+
+    if (error) throw new Error(`Failed to set default withdrawal method: ${error.message}`);
   },
 };

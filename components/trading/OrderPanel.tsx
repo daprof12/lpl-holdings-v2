@@ -97,12 +97,14 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
     }
   }, [activeSymbol, symbol, marketData]);
 
+  const [isManualPrice, setIsManualPrice] = useState(false);
+
   // Update limit price when active price changes or symbol changes
   useEffect(() => {
-    if (!isEditMode) {
+    if (!isEditMode && !isManualPrice) {
       setLimitPrice(activePrice.toString());
     }
-  }, [activePrice, activeSymbol, isEditMode]);
+  }, [activePrice, activeSymbol, isEditMode, isManualPrice]);
 
   // Reset SL/TP when symbol changes
   useEffect(() => {
@@ -121,6 +123,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
       setLeverage('1');
       setUnitType('units');
       setOrderSide('buy');
+      setIsManualPrice(false);
     }
   }, [symbol]);
 
@@ -560,7 +563,10 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
                 type="number"
                 step="0.01"
                 value={limitPrice}
-                onChange={(e) => setLimitPrice(e.target.value)}
+                onChange={(e) => {
+                  setLimitPrice(e.target.value);
+                  setIsManualPrice(true);
+                }}
                 placeholder="0.00"
                 className="mt-1"
               />
@@ -820,6 +826,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
             </div>
             <div className="p-4">
               <PositionCalculator
+                key={activeSymbol}
                 currentPrice={activePrice}
                 onApplyToOrder={handleApplyCalculatorData}
               />

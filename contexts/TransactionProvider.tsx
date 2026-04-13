@@ -1,14 +1,8 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { api } from '../utils/supabase/api';
 import { useAuth } from './AuthContext';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
-import { setKV } from '../utils/supabase/client';
-import { useRef } from 'react';
-
-// ============================================
-// API CONFIGURATION
-// ============================================
-
-const serverUrl = `https://${projectId}.supabase.co/functions/v1/make-server-5d4be467`;
+import { serverUrl, publicAnonKey } from '../utils/supabase/client';
+import { toast } from 'sonner';
 
 // ============================================
 // TYPES
@@ -93,202 +87,38 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(false);
   const { currentUser } = useAuth();
-  const syncTransactionsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Sync transactions to DB (Debounced)
-  useEffect(() => {
-    if (transactions.length > 0) {
-      if (syncTransactionsTimeoutRef.current) clearTimeout(syncTransactionsTimeoutRef.current);
-      
-      syncTransactionsTimeoutRef.current = setTimeout(async () => {
-        try {
-          await setKV('gross_transactions', transactions);
-          console.log('✅ Transactions synced to DB');
-        } catch (err) {
-          console.error('Failed to sync transactions:', err);
-        }
-      }, 3000);
-    }
-  }, [transactions]);
-
-  // ============================================
-  // API FUNCTIONS - Database Integration
-  // ============================================
-
-  const fetchPaymentMethods = async () => {
-    try {
-      const response = await fetch(`${serverUrl}/payment-methods`, {
-        headers: { 'Authorization': `Bearer ${publicAnonKey}` }
-      });
-      return response.ok ? await response.json() : [];
-    } catch { return []; }
-  };
-
-  const fetchDeposits = async (userId: string) => {
-    try {
-      const endpoint = userId === 'all' || userId === 'admin' ? `${serverUrl}/deposits` : `${serverUrl}/deposits/user/${userId}`;
-      const response = await fetch(endpoint, {
-        headers: { 'Authorization': `Bearer ${publicAnonKey}` }
-      });
-      return response.ok ? await response.json() : [];
-    } catch { return []; }
-  };
-
-  const fetchWithdrawals = async (userId: string) => {
-    try {
-      const endpoint = userId === 'all' || userId === 'admin' ? `${serverUrl}/withdrawals` : `${serverUrl}/withdrawals/user/${userId}`;
-      const response = await fetch(endpoint, {
-        headers: { 'Authorization': `Bearer ${publicAnonKey}` }
-      });
-      return response.ok ? await response.json() : [];
-    } catch { return []; }
-  };
-
-  const fetchTransactions = async (userId: string) => {
-    try {
-      const endpoint = userId === 'all' || userId === 'admin' 
-        ? `${serverUrl}/transactions` 
-        : `${serverUrl}/transactions/user/${userId}`;
-        
-      const response = await fetch(endpoint, {
-        headers: { 'Authorization': `Bearer ${publicAnonKey}` }
-      });
-
-      if (!response.ok) return [];
-
-      const dbTransactions = await response.json();
-
-      return dbTransactions.map((dbTxn: any) => ({
-        id: dbTxn.id,
-        userId: dbTxn.user_id,
-        type: dbTxn.type as TransactionType,
-        method: dbTxn.payment_method || 'crypto',
-        amount: parseFloat(dbTxn.amount),
-        currency: dbTxn.currency || 'USD',
-        usdEquivalent: parseFloat(dbTxn.amount),
-        status: dbTxn.status || 'completed',
-        timestamp: new Date(dbTxn.created_at || Date.now()).getTime(),
-        completedAt: dbTxn.updated_at ? new Date(dbTxn.updated_at).getTime() : undefined,
-        walletType: dbTxn.wallet_type || 'live',
-        txHash: dbTxn.transaction_hash,
-      }));
-    } catch { return []; }
-  };
-
-  const createDeposit = async (data: any) => {
-    try {
-      if (!currentUser?.id) throw new Error('User not authenticated');
-      const response = await fetch(`${serverUrl}/deposits`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          amount: data.amount,
-          payment_method: data.payment_method,
-          currency: data.currency,
-          wallet_type: data.wallet_type || 'live',
-          status: 'pending'
-        })
-      });
-      if (!response.ok) throw new Error('Failed to create deposit');
-      const deposit = await response.json();
-      await fetch(`${serverUrl}/transactions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          type: 'deposit',
-          amount: data.amount,
-          currency: data.currency,
-          description: `Deposit via ${data.payment_method}`,
-          reference_id: deposit.id,
-          status: 'pending'
-        })
-      });
-      await refreshTransactions();
-      return { success: true, deposit };
-    } catch (error) {
-      console.error('Error creating deposit:', error);
-      return { success: false, error: (error as Error).message };
-    }
-  };
-
-  const createWithdrawal = async (data: any) => {
-    try {
-      if (!currentUser?.id) throw new Error('User not authenticated');
-      const response = await fetch(`${serverUrl}/withdrawals`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          amount: data.amount,
-          payment_method: data.payment_method,
-          currency: data.currency,
-          wallet_address: data.wallet_address,
-          wallet_type: data.wallet_type || 'live',
-          status: 'pending'
-        })
-      });
-      if (!response.ok) throw new Error('Failed to create withdrawal');
-      const withdrawal = await response.json();
-      await fetch(`${serverUrl}/transactions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          type: 'withdrawal',
-          amount: data.amount,
-          currency: data.currency,
-          description: `Withdrawal via ${data.payment_method}`,
-          reference_id: withdrawal.id,
-          status: 'pending'
-        })
-      });
-      await refreshTransactions();
-      return { success: true, withdrawal };
-    } catch (error) {
-      console.error('Error creating withdrawal:', error);
-      return { success: false, error: (error as Error).message };
-    }
-  };
-
+  // Refresh transactions
   const refreshTransactions = async () => {
     if (!currentUser?.id) return;
     setLoading(true);
     try {
-      const fetchId = currentUser.role === 'admin' ? 'all' : currentUser.id;
-      const [dbDeposits, dbWithdrawals, dbTransactions] = await Promise.all([
-        fetchDeposits(fetchId),
-        fetchWithdrawals(fetchId),
-        fetchTransactions(fetchId)
+      const [dbTxns, dbDeps, dbWds] = await Promise.all([
+        currentUser.role === 'admin' ? api.transactions.getAll() : api.transactions.getByUserId(currentUser.id),
+        currentUser.role === 'admin' ? api.deposits.getAll() : api.deposits.getByUserId(currentUser.id),
+        currentUser.role === 'admin' ? api.withdrawals.getAll() : api.withdrawals.getByUserId(currentUser.id),
       ]);
-      if (dbDeposits.length > 0) setDeposits(dbDeposits);
-      if (dbWithdrawals.length > 0) setWithdrawals(dbWithdrawals);
-      if (dbTransactions.length > 0) {
-        setTransactions(prev => {
-          const existingIds = new Set(prev.map(t => t.id));
-          const newFromDb = dbTransactions.filter((t: Transaction) => !existingIds.has(t.id));
-          const updated = prev.map(p => {
-            const fromDb = dbTransactions.find((t: any) => t.id === p.id);
-            return fromDb ? { ...p, status: fromDb.status, completedAt: fromDb.completedAt } : p;
-          });
-          return [...updated, ...newFromDb];
-        });
+
+      if (Array.isArray(dbTxns)) {
+        setTransactions(dbTxns.map((t: any) => ({
+          id: t.id,
+          userId: t.user_id,
+          type: t.type,
+          method: t.payment_method || 'crypto',
+          amount: parseFloat(t.amount),
+          currency: t.currency || 'USD',
+          usdEquivalent: parseFloat(t.amount),
+          status: t.status,
+          timestamp: new Date(t.created_at).getTime(),
+          completedAt: t.updated_at ? new Date(t.updated_at).getTime() : undefined,
+          walletType: t.wallet_type || 'live',
+          txHash: t.transaction_hash
+        })));
       }
-    } catch (error) {
-      console.error('Error refreshing transactions:', error);
+      if (Array.isArray(dbDeps)) setDeposits(dbDeps);
+      if (Array.isArray(dbWds)) setWithdrawals(dbWds);
+    } catch (err) {
+      console.error('Failed to refresh transactions:', err);
     } finally {
       setLoading(false);
     }
@@ -297,198 +127,159 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
   const refreshPaymentMethods = async () => {
     setLoading(true);
     try {
-      const methods = await fetchPaymentMethods();
-      if (methods && methods.length > 0) setPaymentMethods(methods);
-    } finally { setLoading(false); }
+      const methods = await api.paymentMethods.getAll();
+      if (Array.isArray(methods)) setPaymentMethods(methods);
+    } catch (err) {
+      console.error('Failed to refresh payment methods:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => {
-    if (currentUser?.id) refreshTransactions();
-  }, [currentUser?.id, currentUser?.role]);
-
-  useEffect(() => {
-    refreshPaymentMethods();
-    const stored = localStorage.getItem('transactions');
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) setTransactions(parsed);
-      } catch {}
-    }
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'transactions' && e.newValue) {
-        try { setTransactions(JSON.parse(e.newValue)); } catch {}
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  useEffect(() => {
-    if (transactions.length > 0) {
-      localStorage.setItem('transactions', JSON.stringify(transactions));
-      localStorage.setItem('gross_transactions', JSON.stringify(transactions));
-    }
-  }, [transactions]);
-
-  const addTransaction = (transaction: Omit<Transaction, 'id' | 'timestamp'>) => {
-    const id = transaction.type === 'deposit' ? `dep_${Date.now()}` : `wd_${Date.now()}`;
-    const newTransaction: Transaction = { ...transaction, id, timestamp: Date.now() };
-    setTransactions(prev => [newTransaction, ...prev]);
-    window.dispatchEvent(new CustomEvent('transactionsUpdated'));
+  const addTransaction = (txnData: Omit<Transaction, 'id' | 'timestamp'>) => {
+    const id = Math.random().toString(36).substring(2, 11);
+    const newTxn = { ...txnData, id, timestamp: Date.now() } as Transaction;
+    setTransactions(prev => [newTxn, ...prev]);
     return id;
   };
 
   const updateTransaction = (id: string, updates: Partial<Transaction>) => {
-    setTransactions(prev => prev.map(txn => txn.id === id ? { ...txn, ...updates } : txn));
+    setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   };
 
-  const getTransactionById = (id: string) => transactions.find(txn => txn.id === id);
-  const getUserTransactions = (userId: string) => transactions.filter(txn => txn.userId === userId);
-  const getPendingTransactions = () => transactions.filter(txn => txn.status === 'pending');
+  const getTransactionById = (id: string) => transactions.find(t => t.id === id);
+  const getUserTransactions = (userId: string) => transactions.filter(t => t.userId === userId);
+  const getPendingTransactions = () => transactions.filter(t => t.status === 'pending');
 
-  const syncWithTradingAccount = (userId: string, amount: number, type: 'deposit' | 'withdrawal') => {
-    const key = `gross_live_account_${userId}`;
-    const account = JSON.parse(localStorage.getItem(key) || '{"balance":0,"equity":0,"realizedPnL":0,"unrealizedPnL":0,"margin":0,"availableFunds":0,"bonus":0}');
-    
-    if (type === 'deposit') {
-      account.balance += amount;
-      account.equity += amount;
-      account.availableFunds += amount;
-    } else {
-      account.balance = Math.max(0, account.balance - amount);
-      account.equity = Math.max(0, account.equity - amount);
-      account.availableFunds = Math.max(0, account.availableFunds - amount);
+  const createDeposit = async (data: any) => {
+    try {
+      if (!currentUser?.id) throw new Error('User not authenticated');
+      const deposit = await api.deposits.create({
+        user_id: currentUser.id,
+        amount: data.amount,
+        method: data.method || data.payment_method,
+        currency: data.currency || 'USD',
+        status: 'pending'
+      });
+      
+      await api.transactions.create({
+        user_id: currentUser.id,
+        type: 'deposit',
+        amount: data.amount,
+        currency: data.currency || 'USD',
+        description: `Deposit via ${data.method || data.payment_method}`,
+        reference_id: deposit.id,
+        status: 'pending'
+      });
+      
+      refreshTransactions();
+      return { success: true, deposit };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
     }
-    localStorage.setItem(key, JSON.stringify(account));
-    window.dispatchEvent(new Event('storage'));
   };
+
+  const createWithdrawal = async (data: any) => {
+    try {
+      if (!currentUser?.id) throw new Error('User not authenticated');
+      const withdrawal = await api.withdrawals.create({
+        user_id: currentUser.id,
+        amount: data.amount,
+        method: data.method || data.payment_method,
+        currency: data.currency || 'USD',
+        destination_address: data.destination_address || data.walletAddress || data.bankAccountNumber || data.paypalEmail,
+        status: 'pending'
+      });
+      
+      await api.transactions.create({
+        user_id: currentUser.id,
+        type: 'withdrawal',
+        amount: data.amount,
+        currency: data.currency || 'USD',
+        description: `Withdrawal via ${data.method || data.payment_method}`,
+        reference_id: withdrawal.id,
+        status: 'pending'
+      });
+      
+      refreshTransactions();
+      return { success: true, withdrawal };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  };
+
+  useEffect(() => {
+    refreshPaymentMethods();
+    if (currentUser?.id) refreshTransactions();
+  }, [currentUser?.id]);
 
   const approveTransaction = async (id: string, adminId: string, notes?: string) => {
-    const transaction = getTransactionById(id);
-    if (!transaction) return;
-
-    updateTransaction(id, { status: 'completed', completedAt: Date.now(), processedBy: adminId, adminNotes: notes });
-
     try {
-      const typePath = transaction.type === 'deposit' ? 'deposits' : 'withdrawals';
-      await fetch(`${serverUrl}/${typePath}/${id}`, {
-        method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'completed', processed_by: adminId, admin_notes: notes })
-      });
-      await fetch(`${serverUrl}/transactions/ref/${id}`, {
-        method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'completed' })
-      });
-    } catch (e) { console.warn('DB update failed'); }
+      const transaction = transactions.find(t => t.id === id);
+      if (!transaction) return;
 
-    const isPortfolio = transaction.walletType === 'portfolio';
-    const users = JSON.parse(localStorage.getItem('gross_users') || '[]');
-    const userIndex = users.findIndex((u: any) => u.id === transaction.userId);
-    
-    if (userIndex !== -1) {
       if (transaction.type === 'deposit') {
-        if (isPortfolio) {
-          const b = JSON.parse(localStorage.getItem(`investment_balances_${transaction.userId}`) || '{"portfolio":0}');
-          b.portfolio += transaction.usdEquivalent;
-          localStorage.setItem(`investment_balances_${transaction.userId}`, JSON.stringify(b));
+        await api.deposits.update(id, { status: 'completed', processed_by: adminId, admin_notes: notes });
+        
+        if (transaction.walletType === 'portfolio') {
+          await api.investmentWallets.update(transaction.userId, { portfolio: transaction.amount });
         } else {
-          users[userIndex].balance = (users[userIndex].balance || 0) + transaction.usdEquivalent;
-          users[userIndex].liveBalance = (users[userIndex].liveBalance || 0) + transaction.usdEquivalent;
-          syncWithTradingAccount(transaction.userId, transaction.usdEquivalent, 'deposit');
+          const account = await api.tradingAccounts.getByUserId(transaction.userId);
+          if (account) {
+            await api.tradingAccounts.update(transaction.userId, { balance: (account.balance || 0) + transaction.amount });
+          }
+          await api.users.updateBalance(transaction.userId, transaction.amount);
         }
+      } else {
+        await api.withdrawals.update(id, { status: 'completed', processed_by: adminId, admin_notes: notes });
       }
-      localStorage.setItem('gross_users', JSON.stringify(users));
-      window.dispatchEvent(new Event('storage'));
-      window.dispatchEvent(new CustomEvent('usersUpdated'));
-      
-      const notifications = JSON.parse(localStorage.getItem('gross_notifications') || '[]');
-      notifications.unshift({
-        id: `notif_${Date.now()}`,
-        userId: transaction.userId,
-        type: 'success',
-        title: `${transaction.type === 'deposit' ? 'Deposit' : 'Withdrawal'} Approved`,
-        message: `Your ${transaction.type} of $${transaction.usdEquivalent.toFixed(2)} has been processed.`,
-        read: false,
-        timestamp: new Date(),
-      });
-      localStorage.setItem('gross_notifications', JSON.stringify(notifications));
-      window.dispatchEvent(new Event('storage'));
-      
-      // Sync investment balance to DB if it was a portfolio deposit
-      if (isPortfolio) {
-        const b = JSON.parse(localStorage.getItem(`investment_balances_${transaction.userId}`) || '{"portfolio":0}');
-        setKV(`investment_balances_${transaction.userId}`, b);
-      }
+
+      refreshTransactions();
+      toast.success('Transaction approved');
+    } catch (err) {
+      console.error('Failed to approve transaction:', err);
+      toast.error('Failed to approve transaction');
     }
   };
 
   const rejectTransaction = async (id: string, adminId: string, notes?: string) => {
-    const transaction = getTransactionById(id);
-    if (!transaction) return;
-
-    updateTransaction(id, { status: 'rejected', completedAt: Date.now(), processedBy: adminId, adminNotes: notes });
-
     try {
-      const typePath = transaction.type === 'deposit' ? 'deposits' : 'withdrawals';
-      await fetch(`${serverUrl}/${typePath}/${id}`, {
-        method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'rejected', processed_by: adminId, admin_notes: notes })
-      });
-    } catch {}
+      const transaction = transactions.find(t => t.id === id);
+      if (!transaction) return;
 
-    if (transaction.type === 'withdrawal') {
-      const isPortfolio = transaction.walletType === 'portfolio';
-      if (isPortfolio) {
-        const b = JSON.parse(localStorage.getItem(`investment_balances_${transaction.userId}`) || '{"portfolio":0}');
-        b.portfolio += transaction.usdEquivalent;
-        localStorage.setItem(`investment_balances_${transaction.userId}`, JSON.stringify(b));
+      if (transaction.type === 'deposit') {
+        await api.deposits.update(id, { status: 'rejected', processed_by: adminId, admin_notes: notes });
       } else {
-        const users = JSON.parse(localStorage.getItem('gross_users') || '[]');
-        const userIndex = users.findIndex((u: any) => u.id === transaction.userId);
-        if (userIndex !== -1) {
-          users[userIndex].balance = (users[userIndex].balance || 0) + transaction.usdEquivalent;
-          users[userIndex].liveBalance = (users[userIndex].liveBalance || 0) + transaction.usdEquivalent;
-          localStorage.setItem('gross_users', JSON.stringify(users));
-          syncWithTradingAccount(transaction.userId, transaction.usdEquivalent, 'deposit');
+        await api.withdrawals.update(id, { status: 'rejected', processed_by: adminId, admin_notes: notes });
+        
+        if (transaction.walletType === 'portfolio') {
+           await api.investmentWallets.update(transaction.userId, { portfolio: transaction.amount });
+        } else {
+           await api.users.updateBalance(transaction.userId, transaction.amount);
+           const account = await api.tradingAccounts.getByUserId(transaction.userId);
+           if (account) {
+              await api.tradingAccounts.update(transaction.userId, { balance: (account.balance || 0) + transaction.amount });
+           }
         }
       }
-      window.dispatchEvent(new Event('storage'));
-      window.dispatchEvent(new CustomEvent('usersUpdated'));
-    }
 
-    const notifications = JSON.parse(localStorage.getItem('gross_notifications') || '[]');
-    notifications.unshift({
-      id: `notif_${Date.now()}`,
-      userId: transaction.userId,
-      type: 'error',
-      title: `${transaction.type.toUpperCase()} Rejected`,
-      message: `Your ${transaction.type} of $${transaction.usdEquivalent.toFixed(2)} was rejected. ${notes || ''}`,
-      read: false,
-      timestamp: new Date(),
-    });
-    localStorage.setItem('gross_notifications', JSON.stringify(notifications));
-    window.dispatchEvent(new Event('storage'));
-    
-    // Sync investment balance to DB if it was a portfolio withdrawal rejection
-    if (transaction.type === 'withdrawal' && transaction.walletType === 'portfolio') {
-      const b = JSON.parse(localStorage.getItem(`investment_balances_${transaction.userId}`) || '{"portfolio":0}');
-      setKV(`investment_balances_${transaction.userId}`, b);
+      refreshTransactions();
+      toast.success('Transaction rejected');
+    } catch (err) {
+      console.error('Failed to reject transaction:', err);
+      toast.error('Failed to reject transaction');
     }
   };
 
   const deleteTransaction = async (id: string) => {
-    setTransactions(prev => prev.filter(txn => txn.id !== id));
     try {
-      await fetch(`${serverUrl}/transactions/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${publicAnonKey}` }
-      });
-    } catch {}
+      await api.transactions.delete(id);
+      setTransactions(prev => prev.filter(txn => txn.id !== id));
+      toast.success('Transaction deleted');
+    } catch (err) {
+      console.error('Failed to delete transaction:', err);
+      toast.error('Failed to delete transaction');
+    }
   };
 
   const getRecentDeposits = (userId: string, method?: TransactionMethod) => {

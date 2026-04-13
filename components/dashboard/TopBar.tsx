@@ -42,7 +42,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
     if (account.margin <= 0) return 'text-gray-500 dark:text-gray-400';
     const lvl = (account.equity / account.margin) * 100;
     if (lvl >= 100) return 'text-green-600 dark:text-green-400';
-    if (lvl >= 50)  return 'text-yellow-600 dark:text-yellow-400';
+    if (lvl >= 50) return 'text-yellow-600 dark:text-yellow-400';
     return 'text-red-600 dark:text-red-400';
   };
 
@@ -51,33 +51,33 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
     : 'N/A';
 
   const accountStats = [
-    { label: 'Balance',        value: `$${formatCurrency(account.balance)}`,            color: '' },
-    ...(account.credit > 0 ? [{ label: 'Credit', value: `$${formatCurrency(account.credit)}`, color: 'text-blue-600 dark:text-blue-400' }] : []),
-    ...(account.bonus > 0 ? [{ label: 'Bonus', value: `$${formatCurrency(account.bonus)}`, color: 'text-emerald-600 dark:text-emerald-400' }] : []),
-    { label: 'Equity',         value: `$${formatCurrency(account.equity)}`,             color: '' },
-    { label: 'Realized P&L',   value: `$${formatCurrency(account.realizedPnL)}`,        color: account.realizedPnL   >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' },
+    { label: 'Balance', value: `$${formatCurrency(account.balance)}`, color: '' },
+    ...(account.credit > 0 ? [{ label: 'Credit', value: `$${formatCurrency(account.credit)}`, color: 'text-blue-600 dark:text-blue-400 font-semibold' }] : []),
+    ...(account.bonus > 0 ? [{ label: 'Bonus', value: `$${formatCurrency(account.bonus)}`, color: 'text-emerald-600 dark:text-emerald-400 font-semibold' }] : []),
+    { label: 'Equity', value: `$${formatCurrency(account.equity)}`, color: '' },
+    { label: 'Realized P&L', value: `$${formatCurrency(account.realizedPnL)}`, color: account.realizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' },
     { label: 'Unrealized P&L', value: `${account.unrealizedPnL >= 0 ? '+' : ''}$${formatCurrency(account.unrealizedPnL)}`, color: account.unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' },
-    { label: 'Margin',         value: `$${formatCurrency(account.margin)}`,              color: '' },
-    { label: 'Margin Lvl',     value: marginLevelValue,                                      color: marginLevelColor() },
-    { label: 'Available',      value: `$${formatCurrency(account.availableFunds)}`,      color: 'text-blue-600 dark:text-blue-400' },
+    { label: 'Margin', value: `$${formatCurrency(account.margin)}`, color: '' },
+    { label: 'Margin Lvl', value: marginLevelValue, color: marginLevelColor() },
+    { label: 'Available', value: `$${formatCurrency(account.availableFunds)}`, color: 'text-blue-600 dark:text-blue-400 font-semibold' },
   ];
 
   // Get subscription plan and styling
   const getSubscriptionBadge = () => {
     const plan = currentUser?.subscriptionPlan || 'Free';
-    
+
     const styles: Record<string, { bg: string; text: string }> = {
-      'Free':         { bg: 'bg-gray-100 dark:bg-gray-900',                                                                                    text: 'text-gray-600 dark:text-gray-400' },
-      'Basic':        { bg: 'bg-blue-100 dark:bg-blue-900',                                                                                    text: 'text-blue-600 dark:text-blue-400' },
-      'Starter':      { bg: 'bg-blue-100 dark:bg-blue-900',                                                                                    text: 'text-blue-600 dark:text-blue-400' },
-      'Pro':          { bg: 'bg-purple-100 dark:bg-purple-900',                                                                                text: 'text-purple-600 dark:text-purple-400' },
-      'Professional': { bg: 'bg-purple-100 dark:bg-purple-900',                                                                                text: 'text-purple-600 dark:text-purple-400' },
-      'Premium':      { bg: 'bg-gradient-to-r from-yellow-100 to-orange-100 dark:from-yellow-900 dark:to-orange-900',                          text: 'text-orange-600 dark:text-orange-400' },
-      'Enterprise':   { bg: 'bg-gradient-to-r from-yellow-100 to-orange-100 dark:from-yellow-900 dark:to-orange-900',                          text: 'text-orange-600 dark:text-orange-400' },
+      'Free': { bg: 'bg-gray-100 dark:bg-gray-900', text: 'text-gray-600 dark:text-gray-400' },
+      'Basic': { bg: 'bg-blue-100 dark:bg-blue-900', text: 'text-blue-600 dark:text-blue-400' },
+      'Starter': { bg: 'bg-blue-100 dark:bg-blue-900', text: 'text-blue-600 dark:text-blue-400' },
+      'Pro': { bg: 'bg-purple-100 dark:bg-purple-900', text: 'text-purple-600 dark:text-purple-400' },
+      'Professional': { bg: 'bg-purple-100 dark:bg-purple-900', text: 'text-purple-600 dark:text-purple-400' },
+      'Premium': { bg: 'bg-gradient-to-r from-yellow-100 to-orange-100 dark:from-yellow-900 dark:to-orange-900', text: 'text-orange-600 dark:text-orange-400' },
+      'Enterprise': { bg: 'bg-gradient-to-r from-yellow-100 to-orange-100 dark:from-yellow-900 dark:to-orange-900', text: 'text-orange-600 dark:text-orange-400' },
     };
 
     const style = styles[plan] || styles['Free'];
-    
+
     return (
       <div className={`mt-2 inline-block px-2 py-1 ${style.bg} ${style.text} text-xs rounded`}>
         {plan} Plan
@@ -179,8 +179,8 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
             {/* Account Balance Dropdown */}
             {showAccountBalance && (
               <>
-                <div 
-                  className="fixed inset-0 z-40" 
+                <div
+                  className="fixed inset-0 z-40"
                   onClick={() => setShowAccountBalance(false)}
                 />
                 <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-gray-200 dark:border-slate-700 z-50">
@@ -192,7 +192,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="p-4 space-y-1">
                     {/* Balance */}
                     <div className="flex items-center justify-between py-2">
@@ -230,11 +230,10 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                           <span className="text-gray-500">Realized: ${formatCurrency(account.realizedPnL)}</span>
                         </div>
                       </div>
-                      <span className={`font-semibold ${
-                        account.unrealizedPnL >= 0 
-                          ? 'text-green-600 dark:text-green-400' 
+                      <span className={`font-semibold ${account.unrealizedPnL >= 0
+                          ? 'text-green-600 dark:text-green-400'
                           : 'text-red-600 dark:text-red-400'
-                      }`}>
+                        }`}>
                         {account.unrealizedPnL >= 0 ? '+' : ''}${formatCurrency(account.unrealizedPnL)}
                       </span>
                     </div>
@@ -310,8 +309,8 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
             {/* Profile Dropdown */}
             {showProfile && (
               <>
-                <div 
-                  className="fixed inset-0 z-40" 
+                <div
+                  className="fixed inset-0 z-40"
                   onClick={() => setShowProfile(false)}
                 />
                 <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-gray-200 dark:border-slate-700 z-50">

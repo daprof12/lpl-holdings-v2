@@ -12,6 +12,8 @@ import type {
   Position,
   Notification,
   TradingSignal,
+  PendingOrder,
+  TradingAccount,
 } from '../../../types/database';
 
 // ============================================
@@ -46,6 +48,10 @@ export const UserService = {
       currency: userData.currency || 'USD',
       subscription_plan: userData.subscription_plan || 'free',
       subscription_status: userData.subscription_status || 'active',
+      enabled_deposit_methods: userData.enabledDepositMethods || [],
+      crypto_wallets: userData.cryptoWallets || {},
+      password_hash: userData.passwordHash,
+      is_admin: userData.isAdmin || false,
       created_at: getCurrentTimestamp(),
       updated_at: getCurrentTimestamp(),
     } as User;
@@ -97,10 +103,29 @@ export const UserService = {
   },
 
   async update(userId: string, updates: Partial<User>): Promise<User | null> {
+    // Map camelCase to snake_case for specific fields if needed
+    const dbUpdates: any = { ...updates };
+    if (updates.enabledDepositMethods) {
+      dbUpdates.enabled_deposit_methods = updates.enabledDepositMethods;
+      delete dbUpdates.enabledDepositMethods;
+    }
+    if (updates.cryptoWallets) {
+      dbUpdates.crypto_wallets = updates.cryptoWallets;
+      delete dbUpdates.cryptoWallets;
+    }
+    if (updates.passwordHash) {
+      dbUpdates.password_hash = updates.passwordHash;
+      delete dbUpdates.passwordHash;
+    }
+    if (updates.isAdmin !== undefined) {
+      dbUpdates.is_admin = updates.isAdmin;
+      delete dbUpdates.isAdmin;
+    }
+
     const { data, error } = await supabase
       .from('users')
       .update({
-        ...updates,
+        ...dbUpdates,
         updated_at: getCurrentTimestamp(),
       })
       .eq('id', userId)
@@ -109,6 +134,21 @@ export const UserService = {
 
     if (error) throw new Error(`Failed to update user: ${error.message}`);
     return data;
+  },
+
+  async updateBalance(userId: string, balance: number): Promise<void> {
+    const { error } = await supabase
+      .from('users')
+      .update({
+        balance,
+        updated_at: getCurrentTimestamp(),
+      })
+      .eq('id', userId);
+
+    if (error) throw new Error(`Failed to update balance: ${error.message}`);
+    
+    // Also update trading account if it exists
+    await TradingAccountService.update(userId, { balance });
   },
 
   async delete(userId: string): Promise<void> {
@@ -404,6 +444,10 @@ export const PositionService = {
       commission: positionData.commission || 0,
       swap: positionData.swap || 0,
       source: positionData.source || 'manual',
+      leverage: positionData.leverage || 1,
+      margin: positionData.margin || 0,
+      amount: positionData.amount || 0,
+      mode: positionData.mode || 'live',
       opened_at: getCurrentTimestamp(),
       created_at: getCurrentTimestamp(),
       updated_at: getCurrentTimestamp(),
@@ -529,5 +573,174 @@ export const SignalService = {
 
     if (error) throw new Error(`Failed to fetch signals: ${error.message}`);
     return data || [];
+  },
+};
+
+// ============================================
+// TRADING ACCOUNT SERVICE
+// ============================================
+export const TradingAccountService = {
+  async getByUserId(userId: string): Promise<TradingAccount | null> {
+    const { data, error } = await supabase
+      .from('trading_accounts')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw new Error(`Failed to fetch trading account: ${error.message}`);
+    }
+    return data;
+  },
+
+  async create(userId: string, accountData: Partial<TradingAccount>): Promise<TradingAccount> {
+    const account: any = {
+      user_id: userId,
+      balance: accountData.balance || 0,
+      equity: accountData.equity || accountData.balance || 0,
+      credit: accountData.credit || 0,
+      bonus: accountData.bonus || 0,
+      realized_pnl: accountData.realizedPnl || 0,
+      unrealized_pnl: accountData.unrealizedPnl || 0,
+      margin: accountData.margin || 0,
+      available_funds: accountData.availableFunds || accountData.balance || 0,
+      currency: accountData.currency || 'USD',
+      created_at: getCurrentTimestamp(),
+      updated_at: getCurrentTimestamp(),
+    };
+
+    const { data, error } = await supabase
+      .from('trading_accounts')
+      .insert(account)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create trading account: ${error.message}`);
+    return data;
+  },
+
+  async update(userId: string, updates: Partial<TradingAccount>): Promise<TradingAccount | null> {
+    const dbUpdates: any = {};
+    if (updates.balance !== undefined) dbUpdates.balance = updates.balance;
+    if (updates.equity !== undefined) dbUpdates.equity = updates.equity;
+    if (updates.credit !== undefined) dbUpdates.credit = updates.credit;
+    if (updates.bonus !== undefined) dbUpdates.bonus = updates.bonus;
+    if (updates.realizedPnl !== undefined) dbUpdates.realized_pnl = updates.realizedPnl;
+    if (updates.unrealizedPnl !== undefined) dbUpdates.unrealized_pnl = updates.unrealizedPnl;
+    if (updates.margin !== undefined) dbUpdates.margin = updates.margin;
+    if (updates.availableFunds !== undefined) dbUpdates.available_funds = updates.availableFunds;
+    if (updates.currency) dbUpdates.currency = updates.currency;
+
+    const { data, error } = await supabase
+      .from('trading_accounts')
+      .update({
+        ...dbUpdates,
+        updated_at: getCurrentTimestamp(),
+      })
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw new Error(`Failed to update trading account: ${error.message}`);
+    }
+    return data;
+  },
+
+  async getAll(): Promise<TradingAccount[]> {
+    const { data, error } = await supabase
+      .from('trading_accounts')
+      .select('*')
+      .order('updated_at', { ascending: false });
+
+    if (error) throw new Error(`Failed to fetch all trading accounts: ${error.message}`);
+    return data || [];
+  },
+};
+
+// ============================================
+// PENDING ORDER SERVICE
+// ============================================
+export const PendingOrderService = {
+  async create(orderData: Partial<PendingOrder>): Promise<PendingOrder> {
+    const order: any = {
+      id: generateId('ord'),
+      user_id: orderData.userId!,
+      symbol: orderData.symbol!,
+      side: orderData.side!,
+      type: orderData.type!,
+      price: orderData.price!,
+      units: orderData.units!,
+      leverage: orderData.leverage || 1,
+      margin: orderData.margin || 0,
+      stop_loss: orderData.stopLoss,
+      take_profit: orderData.takeProfit,
+      status: 'pending',
+      mode: orderData.mode || 'live',
+      expires_at: orderData.expiresAt,
+      created_at: getCurrentTimestamp(),
+      updated_at: getCurrentTimestamp(),
+    };
+
+    const { data, error } = await supabase
+      .from('pending_orders')
+      .insert(order)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create pending order: ${error.message}`);
+    return data;
+  },
+
+  async getByUserId(userId: string): Promise<PendingOrder[]> {
+    const { data, error } = await supabase
+      .from('pending_orders')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(`Failed to fetch pending orders: ${error.message}`);
+    return data || [];
+  },
+
+  async getAll(): Promise<PendingOrder[]> {
+    const { data, error } = await supabase
+      .from('pending_orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(`Failed to fetch all pending orders: ${error.message}`);
+    return data || [];
+  },
+
+  async update(orderId: string, updates: Partial<PendingOrder>): Promise<PendingOrder | null> {
+    const dbUpdates: any = {};
+    if (updates.price !== undefined) dbUpdates.price = updates.price;
+    if (updates.units !== undefined) dbUpdates.units = updates.units;
+    if (updates.stopLoss !== undefined) dbUpdates.stop_loss = updates.stopLoss;
+    if (updates.takeProfit !== undefined) dbUpdates.take_profit = updates.takeProfit;
+    if (updates.status) dbUpdates.status = updates.status;
+
+    const { data, error } = await supabase
+      .from('pending_orders')
+      .update({
+        ...dbUpdates,
+        updated_at: getCurrentTimestamp(),
+      })
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to update pending order: ${error.message}`);
+    return data;
+  },
+
+  async delete(orderId: string): Promise<void> {
+    const { error } = await supabase
+      .from('pending_orders')
+      .delete()
+      .eq('id', orderId);
+
+    if (error) throw new Error(`Failed to delete pending order: ${error.message}`);
   },
 };

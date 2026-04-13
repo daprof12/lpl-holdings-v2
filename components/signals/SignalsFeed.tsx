@@ -28,9 +28,9 @@ export default function SignalsFeed() {
     // Real-time subscription to KV store for signals
     const channel = supabase
       .channel('public:kv_store_signals')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
         table: 'kv_store_5d4be467',
         filter: `key=eq.${STORAGE_KEY}`
       }, (payload: any) => {
@@ -54,7 +54,7 @@ export default function SignalsFeed() {
     if (cached) {
       try {
         setSignals(JSON.parse(cached));
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // 2. DB fetch
@@ -93,12 +93,12 @@ export default function SignalsFeed() {
 📈 Direction: ${signal.type}
 💰 Entry: $${formatCurrency(signal.entryPrice)}
 🛑 Stop Loss: $${formatCurrency(signal.stopLoss)}
-🎯 Take Profits: ${signal.takeProfit.map((tp: number, i: number) => `TP${i+1}: $${formatCurrency(tp)}`).join(', ')}
+🎯 Take Profits: ${signal.takeProfit.map((tp: number, i: number) => `TP${i + 1}: $${formatCurrency(tp)}`).join(', ')}
 ⏰ Timeframe: ${signal.timeframe}
 🎓 Provider: ${signal.provider} (${signal.providerRating}★)
 ✅ Confidence: ${signal.confidence}
     `.trim();
-    
+
     // Use fallback method for clipboard that works in all environments
     const textArea = document.createElement('textarea');
     textArea.value = signalText;
@@ -108,14 +108,14 @@ export default function SignalsFeed() {
     document.body.appendChild(textArea);
     textArea.focus();
     textArea.select();
-    
+
     try {
       document.execCommand('copy');
       toast.success('Signal copied to clipboard!');
     } catch (err) {
       toast.error('Failed to copy signal');
     }
-    
+
     document.body.removeChild(textArea);
   };
 
@@ -135,31 +135,28 @@ export default function SignalsFeed() {
       <div className="flex gap-3">
         <button
           onClick={() => setFilter('all')}
-          className={`px-4 py-2 rounded-lg transition-colors ${
-            filter === 'all'
+          className={`px-4 py-2 rounded-lg transition-colors ${filter === 'all'
               ? 'bg-blue-600 text-white'
               : 'bg-white dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700'
-          }`}
+            }`}
         >
           All Signals
         </button>
         <button
           onClick={() => setFilter('active')}
-          className={`px-4 py-2 rounded-lg transition-colors ${
-            filter === 'active'
+          className={`px-4 py-2 rounded-lg transition-colors ${filter === 'active'
               ? 'bg-blue-600 text-white'
               : 'bg-white dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700'
-          }`}
+            }`}
         >
           Active
         </button>
         <button
           onClick={() => setFilter('closed')}
-          className={`px-4 py-2 rounded-lg transition-colors ${
-            filter === 'closed'
+          className={`px-4 py-2 rounded-lg transition-colors ${filter === 'closed'
               ? 'bg-blue-600 text-white'
               : 'bg-white dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700'
-          }`}
+            }`}
         >
           Closed
         </button>
@@ -174,20 +171,18 @@ export default function SignalsFeed() {
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
                   <h3 className="text-xl font-bold">{signal.asset}</h3>
-                  <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                    signal.type === 'Long'
+                  <span className={`px-3 py-1 rounded-full text-sm font-semibold ${signal.type === 'Long'
                       ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
                       : 'bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400'
-                  }`}>
+                    }`}>
                     {signal.type === 'Long' && <TrendingUp className="w-4 h-4 inline mr-1" />}
                     {signal.type === 'Short' && <TrendingDown className="w-4 h-4 inline mr-1" />}
                     {signal.type}
                   </span>
-                  <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                    signal.status === 'active'
+                  <span className={`px-2 py-1 rounded text-xs font-semibold ${signal.status === 'active'
                       ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
                       : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-                  }`}>
+                    }`}>
                     {signal.status}
                   </span>
                   <span className={`px-2 py-1 rounded text-xs font-semibold ${getConfidenceColor(signal.confidence)}`}>
@@ -216,13 +211,12 @@ export default function SignalsFeed() {
               </div>
 
               <div className="text-right">
-                <div className={`text-2xl font-bold ${
-                  signal.pnl > 0
+                <div className={`text-2xl font-bold ${signal.pnl > 0
                     ? 'text-green-600 dark:text-green-400'
                     : signal.pnl < 0
-                    ? 'text-red-600 dark:text-red-400'
-                    : 'text-gray-600 dark:text-gray-400'
-                }`}>
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-gray-600 dark:text-gray-400'
+                  }`}>
                   {signal.pnl > 0 ? '+' : ''}${signal.pnl.toFixed(2)}
                 </div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">
@@ -295,11 +289,10 @@ export default function SignalsFeed() {
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-slate-700">
               <div className="flex items-center gap-3">
                 <h2 className="text-2xl font-bold">{selectedSignal.asset}</h2>
-                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                  selectedSignal.type === 'Long'
+                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${selectedSignal.type === 'Long'
                     ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
                     : 'bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400'
-                }`}>
+                  }`}>
                   {selectedSignal.type === 'Long' && <TrendingUp className="w-4 h-4 inline mr-1" />}
                   {selectedSignal.type === 'Short' && <TrendingDown className="w-4 h-4 inline mr-1" />}
                   {selectedSignal.type}
@@ -370,21 +363,19 @@ export default function SignalsFeed() {
               </div>
 
               {/* Current P&L */}
-              <div className={`rounded-lg p-4 border ${
-                selectedSignal.pnl > 0 
+              <div className={`rounded-lg p-4 border ${selectedSignal.pnl > 0
                   ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
                   : selectedSignal.pnl < 0
-                  ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                  : 'bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700'
-              }`}>
+                    ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                    : 'bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700'
+                }`}>
                 <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Current P&L</div>
-                <div className={`text-2xl font-bold ${
-                  selectedSignal.pnl > 0
+                <div className={`text-2xl font-bold ${selectedSignal.pnl > 0
                     ? 'text-green-600 dark:text-green-400'
                     : selectedSignal.pnl < 0
-                    ? 'text-red-600 dark:text-red-400'
-                    : 'text-gray-600 dark:text-gray-400'
-                }`}>
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-gray-600 dark:text-gray-400'
+                  }`}>
                   {selectedSignal.pnl > 0 ? '+' : ''}${selectedSignal.pnl.toFixed(2)}
                 </div>
                 <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">

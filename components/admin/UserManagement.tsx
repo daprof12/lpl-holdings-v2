@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { formatCurrency } from '../../utils/formatNumber';
-import { setKV } from '../../utils/supabase/client';
+import { api } from '../../utils/supabase/api';
 
 // ── Subscription plans – single source of truth ───────────────────────────────
 const SUBSCRIPTION_PLANS = [
-  { value: 'Basic',    label: 'Basic',    minDeposit: 250,     badge: 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300' },
-  { value: 'Standard', label: 'Standard', minDeposit: 5_000,   badge: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' },
-  { value: 'Silver',   label: 'Silver',   minDeposit: 25_000,  badge: 'bg-slate-200 dark:bg-slate-600/50 text-slate-700 dark:text-slate-300' },
-  { value: 'Gold',     label: 'Gold',     minDeposit: 50_000,  badge: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' },
+  { value: 'Basic', label: 'Basic', minDeposit: 250, badge: 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300' },
+  { value: 'Standard', label: 'Standard', minDeposit: 5_000, badge: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' },
+  { value: 'Silver', label: 'Silver', minDeposit: 25_000, badge: 'bg-slate-200 dark:bg-slate-600/50 text-slate-700 dark:text-slate-300' },
+  { value: 'Gold', label: 'Gold', minDeposit: 50_000, badge: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' },
   { value: 'Platinum', label: 'Platinum', minDeposit: 100_000, badge: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' },
-  { value: 'VIP',      label: 'VIP',      minDeposit: 250_000, badge: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50' },
+  { value: 'VIP', label: 'VIP', minDeposit: 250_000, badge: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50' },
 ];
 
 function planBadge(plan?: string) {
@@ -17,18 +17,23 @@ function planBadge(plan?: string) {
     ?? 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400';
 }
 import { Search, Plus, Edit, Trash2, Eye, EyeOff, DollarSign, TrendingUp, Lock, Unlock, CheckCircle, XCircle, MoreVertical, Gift, LogIn, CreditCard, UserPlus, FileText, Shield, Phone, Mail, Clock, X, MinusSquare } from 'lucide-react';
+import { supabase } from '../../utils/supabase/client';
 
 // ── KYC doc helpers ──────────────────────────────────────────────────────────
 interface KycDoc { name: string; type: string; size: number; uploadedAt: string; dataUrl: string; }
 interface KycDocs { identity?: KycDoc; proofOfAddress?: KycDoc; }
-function getKycDocs(userId: string): KycDocs {
-  try { const r = localStorage.getItem(`kyc_docs_${userId}`); return r ? JSON.parse(r) : {}; }
+async function getKycDocs(userId: string): Promise<KycDocs> {
+  try {
+    // In relational model, we'd fetch this from kyc_submissions table
+    const kyc = await api.kyc.getByUserId(userId);
+    return kyc || {};
+  }
   catch { return {}; }
 }
 function KycStatusBadge({ status }: { status: string }) {
   if (status === 'verified') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs"><CheckCircle className="w-3 h-3" />Verified</span>;
   if (status === 'rejected') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs"><XCircle className="w-3 h-3" />Rejected</span>;
-  if (status === 'pending')  return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 text-xs"><Clock className="w-3 h-3" />Pending</span>;
+  if (status === 'pending') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 text-xs"><Clock className="w-3 h-3" />Pending</span>;
   return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-xs"><XCircle className="w-3 h-3" />Not Verified</span>;
 }
 import { Button } from '../ui/button';
@@ -46,7 +51,7 @@ import {
 import UserPaymentMethods from './UserPaymentMethods';
 
 export default function UserManagement() {
-  const { users, updateProfile, deleteUser, userActivities, addFundsToUser, addFundsToAccount, addWalletTransaction, addNotification, signup } = useAuth();
+  const { users, updateProfile, deleteUser, userActivities, addFundsToUser, addFundsToAccount, addWalletTransaction, addNotification, signup, deductFromAccount, logActivity, refreshData } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [showDialog, setShowDialog] = useState(false);
   const [dialogMode, setDialogMode] = useState<'edit' | 'view'>('view');
@@ -97,8 +102,8 @@ export default function UserManagement() {
 
   const handleAddUser = async () => {
     if (!addUserForm.firstName.trim()) { toast.error('First name is required'); return; }
-    if (!addUserForm.lastName.trim())  { toast.error('Last name is required');  return; }
-    if (!addUserForm.email.trim())     { toast.error('Email is required');       return; }
+    if (!addUserForm.lastName.trim()) { toast.error('Last name is required'); return; }
+    if (!addUserForm.email.trim()) { toast.error('Email is required'); return; }
     if (!addUserForm.password || addUserForm.password.length < 8) {
       toast.error('Password must be at least 8 characters'); return;
     }
@@ -108,7 +113,7 @@ export default function UserManagement() {
 
     setAddUserLoading(true);
     try {
-      const success = await signup({
+      const res = await signup({
         email: addUserForm.email.trim().toLowerCase(),
         password: addUserForm.password,
         firstName: addUserForm.firstName.trim(),
@@ -117,59 +122,67 @@ export default function UserManagement() {
         country: addUserForm.country.trim() || undefined,
       });
 
-      if (success) {
+      // signup now returns { user: newUser } or false
+      if (res && res.user) {
+        const newUser = res.user;
         // Apply extra admin-set fields to the newly created user
-        const storedUsers: any[] = JSON.parse(localStorage.getItem('gross_users') || '[]');
-        const newUser = storedUsers.find((u: any) => u.email === addUserForm.email.trim().toLowerCase());
-        if (newUser) {
-          const updates: any = {
-            accountType: addUserForm.accountType,
-            kycStatus: addUserForm.kycStatus,
-            isVerified: addUserForm.isVerified,
-            subscriptionPlan: addUserForm.subscription || undefined,
-          };
-          if (addUserForm.initialBalance && parseFloat(addUserForm.initialBalance) > 0) {
-            const initBal = parseFloat(addUserForm.initialBalance);
-            updates.balance = initBal;
-            updates.liveBalance = initBal;
-            // Also create the TradingContext trading account entry so WalletPage sees the balance
-            const tradingAccount = {
-              balance: initBal,
-              equity: initBal,
-              realizedPnL: 0,
-              unrealizedPnL: 0,
-              margin: 0,
-              availableFunds: initBal,
-              bonus: 0,
-            };
-            localStorage.setItem(`gross_live_account_${newUser.id}`, JSON.stringify(tradingAccount));
-            localStorage.setItem('gross_live_account', JSON.stringify(tradingAccount));
-          }
-          // Set initial portfolio balance if provided
-          if (addUserForm.initialPortfolioBalance && parseFloat(addUserForm.initialPortfolioBalance) > 0) {
-            const balances = { ipo: 0, ecn: 0, portfolio: parseFloat(addUserForm.initialPortfolioBalance) };
-            localStorage.setItem(`investment_balances_${newUser.id}`, JSON.stringify(balances));
-          }
-          updateProfile(newUser.id, updates);
+        const updates: any = {
+          account_type: addUserForm.accountType,
+          kyc_status: addUserForm.kycStatus === 'verified' ? 'approved' :
+            addUserForm.kycStatus === 'rejected' ? 'rejected' : 'pending',
+          email_verified: addUserForm.isVerified,
+          subscription_plan: addUserForm.subscription || undefined,
+        };
+
+        await api.users.update(newUser.id, updates);
+
+        // 1. Live Balance
+        if (addUserForm.initialBalance && parseFloat(addUserForm.initialBalance) > 0) {
+          const initBal = parseFloat(addUserForm.initialBalance);
+          await api.users.updateBalance(newUser.id, initBal);
+          await api.tradingAccounts.update(newUser.id, { balance: initBal, available_funds: initBal });
         }
+
+        // 2. Bonus & Credit
+        const bonusVal = parseFloat((addUserForm as any).bonus || 0);
+        const creditVal = parseFloat((addUserForm as any).credit || 0);
+        if (bonusVal > 0 || creditVal > 0) {
+          await api.tradingAccounts.update(newUser.id, {
+            bonus: bonusVal,
+            credit: creditVal
+          });
+        }
+
+        // 3. Investment Wallets (Portfolio, IPO, ECN)
+        const iwUpdates: any = {};
+        if (addUserForm.initialPortfolioBalance) iwUpdates.portfolio = parseFloat(addUserForm.initialPortfolioBalance);
+        if ((addUserForm as any).ipoBalance) iwUpdates.ipo = parseFloat((addUserForm as any).ipoBalance);
+        if ((addUserForm as any).ecnBalance) iwUpdates.ecn = parseFloat((addUserForm as any).ecnBalance);
+
+        if (Object.keys(iwUpdates).length > 0) {
+          await api.investmentWallets.update(newUser.id, iwUpdates);
+        }
+
+        // 4. Force one final refresh to show all updated balances
+        await refreshData();
+
         toast.success(`User ${addUserForm.firstName} ${addUserForm.lastName} created successfully`);
         setShowAddUserDialog(false);
         resetAddUserForm();
       } else {
-        toast.error('Email already exists or could not create user');
+        toast.error('Could not create user. Email may already exist.');
       }
-    } catch {
-      toast.error('Failed to create user');
+    } catch (err: any) {
+      console.error('Add User Error:', err);
+      toast.error(err.message || 'Failed to create user');
     } finally {
       setAddUserLoading(false);
     }
   };
 
   const [addFundData, setAddFundData] = useState({
-    type: 'balance' as 'credit' | 'bonus' | 'balance',
     amount: '',
-    accountType: 'live' as 'live',
-    balanceType: 'live' as 'live' | 'ipo' | 'ecn' | 'portfolio',
+    balanceType: 'live' as 'live' | 'ipo' | 'ecn' | 'portfolio' | 'credit' | 'bonus',
   });
 
   const [formData, setFormData] = useState({
@@ -186,11 +199,13 @@ export default function UserManagement() {
     accountType: 'standard' as 'standard' | 'premium' | 'vip',
     kycStatus: 'pending' as 'pending' | 'verified' | 'rejected',
     isVerified: false,
-    subscriptionPlan: '' as string,   // '' = no plan
+    subscriptionPlan: '' as string,
+    bonus: '0',
+    credit: '0'
   });
 
   const selectedUser = users.find(u => u.id === selectedUserId);
-  
+
   // Filter out admin users and apply search query
   const filteredUsers = users
     .filter(user => user.role !== 'admin') // Exclude admin users
@@ -200,19 +215,15 @@ export default function UserManagement() {
       user.email?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-  const handleEdit = (userId: string) => {
+  const handleEdit = async (userId: string) => {
     const user = users.find(u => u.id === userId);
     if (user) {
-      // Get the password from localStorage
-      const storedPasswords = JSON.parse(localStorage.getItem('gross_passwords') || '{}');
-      const userPassword = storedPasswords[user.email] || '';
-      
       setSelectedUserId(userId);
       setFormData({
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
-        password: userPassword,
+        password: '', // Password is not retrieved anymore for security
         phone: user.phone || '',
         country: user.country || '',
         balance: (user.liveBalance ?? user.balance ?? 0).toString(),
@@ -222,7 +233,9 @@ export default function UserManagement() {
         accountType: user.accountType,
         kycStatus: user.kycStatus,
         isVerified: user.isVerified,
-        subscriptionPlan: user.subscriptionPlan || '',   // read correct field
+        subscriptionPlan: user.subscriptionPlan || '',
+        bonus: (user.bonus || 0).toString(),
+        credit: (user.credit || 0).toString(),
       });
       setDialogMode('edit');
       setShowDialog(true);
@@ -235,7 +248,7 @@ export default function UserManagement() {
     setShowDialog(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!selectedUserId) return;
 
     const user = users.find(u => u.id === selectedUserId);
@@ -254,65 +267,51 @@ export default function UserManagement() {
       ecn: parseFloat(formData.ecnBalance) || 0,
     };
 
-    updateProfile(selectedUserId, {
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-      phone: formData.phone,
-      country: formData.country,
-      liveBalance: parseFloat(formData.balance) || 0,   // canonical — reflects in table & add-fund dialog
-      balance: parseFloat(formData.balance) || 0,       // keep deprecated field in sync
-      accountType: formData.accountType,
-      kycStatus: formData.kycStatus,
-      isVerified: formData.isVerified,
-      subscriptionPlan: formData.subscriptionPlan || undefined,
-      investmentBalances: newInvestmentBalances
-    });
-
-    // Update the separate storage key that many parts of the app rely on
-    const balanceKey = `investment_balances_${selectedUserId}`;
-    localStorage.setItem(balanceKey, JSON.stringify(newInvestmentBalances));
-    setKV(balanceKey, newInvestmentBalances).catch(console.error);
-
-    // ── Update Trading Account Mirror ────────────────────────────────────────
-    // Many trading views read from gross_live_account_{userId}
-    const tradingKey = `gross_live_account_${selectedUserId}`;
-    const storedTrading = localStorage.getItem(tradingKey);
-    const tradingAccount = storedTrading 
-      ? JSON.parse(storedTrading) 
-      : { balance: 0, equity: 0, unrealizedPnL: 0, realizedPnL: 0, margin: 0, availableFunds: 0, bonus: 0, credit: 0 };
-    
-    const newBalance = parseFloat(formData.balance) || 0;
-    tradingAccount.balance = newBalance;
-    // Recalculate derived equity/available funds
-    tradingAccount.equity = newBalance + (tradingAccount.bonus || 0) + (tradingAccount.credit || 0) + (tradingAccount.unrealizedPnL || 0);
-    tradingAccount.availableFunds = tradingAccount.equity - (tradingAccount.margin || 0);
-    
-    localStorage.setItem(tradingKey, JSON.stringify(tradingAccount));
-    localStorage.setItem('gross_live_account', JSON.stringify(tradingAccount));
-    setKV(tradingKey, tradingAccount).catch(console.error);
-
-    window.dispatchEvent(new Event('storage'));
-
-    // Update password if changed
-    if (formData.password && formData.password.trim() !== '') {
-      const storedPasswords = JSON.parse(localStorage.getItem('gross_passwords') || '{}');
-      storedPasswords[user.email] = formData.password;
-      localStorage.setItem('gross_passwords', JSON.stringify(storedPasswords));
-      setKV('gross_passwords', storedPasswords).catch(console.error);
-    }
-
-    // Notify user when subscription plan changes
-    if (formData.subscriptionPlan && formData.subscriptionPlan !== prevPlan) {
-      addNotification(selectedUserId, {
-        type: 'success',
-        title: 'Subscription Updated',
-        message: `Your subscription plan has been updated to ${formData.subscriptionPlan}.`,
-        channels: ['in-app'],
+    try {
+      await updateProfile(selectedUserId, {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phone: formData.phone,
+        country: formData.country,
+        liveBalance: parseFloat(formData.balance) || 0,
+        balance: parseFloat(formData.balance) || 0,
+        accountType: formData.accountType,
+        kycStatus: formData.kycStatus,
+        isVerified: formData.isVerified,
+        subscriptionPlan: formData.subscriptionPlan || undefined,
+        investmentBalances: newInvestmentBalances,
+        bonus: parseFloat(formData.bonus) || 0,
+        credit: parseFloat(formData.credit) || 0
       });
-    }
 
-    toast.success('User updated successfully');
-    setShowDialog(false);
+      // Update investment balances in DB
+      await api.investmentWallets.update(selectedUserId, newInvestmentBalances);
+
+      // Update Trading Account in DB
+      await api.tradingAccounts.update(selectedUserId, {
+        balance: parseFloat(formData.balance) || 0,
+        bonus: parseFloat(formData.bonus) || 0,
+        credit: parseFloat(formData.credit) || 0
+      });
+
+      // Update password if changed via special dialog or if needed
+      // (Password updates should ideally go through a dedicated reset password flow)
+
+      // Notify user when subscription plan changes
+      if (formData.subscriptionPlan && formData.subscriptionPlan !== prevPlan) {
+        await addNotification(selectedUserId, {
+          type: 'success',
+          title: 'Subscription Updated',
+          message: `Your subscription plan has been updated to ${formData.subscriptionPlan}.`,
+        });
+      }
+
+      toast.success('User updated successfully');
+      setShowDialog(false);
+    } catch (err) {
+      console.error('Failed to save user:', err);
+      toast.error('Failed to save user updates');
+    }
   };
 
   const handleDelete = (userId: string) => {
@@ -326,7 +325,7 @@ export default function UserManagement() {
     return userActivities.filter(activity => activity.userId === userId).slice(0, 10);
   };
 
-  const handleAddFund = () => {
+  const handleAddFund = async () => {
     if (!selectedUserId || !selectedUser) return;
 
     const amount = parseFloat(addFundData.amount) || 0;
@@ -335,163 +334,47 @@ export default function UserManagement() {
       return;
     }
 
-    let balanceLabel = '';
-    let txnId = '';
-
-    // Handle different balance types
-    if (addFundData.balanceType === 'live') {
-      // Add funds to live balance
-      addFundsToAccount(selectedUserId, amount, 'live', addFundData.type as 'credit' | 'bonus');
-      balanceLabel = 'Live Balance';
-
-      // Dispatch storage event so the user's tab reacts immediately
-      window.dispatchEvent(new Event('storage'));
-
-      // Create transaction record (AuthContext – visible on admin side)
-      addWalletTransaction({
-        userId: selectedUserId,
-        type: 'deposit',
-        method: addFundData.type === 'credit' ? 'Credit' : addFundData.type === 'bonus' ? 'Bonus' : 'Deposit',
-        amount: amount,
-        currency: 'USD',
-        accountType: 'live',
-        status: 'completed',
-        details: { fundType: addFundData.type },
-      });
-
-      // Also write to TransactionProvider's store; hidden from user until admin toggles on
-      txnId = _syncTransactionToUserStore(selectedUserId, amount, addFundData.type as 'credit' | 'bonus', 'live');
-    } else if (addFundData.balanceType === 'balance') {
-      // Add funds directly to wallet balance
-      const users = JSON.parse(localStorage.getItem('gross_users') || '[]');
-      const idx = users.findIndex((u: any) => u.id === selectedUserId);
-      if (idx !== -1) {
-        users[idx].balance = (users[idx].balance || 0) + amount;
-        users[idx].liveBalance = (users[idx].liveBalance || 0) + amount;
-        localStorage.setItem('gross_users', JSON.stringify(users));
-      }
-      balanceLabel = 'Wallet Balance';
-      window.dispatchEvent(new Event('storage'));
-      window.dispatchEvent(new CustomEvent('usersUpdated'));
-
-      addWalletTransaction({
-        userId: selectedUserId,
-        type: 'deposit',
-        method: addFundData.type === 'credit' ? 'Credit' : addFundData.type === 'bonus' ? 'Bonus' : 'Deposit',
-        amount: amount,
-        currency: 'USD',
-        accountType: 'live',
-        status: 'completed',
-        details: { fundType: addFundData.type, destination: 'wallet' },
-      });
-
-      txnId = _syncTransactionToUserStore(selectedUserId, amount, addFundData.type as 'credit' | 'bonus', 'wallet');
-    } else if (addFundData.balanceType === 'ipo' || addFundData.balanceType === 'ecn' || addFundData.balanceType === 'portfolio') {
-      // Handle IPO, ECN, and Portfolio balances
-      const balances = localStorage.getItem(`investment_balances_${selectedUserId}`);
-      const currentBalances = balances ? JSON.parse(balances) : { ipo: 0, ecn: 0, portfolio: 0 };
-
-      if (addFundData.balanceType === 'ipo') {
-        currentBalances.ipo = (currentBalances.ipo || 0) + amount;
-        balanceLabel = 'IPO Balance';
-      } else if (addFundData.balanceType === 'ecn') {
-        currentBalances.ecn = (currentBalances.ecn || 0) + amount;
-        balanceLabel = 'ECN Balance';
-      } else {
-        currentBalances.portfolio = (currentBalances.portfolio || 0) + amount;
-        balanceLabel = 'Portfolio Balance';
-      }
-
-      localStorage.setItem(`investment_balances_${selectedUserId}`, JSON.stringify(currentBalances));
-      window.dispatchEvent(new Event('storage'));
-
-      addWalletTransaction({
-        userId: selectedUserId,
-        type: 'deposit',
-        method: `${addFundData.type === 'credit' ? 'Credit' : addFundData.type === 'bonus' ? 'Bonus' : 'Deposit'} (${addFundData.balanceType.toUpperCase()})`,
-        amount: amount,
-        currency: 'USD',
-        accountType: 'live',
-        status: 'completed',
-        details: { fundType: addFundData.type, balanceType: addFundData.balanceType },
-      });
-
-      txnId = _syncTransactionToUserStore(selectedUserId, amount, addFundData.type as 'credit' | 'bonus', addFundData.balanceType);
-    }
-
-    // Create notification for user; hidden until admin enables visibility
-    addNotification(selectedUserId, {
-      type: 'success',
-      title: 'Funds Added',
-      message: `$${formatCurrency(amount)} ${addFundData.type} has been added to your ${balanceLabel}.`,
-      channels: ['in-app'],
-      relatedId: txnId,
-    });
-
-    toast.success(`Funds added to ${balanceLabel} successfully`);
-    setShowAddFundDialog(false);
-    setAddFundData({ type: 'credit', amount: '', accountType: 'live', balanceType: 'live' as 'live' | 'balance' | 'ipo' | 'ecn' | 'portfolio' });
-  };
-
-  /**
-   * Bridge admin fund additions into TransactionProvider's `transactions`
-   * localStorage key so the user sees them in their Transaction History.
-   */
-  const _syncTransactionToUserStore = (
-    userId: string,
-    amount: number,
-    fundType: 'credit' | 'bonus',
-    balanceType: string
-  ): string => {
     try {
-      const existing = JSON.parse(localStorage.getItem('transactions') || '[]');
-      const txn = {
-        id: `txn_admin_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        userId,
-        type: 'deposit',
-        method: 'crypto',
-        amount,
-        currency: 'USD',
-        usdEquivalent: amount,
-        status: 'completed',
-        timestamp: Date.now(),
-        completedAt: Date.now(),
-        adminNotes: `${fundType.charAt(0).toUpperCase() + fundType.slice(1)} → ${balanceType.toUpperCase()}`,
-        isVisibleToUser: false,
-      };
-      existing.unshift(txn);
-      localStorage.setItem('transactions', JSON.stringify(existing));
-      localStorage.setItem('gross_transactions', JSON.stringify(existing));
-      window.dispatchEvent(new CustomEvent('transactionsUpdated'));
-      window.dispatchEvent(new Event('storage'));
-      return txn.id;
-    } catch { return `tx_${Date.now()}`; }
+      const targetType = addFundData.balanceType;
+      await addFundsToAccount(selectedUserId, amount, targetType);
+
+      const balanceLabel = targetType === 'live'
+        ? addFundData.type.charAt(0).toUpperCase() + addFundData.type.slice(1)
+        : (targetType.toUpperCase() + ' Balance');
+
+      await addNotification(selectedUserId, {
+        type: 'success',
+        title: 'Funds Added',
+        message: `$${formatCurrency(amount)} has been added to your ${balanceLabel}.`,
+      });
+
+      toast.success(`$${formatCurrency(amount)} added to ${balanceLabel} successfully`);
+      setShowAddFundDialog(false);
+      setAddFundData({ amount: '', balanceType: 'live' });
+      await refreshData(); // Force state sync
+    } catch (err) {
+      console.error('Failed to add funds:', err);
+      toast.error('Failed to add funds');
+    }
   };
 
   // Helper to get current balance for display in Deduct modal
   const getCurrentDeductBalance = () => {
     if (!selectedUserId || !selectedUser) return 0;
-    
+
     if (deductFundData.balanceType === 'ipo' || deductFundData.balanceType === 'ecn' || deductFundData.balanceType === 'portfolio') {
-      const investmentBalances = localStorage.getItem(`investment_balances_${selectedUserId}`);
-      const balances = investmentBalances ? JSON.parse(investmentBalances) : { ipo: 0, ecn: 0, portfolio: 0 };
-      const type = deductFundData.balanceType as 'ipo'|'ecn'|'portfolio';
-      return balances[type] || 0;
+      const type = deductFundData.balanceType as 'ipo' | 'ecn' | 'portfolio';
+      return selectedUser.investmentBalances?.[type] || 0;
     }
-    
-    // For live, credit, bonus, we need the trading account
-    const tradingAccountKey = `gross_live_account_${selectedUserId}`;
-    const stored = localStorage.getItem(tradingAccountKey);
-    const tradingAccount = stored ? JSON.parse(stored) : { balance: 0, bonus: 0, credit: 0 };
-    
-    if (deductFundData.balanceType === 'live') return tradingAccount.balance || selectedUser.liveBalance || 0;
-    if (deductFundData.balanceType === 'bonus') return tradingAccount.bonus || 0;
-    if (deductFundData.balanceType === 'credit') return tradingAccount.credit || 0;
-    
+
+    if (deductFundData.balanceType === 'live') return selectedUser.liveBalance || selectedUser.balance || 0;
+    if (deductFundData.balanceType === 'bonus') return selectedUser.bonus || 0;
+    if (deductFundData.balanceType === 'credit') return selectedUser.credit || 0;
+
     return 0;
   };
 
-  const handleDeductFund = () => {
+  const handleDeductFund = async () => {
     if (!selectedUserId || !selectedUser) return;
 
     const amount = parseFloat(deductFundData.amount) || 0;
@@ -500,44 +383,59 @@ export default function UserManagement() {
       return;
     }
 
-    // Deduct from account using central AuthContext method
-    const success = deductFromAccount(selectedUserId, amount, deductFundData.balanceType);
-    
-    if (success) {
-      // Log activity (No notification as requested)
+    try {
+      const targetType = deductFundData.balanceType;
+      // Map 'live' to current type (balance/credit/bonus) for deduction
+      const fundType = targetType === 'live' ? (deductFundData.type as any || 'live') : targetType;
+
+      const success = await deductFromAccount(selectedUserId, amount, fundType);
+
+      if (!success) {
+        toast.error('Insufficient funds for deduction');
+        return;
+      }
+
       logActivity({
         type: 'withdraw',
         action: `Funds deducted from ${deductFundData.balanceType}`,
         details: { amount, balanceType: deductFundData.balanceType }
       });
 
-      // Synchronize across tabs
-      window.dispatchEvent(new Event('storage'));
-      
       toast.success(`Successfully deducted $${formatCurrency(amount)} from ${deductFundData.balanceType}`);
       setShowDeductFundDialog(false);
       setDeductFundData({ amount: '', balanceType: 'live' });
-    } else {
-      toast.error(`Insufficient funds in ${deductFundData.balanceType} account`);
+      await refreshData(); // Force state sync
+    } catch (err) {
+      console.error('Failed to deduct funds:', err);
+      toast.error('Failed to deduct funds');
     }
   };
 
   const handleLoginAsUser = (userId: string, userName: string) => {
-    // Store the user ID in session storage for the new window
+    // Find the full user profile object
+    const targetUser = users.find(u => u.id === userId);
+    if (!targetUser) {
+      toast.error('User not found');
+      return;
+    }
+
+    // Store the FULL user object so the new tab can hydrate instantly
+    // without waiting for an async DB fetch (which would lose the race
+    // against ProtectedRoute's redirect to /login).
     const loginData = {
       userId: userId,
       userName: userName,
       loginAsUser: true,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      userData: targetUser   // <-- full profile for immediate hydration
     };
-    
-    // Store in localStorage so the new window can access it
+
     localStorage.setItem('adminLoginAsUser', JSON.stringify(loginData));
-    
+
     // Open user dashboard in new window
     const userDashboardUrl = window.location.origin + '/dashboard';
     window.open(userDashboardUrl, '_blank');
-    
+
     toast.success(`Opened dashboard as ${userName}`);
     setOpenDropdownId(null);
   };
@@ -552,7 +450,7 @@ export default function UserManagement() {
     setShowPasswordResetDialog(true);
   };
 
-  const handlePasswordReset = () => {
+  const handlePasswordReset = async () => {
     if (!passwordResetUserId) return;
 
     const user = users.find(u => u.id === passwordResetUserId);
@@ -567,34 +465,32 @@ export default function UserManagement() {
       return;
     }
 
-    // Password strength validation
-    const hasUpperCase = /[A-Z]/.test(newPassword);
-    const hasLowerCase = /[a-z]/.test(newPassword);
-    const hasNumber = /[0-9]/.test(newPassword);
-    
-    if (!hasUpperCase || !hasLowerCase || !hasNumber) {
-      toast.error('Password must contain uppercase, lowercase, and numbers');
-      return;
+    try {
+      // Use Supabase Admin API via our server-side function to update password
+      // Since we are in the admin dashboard, we can assume the admin has privileges
+      const { data, error } = await supabase.rpc('admin_update_user_password', {
+        target_user_id: passwordResetUserId,
+        new_password: newPassword
+      });
+
+      if (error) throw error;
+
+      // Send notification to user
+      await addNotification(passwordResetUserId, {
+        type: 'warning',
+        title: 'Password Reset',
+        message: 'Your password has been reset by an administrator. Please use your new password to login.',
+        channels: ['in-app'],
+      });
+
+      toast.success('Password reset successfully');
+      setShowPasswordResetDialog(false);
+      setPasswordResetUserId(null);
+      setNewPassword('');
+    } catch (err) {
+      console.error('Password reset failed:', err);
+      toast.error('Failed to reset password');
     }
-
-    // Update password in localStorage
-    const storedPasswords = JSON.parse(localStorage.getItem('gross_passwords') || '{}');
-    storedPasswords[user.email] = newPassword;
-    localStorage.setItem('gross_passwords', JSON.stringify(storedPasswords));
-    setKV('gross_passwords', storedPasswords).catch(console.error);
-
-    // Send notification to user
-    addNotification(passwordResetUserId, {
-      type: 'warning',
-      title: 'Password Reset',
-      message: 'Your password has been reset. Please use your new password to login.',
-      channels: ['in-app'],
-    });
-
-    toast.success('Password reset successfully');
-    setShowPasswordResetDialog(false);
-    setPasswordResetUserId(null);
-    setNewPassword('');
   };
 
   return (
@@ -610,56 +506,60 @@ export default function UserManagement() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-7 gap-4 mb-6">
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl">
+      <div className="grid grid-cols-2 md:flex md:flex-row md:overflow-x-auto gap-4 mb-6 pb-2 scrollbar-thin scrollbar-thumb-gray-200 dark:scrollbar-thumb-slate-700">
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 md:min-w-[200px] flex-shrink-0">
           <p className="text-sm text-gray-600 dark:text-gray-400">Total Users</p>
-          <p className="text-2xl mt-1">{users.filter(u => u.role !== 'admin').length}</p>
+          <p className="text-2xl mt-1 font-bold">{users.filter(u => u.role !== 'admin').length}</p>
         </div>
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl">
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 md:min-w-[200px] flex-shrink-0">
           <p className="text-sm text-gray-600 dark:text-gray-400">Active Users</p>
-          <p className="text-2xl mt-1">{users.filter(u => u.role === 'user').length}</p>
+          <p className="text-2xl mt-1 font-bold">{users.filter(u => u.role === 'user').length}</p>
         </div>
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl">
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 md:min-w-[200px] flex-shrink-0">
           <p className="text-sm text-gray-600 dark:text-gray-400">Verified KYC</p>
-          <p className="text-2xl mt-1">{users.filter(u => u.kycStatus === 'verified' && u.role !== 'admin').length}</p>
+          <p className="text-2xl mt-1 font-bold">{users.filter(u => u.kycStatus === 'verified' && u.role !== 'admin').length}</p>
         </div>
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border-2 border-green-500">
+
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border-2 border-green-500 shadow-sm md:min-w-[220px] flex-shrink-0">
           <p className="text-sm text-gray-600 dark:text-gray-400">Total Live Balance</p>
-          <p className="text-2xl mt-1 text-green-600">
+          <p className="text-2xl mt-1 text-green-600 font-bold">
             ${formatCurrency(users.filter(u => u.role !== 'admin').reduce((sum, u) => sum + (u.liveBalance || 0), 0))}
           </p>
           <p className="text-xs text-gray-500 mt-1">Real Money</p>
         </div>
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border-2 border-emerald-500">
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border-2 border-blue-500 shadow-sm md:min-w-[220px] flex-shrink-0">
+          <p className="text-sm text-gray-600 dark:text-gray-400">Total Credit Balance</p>
+          <p className="text-2xl mt-1 text-blue-600 font-bold">
+            ${formatCurrency(users.filter(u => u.role !== 'admin').reduce((sum, u) => sum + (u.credit || 0), 0))}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">Funds to be Repaid</p>
+        </div>
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border-2 border-emerald-500 shadow-sm md:min-w-[220px] flex-shrink-0">
+          <p className="text-sm text-gray-600 dark:text-gray-400">Total Bonus Balance</p>
+          <p className="text-2xl mt-1 text-emerald-600 font-bold">
+            ${formatCurrency(users.filter(u => u.role !== 'admin').reduce((sum, u) => sum + (u.bonus || 0), 0))}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">Promotional Funds</p>
+        </div>
+
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border-2 border-teal-500 shadow-sm md:min-w-[220px] flex-shrink-0">
           <p className="text-sm text-gray-600 dark:text-gray-400">Total Portfolio Balance</p>
-          <p className="text-2xl mt-1 text-emerald-600">
-            ${users.filter(u => u.role !== 'admin').reduce((sum, u) => {
-              const balances = localStorage.getItem(`investment_balances_${u.id}`);
-              const { portfolio = 0 } = balances ? JSON.parse(balances) : {};
-              return sum + portfolio;
-            }, 0).toLocaleString()}
+          <p className="text-2xl mt-1 text-teal-600 font-bold">
+            ${formatCurrency(users.filter(u => u.role !== 'admin').reduce((sum, u) => sum + (u.investmentBalances?.portfolio || 0), 0))}
           </p>
           <p className="text-xs text-gray-500 mt-1">Portfolio Funds</p>
         </div>
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border-2 border-purple-500">
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border-2 border-purple-500 shadow-sm md:min-w-[220px] flex-shrink-0">
           <p className="text-sm text-gray-600 dark:text-gray-400">Total IPO Balance</p>
-          <p className="text-2xl mt-1 text-purple-600">
-            ${users.filter(u => u.role !== 'admin').reduce((sum, u) => {
-              const balances = localStorage.getItem(`investment_balances_${u.id}`);
-              const { ipo = 0 } = balances ? JSON.parse(balances) : {};
-              return sum + ipo;
-            }, 0).toLocaleString()}
+          <p className="text-2xl mt-1 text-purple-600 font-bold">
+            ${formatCurrency(users.filter(u => u.role !== 'admin').reduce((sum, u) => sum + (u.investmentBalances?.ipo || 0), 0))}
           </p>
           <p className="text-xs text-gray-500 mt-1">IPO Funds</p>
         </div>
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border-2 border-orange-500">
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border-2 border-orange-500 shadow-sm md:min-w-[220px] flex-shrink-0">
           <p className="text-sm text-gray-600 dark:text-gray-400">Total ECN Balance</p>
-          <p className="text-2xl mt-1 text-orange-600">
-            ${users.filter(u => u.role !== 'admin').reduce((sum, u) => {
-              const balances = localStorage.getItem(`investment_balances_${u.id}`);
-              const { ecn = 0 } = balances ? JSON.parse(balances) : {};
-              return sum + ecn;
-            }, 0).toLocaleString()}
+          <p className="text-2xl mt-1 text-orange-600 font-bold">
+            ${formatCurrency(users.filter(u => u.role !== 'admin').reduce((sum, u) => sum + (u.investmentBalances?.ecn || 0), 0))}
           </p>
           <p className="text-xs text-gray-500 mt-1">ECN Funds</p>
         </div>
@@ -700,6 +600,12 @@ export default function UserManagement() {
                   Live Balance
                 </th>
                 <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">
+                  Credit
+                </th>
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">
+                  Bonus
+                </th>
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">
                   IPO Balance
                 </th>
                 <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">
@@ -730,167 +636,175 @@ export default function UserManagement() {
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
               {filteredUsers.map((user) => {
-                // Get IPO and ECN balances for the user
-                const investmentBalances = localStorage.getItem(`investment_balances_${user.id}`);
-                const { ipo = 0, ecn = 0, portfolio = 0 } = investmentBalances ? JSON.parse(investmentBalances) : {};
-                
+                const ipo = user.investmentBalances?.ipo || 0;
+                const ecn = user.investmentBalances?.ecn || 0;
+                const portfolio = user.investmentBalances?.portfolio || 0;
+
                 return (
-                <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                  <td className="px-6 py-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span>{user.firstName} {user.lastName}</span>
-                        {user.isOnline && (
-                          <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                          </span>
-                        )}
-                        {user.role === 'admin' && (
-                          <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 text-xs rounded">
-                            Admin
-                          </span>
-                        )}
+                  <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                    <td className="px-6 py-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span>{user.firstName} {user.lastName}</span>
+                          {user.isOnline && (
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                            </span>
+                          )}
+                          {user.role === 'admin' && (
+                            <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 text-xs rounded">
+                              Admin
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm text-gray-500">{user.email}</div>
                       </div>
-                      <div className="text-sm text-gray-500">{user.email}</div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1">
-                      <span>${formatCurrency(user.liveBalance)}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1">
-                      <span>${formatCurrency(ipo)}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1">
-                      <span>${formatCurrency(ecn)}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1">
-                      <span>${formatCurrency(portfolio)}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      user.accountType === 'vip' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' :
-                      user.accountType === 'premium' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
-                      'bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400'
-                    }`}>
-                      {user.accountType}
-                    </span>
-                  </td>
-                  {/* Plan */}
-                  <td className="px-6 py-4">
-                    {user.subscriptionPlan ? (
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${planBadge(user.subscriptionPlan)}`}>
-                        {user.subscriptionPlan}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1">
+                        <span className="text-green-600 font-medium">${formatCurrency(user.liveBalance || 0)}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1">
+                        <span className="text-blue-600">${formatCurrency(user.credit || 0)}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1">
+                        <span className="text-emerald-600">${formatCurrency(user.bonus || 0)}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1">
+                        <span>${formatCurrency(ipo)}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1">
+                        <span>${formatCurrency(ecn)}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1">
+                        <span>${formatCurrency(portfolio)}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 rounded text-xs ${user.accountType === 'vip' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' :
+                          user.accountType === 'premium' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                            'bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400'
+                        }`}>
+                        {user.accountType}
                       </span>
-                    ) : (
-                      <span className="text-xs text-gray-400 dark:text-gray-500">—</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      user.kycStatus === 'verified' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
-                      user.kycStatus === 'rejected' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
-                      'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
-                    }`}>
-                      {user.kycStatus}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    {user.isVerified ? (
-                      <CheckCircle className="w-5 h-5 text-green-600" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-gray-400" />
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
-                    {new Date(user.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="relative">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setOpenDropdownId(openDropdownId === user.id ? null : user.id)}
-                      >
-                        <MoreVertical className="w-4 h-4" />
-                      </Button>
-                      {openDropdownId === user.id && (
-                        <>
-                          <div 
-                            className="fixed inset-0 z-10"
-                            onClick={() => setOpenDropdownId(null)}
-                          />
-                          <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 z-50">
-                            <div className="py-1">
-                              <button
-                                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2"
-                                onClick={() => {
-                                  setOpenDropdownId(null);
-                                  handleView(user.id);
-                                }}
-                              >
-                                <Eye className="w-4 h-4" />
-                                View User
-                              </button>
-                              <button
-                                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2"
-                                onClick={() => {
-                                  setOpenDropdownId(null);
-                                  setSelectedUserId(user.id);
-                                  setShowAddFundDialog(true);
-                                }}
-                              >
-                                <DollarSign className="w-4 h-4" />
-                                Add Fund
-                              </button>
-                              <button
-                                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2"
-                                onClick={() => {
-                                  setOpenDropdownId(null);
-                                  setSelectedUserId(user.id);
-                                  setShowDeductFundDialog(true);
-                                }}
-                              >
-                                <MinusSquare className="w-4 h-4" />
-                                Deduct Fund
-                              </button>
-                              <button
-                                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2"
-                                onClick={() => {
-                                  setOpenDropdownId(null);
-                                  handleLoginAsUser(user.id, `${user.firstName} ${user.lastName}`);
-                                }}
-                              >
-                                <LogIn className="w-4 h-4" />
-                                Login as User
-                              </button>
-                              {user.role !== 'admin' && (
+                    </td>
+                    {/* Plan */}
+                    <td className="px-6 py-4">
+                      {user.subscriptionPlan ? (
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${planBadge(user.subscriptionPlan)}`}>
+                          {user.subscriptionPlan}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400 dark:text-gray-500">—</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 rounded text-xs ${user.kycStatus === 'verified' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                          user.kycStatus === 'rejected' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                            'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
+                        }`}>
+                        {user.kycStatus}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {user.isVerified ? (
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                      ) : (
+                        <XCircle className="w-5 h-5 text-gray-400" />
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                      {new Date(user.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="relative">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setOpenDropdownId(openDropdownId === user.id ? null : user.id)}
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                        {openDropdownId === user.id && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-10"
+                              onClick={() => setOpenDropdownId(null)}
+                            />
+                            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 z-50">
+                              <div className="py-1">
                                 <button
-                                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2 text-red-600 dark:text-red-400"
+                                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2"
                                   onClick={() => {
                                     setOpenDropdownId(null);
-                                    handleDelete(user.id);
+                                    handleView(user.id);
                                   }}
                                 >
-                                  <Trash2 className="w-4 h-4" />
-                                  Delete
+                                  <Eye className="w-4 h-4" />
+                                  View User
                                 </button>
-                              )}
+                                <button
+                                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                                  onClick={() => {
+                                    setOpenDropdownId(null);
+                                    setSelectedUserId(user.id);
+                                    setShowAddFundDialog(true);
+                                  }}
+                                >
+                                  <DollarSign className="w-4 h-4" />
+                                  Add Fund
+                                </button>
+                                <button
+                                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                                  onClick={() => {
+                                    setOpenDropdownId(null);
+                                    setSelectedUserId(user.id);
+                                    setShowDeductFundDialog(true);
+                                  }}
+                                >
+                                  <MinusSquare className="w-4 h-4" />
+                                  Deduct Fund
+                                </button>
+                                <button
+                                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                                  onClick={() => {
+                                    setOpenDropdownId(null);
+                                    handleLoginAsUser(user.id, `${user.firstName} ${user.lastName}`);
+                                  }}
+                                >
+                                  <LogIn className="w-4 h-4" />
+                                  Login as User
+                                </button>
+                                {user.role !== 'admin' && (
+                                  <button
+                                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2 text-red-600 dark:text-red-400"
+                                    onClick={() => {
+                                      setOpenDropdownId(null);
+                                      handleDelete(user.id);
+                                    }}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                    Delete
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
@@ -953,9 +867,32 @@ export default function UserManagement() {
                 </div>
                 <div>
                   <Label htmlFor="au-country">Country</Label>
-                  <Input id="au-country" value={addUserForm.country}
+                  <select id="au-country" value={addUserForm.country}
                     onChange={(e) => setAddUserForm({ ...addUserForm, country: e.target.value })}
-                    placeholder="United States" className="mt-2" />
+                    className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm">
+                    <option value="">Select a country</option>
+                    {['Afghanistan', 'Albania', 'Algeria', 'Andorra', 'Angola', 'Antigua and Barbuda', 'Argentina', 'Armenia', 'Australia', 'Austria',
+                      'Azerbaijan', 'Bahamas', 'Bahrain', 'Bangladesh', 'Barbados', 'Belarus', 'Belgium', 'Belize', 'Benin', 'Bhutan',
+                      'Bolivia', 'Bosnia and Herzegovina', 'Botswana', 'Brazil', 'Brunei', 'Bulgaria', 'Burkina Faso', 'Burundi', 'Cabo Verde', 'Cambodia',
+                      'Cameroon', 'Canada', 'Central African Republic', 'Chad', 'Chile', 'China', 'Colombia', 'Comoros', 'Congo (Congo-Brazzaville)', 'Costa Rica',
+                      'Croatia', 'Cuba', 'Cyprus', 'Czechia', 'Denmark', 'Djibouti', 'Dominica', 'Dominican Republic', 'Ecuador', 'Egypt',
+                      'El Salvador', 'Equatorial Guinea', 'Eritrea', 'Estonia', 'Eswatini', 'Ethiopia', 'Fiji', 'Finland', 'France', 'Gabon',
+                      'Gambia', 'Georgia', 'Germany', 'Ghana', 'Greece', 'Grenada', 'Guatemala', 'Guinea', 'Guinea-Bissau', 'Guyana',
+                      'Haiti', 'Honduras', 'Hungary', 'Iceland', 'India', 'Indonesia', 'Iran', 'Iraq', 'Ireland', 'Israel',
+                      'Italy', 'Jamaica', 'Japan', 'Jordan', 'Kazakhstan', 'Kenya', 'Kiribati', 'Kuwait', 'Kyrgyzstan', 'Laos',
+                      'Latvia', 'Lebanon', 'Lesotho', 'Liberia', 'Libya', 'Liechtenstein', 'Lithuania', 'Luxembourg', 'Madagascar', 'Malawi',
+                      'Malaysia', 'Maldives', 'Mali', 'Malta', 'Marshall Islands', 'Mauritania', 'Mauritius', 'Mexico', 'Micronesia', 'Moldova',
+                      'Monaco', 'Mongolia', 'Montenegro', 'Morocco', 'Mozambique', 'Myanmar', 'Namibia', 'Nauru', 'Nepal', 'Netherlands',
+                      'New Zealand', 'Nicaragua', 'Niger', 'Nigeria', 'North Korea', 'North Macedonia', 'Norway', 'Oman', 'Pakistan', 'Palau',
+                      'Palestine', 'Panama', 'Papua New Guinea', 'Paraguay', 'Peru', 'Philippines', 'Poland', 'Portugal', 'Qatar', 'Romania',
+                      'Russia', 'Rwanda', 'Saint Kitts and Nevis', 'Saint Lucia', 'Saint Vincent and the Grenadines', 'Samoa', 'San Marino', 'Sao Tome and Principe', 'Saudi Arabia', 'Senegal',
+                      'Serbia', 'Seychelles', 'Sierra Leone', 'Singapore', 'Slovakia', 'Slovenia', 'Solomon Islands', 'Somalia', 'South Africa', 'South Korea',
+                      'South Sudan', 'Spain', 'Sri Lanka', 'Sudan', 'Suriname', 'Sweden', 'Switzerland', 'Syria', 'Taiwan', 'Tajikistan',
+                      'Tanzania', 'Thailand', 'Timor-Leste', 'Togo', 'Tonga', 'Trinidad and Tobago', 'Tunisia', 'Turkey', 'Turkmenistan', 'Tuvalu',
+                      'Uganda', 'Ukraine', 'United Arab Emirates', 'United Kingdom', 'United States', 'Uruguay', 'Uzbekistan', 'Vanuatu', 'Vatican City', 'Venezuela',
+                      'Vietnam', 'Yemen', 'Zambia', 'Zimbabwe'
+                    ].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
               </div>
             </div>
@@ -1110,11 +1047,15 @@ export default function UserManagement() {
                     </div>
                     <div>
                       <Label>Portfolio Balance</Label>
-                      <p className="mt-1 text-blue-600">${formatCurrency((() => {
-                        const investmentBalances = localStorage.getItem(`investment_balances_${selectedUser.id}`);
-                        const { portfolio = 0 } = investmentBalances ? JSON.parse(investmentBalances) : {};
-                        return portfolio;
-                      })())}</p>
+                      <p className="mt-1 text-emerald-600">${formatCurrency(selectedUser.investmentBalances?.portfolio || 0)}</p>
+                    </div>
+                    <div>
+                      <Label>Credit Balance</Label>
+                      <p className="mt-1 text-blue-600">${formatCurrency(selectedUser.credit || 0)}</p>
+                    </div>
+                    <div>
+                      <Label>Bonus Balance</Label>
+                      <p className="mt-1 text-emerald-600">${formatCurrency(selectedUser.bonus || 0)}</p>
                     </div>
                     <div>
                       <Label>Account Type</Label>
@@ -1219,16 +1160,14 @@ export default function UserManagement() {
                       <div className="px-4 py-3 space-y-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                              selectedUser.kycStatus === 'verified' ? 'bg-green-100 dark:bg-green-900/30' :
-                              selectedUser.kycStatus === 'rejected' ? 'bg-red-100 dark:bg-red-900/30' :
-                              'bg-gray-100 dark:bg-slate-700'
-                            }`}>
-                              <FileText className={`w-4 h-4 ${
-                                selectedUser.kycStatus === 'verified' ? 'text-green-600 dark:text-green-400' :
-                                selectedUser.kycStatus === 'rejected' ? 'text-red-600 dark:text-red-400' :
-                                'text-gray-400'
-                              }`} />
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${selectedUser.kycStatus === 'verified' ? 'bg-green-100 dark:bg-green-900/30' :
+                                selectedUser.kycStatus === 'rejected' ? 'bg-red-100 dark:bg-red-900/30' :
+                                  'bg-gray-100 dark:bg-slate-700'
+                              }`}>
+                              <FileText className={`w-4 h-4 ${selectedUser.kycStatus === 'verified' ? 'text-green-600 dark:text-green-400' :
+                                  selectedUser.kycStatus === 'rejected' ? 'text-red-600 dark:text-red-400' :
+                                    'text-gray-400'
+                                }`} />
                             </div>
                             <div>
                               <p className="text-sm font-semibold">KYC Verification</p>
@@ -1398,12 +1337,34 @@ export default function UserManagement() {
                     </div>
                     <div>
                       <Label>Country</Label>
-                      <Input
+                      <select
                         value={formData.country}
                         onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                        className="mt-2"
-                        placeholder="Enter country"
-                      />
+                        className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm"
+                      >
+                        <option value="">Select a country</option>
+                        {['Afghanistan', 'Albania', 'Algeria', 'Andorra', 'Angola', 'Antigua and Barbuda', 'Argentina', 'Armenia', 'Australia', 'Austria',
+                          'Azerbaijan', 'Bahamas', 'Bahrain', 'Bangladesh', 'Barbados', 'Belarus', 'Belgium', 'Belize', 'Benin', 'Bhutan',
+                          'Bolivia', 'Bosnia and Herzegovina', 'Botswana', 'Brazil', 'Brunei', 'Bulgaria', 'Burkina Faso', 'Burundi', 'Cabo Verde', 'Cambodia',
+                          'Cameroon', 'Canada', 'Central African Republic', 'Chad', 'Chile', 'China', 'Colombia', 'Comoros', 'Congo (Congo-Brazzaville)', 'Costa Rica',
+                          'Croatia', 'Cuba', 'Cyprus', 'Czechia', 'Denmark', 'Djibouti', 'Dominica', 'Dominican Republic', 'Ecuador', 'Egypt',
+                          'El Salvador', 'Equatorial Guinea', 'Eritrea', 'Estonia', 'Eswatini', 'Ethiopia', 'Fiji', 'Finland', 'France', 'Gabon',
+                          'Gambia', 'Georgia', 'Germany', 'Ghana', 'Greece', 'Grenada', 'Guatemala', 'Guinea', 'Guinea-Bissau', 'Guyana',
+                          'Haiti', 'Honduras', 'Hungary', 'Iceland', 'India', 'Indonesia', 'Iran', 'Iraq', 'Ireland', 'Israel',
+                          'Italy', 'Jamaica', 'Japan', 'Jordan', 'Kazakhstan', 'Kenya', 'Kiribati', 'Kuwait', 'Kyrgyzstan', 'Laos',
+                          'Latvia', 'Lebanon', 'Lesotho', 'Liberia', 'Libya', 'Liechtenstein', 'Lithuania', 'Luxembourg', 'Madagascar', 'Malawi',
+                          'Malaysia', 'Maldives', 'Mali', 'Malta', 'Marshall Islands', 'Mauritania', 'Mauritius', 'Mexico', 'Micronesia', 'Moldova',
+                          'Monaco', 'Mongolia', 'Montenegro', 'Morocco', 'Mozambique', 'Myanmar', 'Namibia', 'Nauru', 'Nepal', 'Netherlands',
+                          'New Zealand', 'Nicaragua', 'Niger', 'Nigeria', 'North Korea', 'North Macedonia', 'Norway', 'Oman', 'Pakistan', 'Palau',
+                          'Palestine', 'Panama', 'Papua New Guinea', 'Paraguay', 'Peru', 'Philippines', 'Poland', 'Portugal', 'Qatar', 'Romania',
+                          'Russia', 'Rwanda', 'Saint Kitts and Nevis', 'Saint Lucia', 'Saint Vincent and the Grenadines', 'Samoa', 'San Marino', 'Sao Tome and Principe', 'Saudi Arabia', 'Senegal',
+                          'Serbia', 'Seychelles', 'Sierra Leone', 'Singapore', 'Slovakia', 'Slovenia', 'Solomon Islands', 'Somalia', 'South Africa', 'South Korea',
+                          'South Sudan', 'Spain', 'Sri Lanka', 'Sudan', 'Suriname', 'Sweden', 'Switzerland', 'Syria', 'Taiwan', 'Tajikistan',
+                          'Tanzania', 'Thailand', 'Timor-Leste', 'Togo', 'Tonga', 'Trinidad and Tobago', 'Tunisia', 'Turkey', 'Turkmenistan', 'Tuvalu',
+                          'Uganda', 'Ukraine', 'United Arab Emirates', 'United Kingdom', 'United States', 'Uruguay', 'Uzbekistan', 'Vanuatu', 'Vatican City', 'Venezuela',
+                          'Vietnam', 'Yemen', 'Zambia', 'Zimbabwe'
+                        ].map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
                     </div>
                     <div>
                       <Label>Live Balance (USD)</Label>
@@ -1446,6 +1407,28 @@ export default function UserManagement() {
                         min="0"
                         value={formData.ecnBalance}
                         onChange={(e) => setFormData({ ...formData, ecnBalance: e.target.value })}
+                        className="mt-2"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <Label>Bonus Balance (USD)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={formData.bonus}
+                        onChange={(e) => setFormData({ ...formData, bonus: e.target.value })}
+                        className="mt-2"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <Label>Credit Balance (USD)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={formData.credit}
+                        onChange={(e) => setFormData({ ...formData, credit: e.target.value })}
                         className="mt-2"
                         placeholder="0.00"
                       />
@@ -1556,6 +1539,14 @@ export default function UserManagement() {
                   <p className="mt-1 text-blue-600">${formatCurrency(selectedUser.investmentBalances?.ecn || 0)}</p>
                 </div>
                 <div>
+                  <Label>Credit Balance</Label>
+                  <p className="mt-1 text-blue-600">${formatCurrency(selectedUser.credit || 0)}</p>
+                </div>
+                <div>
+                  <Label>Bonus Balance</Label>
+                  <p className="mt-1 text-emerald-600">${formatCurrency(selectedUser.bonus || 0)}</p>
+                </div>
+                <div>
                   <Label>Account Type</Label>
                   <p className="mt-1 capitalize">{selectedUser.accountType}</p>
                 </div>
@@ -1575,23 +1566,6 @@ export default function UserManagement() {
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <Label>Type</Label>
-                  <select
-                    value={addFundData.type}
-                    onChange={(e) => setAddFundData({ ...addFundData, type: e.target.value as any })}
-                    className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
-                  >
-                    <option value="balance">Balance (Direct wallet deposit)</option>
-                    <option value="credit">Credit (Must be repaid)</option>
-                    <option value="bonus">Bonus (Free fund)</option>
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {addFundData.type === 'credit' && 'Credit funds need to be repaid back by the user'}
-                    {addFundData.type === 'bonus' && 'Bonus funds are free and do not need to be repaid'}
-                    {addFundData.type === 'balance' && 'Balance is added directly to the selected account — no repayment required'}
-                  </p>
-                </div>
-                <div>
                   <Label>Amount</Label>
                   <Input
                     type="number"
@@ -1601,7 +1575,7 @@ export default function UserManagement() {
                     placeholder="Enter amount"
                   />
                 </div>
-                <div className="md:col-span-2">
+                <div>
                   <Label>Balance Type</Label>
                   <select
                     value={addFundData.balanceType}
@@ -1609,15 +1583,21 @@ export default function UserManagement() {
                     className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
                   >
                     <option value="live">💰 Live Balance (Trading Account)</option>
+                    <option value="bonus">🎁 Bonus Balance (Free Trading Funds)</option>
+                    <option value="credit">💳 Credit Balance (Repayable Funds)</option>
                     <option value="portfolio">💼 Portfolio Balance (Investment Portfolio)</option>
                     <option value="ipo">🏢 IPO Balance (Investment Funds)</option>
                     <option value="ecn">📊 ECN Balance (Trading Funds)</option>
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {addFundData.balanceType === 'live' && 'Adds to live trading account balance'}
-                    {addFundData.balanceType === 'portfolio' && 'Portfolio balance is used for investments'}
-                    {addFundData.balanceType === 'ipo' && 'IPO balance is used for investment opportunities'}
-                    {addFundData.balanceType === 'ecn' && 'ECN balance is used for ECN trading'}
+                </div>
+                <div className="md:col-span-2">
+                  <p className="text-xs text-gray-500 bg-gray-50 dark:bg-slate-700/50 p-2 rounded border border-gray-100 dark:border-slate-600">
+                    {addFundData.balanceType === 'live' && 'Adds directly to the main live trading balance.'}
+                    {addFundData.balanceType === 'bonus' && 'Bonus funds are free and appear in the user wallet for trading.'}
+                    {addFundData.balanceType === 'credit' && 'Credit funds must be repaid by the user eventually.'}
+                    {addFundData.balanceType === 'portfolio' && 'Portfolio balance is used specifically for investments.'}
+                    {addFundData.balanceType === 'ipo' && 'IPO balance is used for new investment opportunities.'}
+                    {addFundData.balanceType === 'ecn' && 'ECN balance is used for specialized ECN trading.'}
                   </p>
                 </div>
               </div>
@@ -1634,7 +1614,7 @@ export default function UserManagement() {
           )}
         </DialogContent>
       </Dialog>
-      
+
       {/* Deduct Fund Dialog */}
       <Dialog open={showDeductFundDialog} onOpenChange={setShowDeductFundDialog}>
         <DialogContent className="max-w-md">
@@ -1704,8 +1684,8 @@ export default function UserManagement() {
 
       {/* Payment Methods Dialog */}
       {showPaymentMethodsDialog && paymentMethodsUserId && (
-        <UserPaymentMethods 
-          userId={paymentMethodsUserId} 
+        <UserPaymentMethods
+          userId={paymentMethodsUserId}
           onClose={() => {
             setShowPaymentMethodsDialog(false);
             setPaymentMethodsUserId(null);

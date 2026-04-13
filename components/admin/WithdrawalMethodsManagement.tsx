@@ -13,7 +13,7 @@ import {
 } from '../ui/dialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
-import { setKV } from '../../utils/supabase/client';
+import { api } from '../../utils/supabase/api';
 
 // Extended withdrawal method interface
 export interface CryptoAsset {
@@ -130,22 +130,132 @@ export default function WithdrawalMethodsManagement() {
   // Filter out admin users
   const regularUsers = users.filter(user => user.role !== 'admin');
 
-  // Load withdrawal methods
-  useEffect(() => {
-    const stored = localStorage.getItem('withdrawalMethods');
-    if (stored) {
-      try {
-        setWithdrawalMethods(JSON.parse(stored));
-      } catch (error) {
-        console.error('Failed to load withdrawal methods:', error);
+  // Load withdrawal methods from API
+  const fetchMethods = async () => {
+    try {
+      const [userMethods, platMethods] = await Promise.all([
+        api.withdrawalMethods.getAll(),
+        api.paymentMethods.getAll()
+      ]);
+
+      let merged: ExtendedWithdrawalMethod[] = [];
+
+      if (Array.isArray(userMethods)) {
+        merged = [...merged, ...userMethods.map((m: any) => ({
+          id: m.id,
+          userId: m.user_id,
+          type: m.type,
+          isDefault: m.is_default,
+          enabled: true, // User methods are generally active if they exist
+          bankName: m.bank_name,
+          accountHolderName: m.account_holder_name,
+          accountNumber: m.account_number,
+          routingNumber: m.routing_number,
+          iban: m.iban,
+          swiftCode: m.swift_code,
+          paypalEmail: m.paypal_email,
+          walletAddress: m.crypto_address,
+          network: m.crypto_network,
+          ...(m.details || {})
+        }))];
       }
+
+      if (Array.isArray(platMethods)) {
+        // Filter those that are withdrawal methods
+        const withdrawalPlat = platMethods.filter((m: any) => m.details?.isWithdrawal === true);
+        merged = [...merged, ...withdrawalPlat.map((m: any) => ({
+          id: m.id,
+          userId: 'all-users',
+          type: m.type,
+          isDefault: false,
+          enabled: m.is_active,
+          minWithdrawal: m.min_amount,
+          maxWithdrawal: m.max_amount,
+          feePercentage: m.fee_percentage,
+          processingTime: m.processing_time,
+          applyToAllUsers: true,
+          ...(m.details || {})
+        }))];
+      }
+
+      setWithdrawalMethods(merged);
+    } catch (error) {
+      console.error('Failed to load withdrawal methods:', error);
+      toast.error('Failed to load withdrawal methods');
     }
+  };
+
+  useEffect(() => {
+    fetchMethods();
   }, []);
 
-  const saveWithdrawalMethods = (methods: ExtendedWithdrawalMethod[]) => {
-    localStorage.setItem('withdrawalMethods', JSON.stringify(methods));
-    setKV('withdrawalMethods', methods).catch(console.error);
-    setWithdrawalMethods(methods);
+  const saveWithdrawalMethods = async (method: Partial<ExtendedWithdrawalMethod>, isUpdate = false) => {
+    try {
+      if (method.applyToAllUsers || method.userId === 'all-users') {
+        const payload = {
+          type: method.type,
+          name: method.type === 'bank' ? method.bankName : (method.type === 'crypto' ? 'Crypto' : 'PayPal'),
+          is_active: method.enabled,
+          min_amount: method.minWithdrawal,
+          max_amount: method.maxWithdrawal,
+          fee_percentage: method.feePercentage,
+          processing_time: method.processingTime,
+          details: {
+            isWithdrawal: true,
+            fixedFee: method.fixedFee,
+            instructionNote: method.instructionNote,
+            cryptoAssets: method.cryptoAssets,
+            bankName: method.bankName,
+            accountHolderName: method.accountHolderName,
+            accountNumber: method.accountNumber,
+            routingNumber: method.routingNumber,
+            iban: method.iban,
+            swiftCode: method.swiftCode,
+            paypalEmail: method.paypalEmail,
+          }
+        };
+
+        if (isUpdate && method.id) {
+          await api.paymentMethods.update(method.id, payload);
+        } else {
+          await api.paymentMethods.create(payload);
+        }
+      } else {
+        const payload = {
+          user_id: method.userId,
+          type: method.type,
+          is_default: method.isDefault,
+          bank_name: method.bankName,
+          account_holder_name: method.accountHolderName,
+          account_number: method.accountNumber,
+          routing_number: method.routingNumber,
+          iban: method.iban,
+          swift_code: method.swiftCode,
+          paypal_email: method.paypalEmail,
+          crypto_address: method.walletAddress,
+          crypto_network: method.network,
+          details: {
+             minWithdrawal: method.minWithdrawal,
+             maxWithdrawal: method.maxWithdrawal,
+             feePercentage: method.feePercentage,
+             fixedFee: method.fixedFee,
+             processingTime: method.processingTime,
+             instructionNote: method.instructionNote,
+             cryptoAssets: method.cryptoAssets
+          }
+        };
+
+        if (isUpdate && method.id) {
+          await api.withdrawalMethods.update(method.id, payload);
+        } else {
+          await api.withdrawalMethods.create(payload);
+        }
+      }
+      fetchMethods();
+    } catch (error) {
+      console.error('Failed to save withdrawal method:', error);
+      toast.error('Failed to save withdrawal method');
+    }
   };
 
   // Get user name by ID
@@ -200,58 +310,41 @@ export default function WithdrawalMethodsManagement() {
     setSelectedCryptoAssets(assets);
   };
 
-  const handleAddMethod = () => {
-    if (!formData.userId || !formData.type) {
+  const handleAddMethod = async () => {
+    if (!formData.userId && !formData.applyToAllUsers) {
       toast.error('Please select a user and method type');
       return;
     }
 
-    const newMethod: ExtendedWithdrawalMethod = {
-      id: `wm_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      userId: formData.applyToAllUsers ? 'all-users' : formData.userId,
-      type: formData.type,
-      isDefault: false,
-      minWithdrawal: formData.minWithdrawal || 0,
-      maxWithdrawal: formData.maxWithdrawal || 0,
-      feePercentage: formData.feePercentage || 0,
-      fixedFee: formData.fixedFee || 0,
-      processingTime: formData.processingTime || '',
-      instructionNote: formData.instructionNote || '',
-      applyToAllUsers: formData.applyToAllUsers || false,
-      enabled: true, // Default to enabled
+    const method: Partial<ExtendedWithdrawalMethod> = {
       ...formData,
-    } as ExtendedWithdrawalMethod;
+      enabled: true,
+    };
 
-    // Add crypto assets if type is crypto
     if (formData.type === 'crypto') {
-      newMethod.cryptoAssets = selectedCryptoAssets.filter(asset => asset.enabled);
+      method.cryptoAssets = selectedCryptoAssets.filter(asset => asset.enabled);
     }
 
-    saveWithdrawalMethods([...withdrawalMethods, newMethod]);
+    await saveWithdrawalMethods(method);
     toast.success('Withdrawal method added successfully');
     setShowAddDialog(false);
     setFormData({});
     setSelectedCryptoAssets([]);
   };
 
-  const handleEditMethod = () => {
+  const handleEditMethod = async () => {
     if (!selectedMethod) return;
 
-    const updatedMethod = {
+    const method: Partial<ExtendedWithdrawalMethod> = {
       ...selectedMethod,
       ...formData,
     };
 
-    // Update crypto assets if type is crypto
     if (formData.type === 'crypto') {
-      updatedMethod.cryptoAssets = selectedCryptoAssets.filter(asset => asset.enabled);
+      method.cryptoAssets = selectedCryptoAssets.filter(asset => asset.enabled);
     }
 
-    const updatedMethods = withdrawalMethods.map(m =>
-      m.id === selectedMethod.id ? updatedMethod : m
-    );
-    
-    saveWithdrawalMethods(updatedMethods);
+    await saveWithdrawalMethods(method, true);
     toast.success('Withdrawal method updated successfully');
     setShowEditDialog(false);
     setSelectedMethod(null);
@@ -259,20 +352,36 @@ export default function WithdrawalMethodsManagement() {
     setSelectedCryptoAssets([]);
   };
 
-  const handleDeleteMethod = (id: string) => {
+  const handleDeleteMethod = async (id: string, isPlatform: boolean) => {
     if (!confirm('Are you sure you want to delete this withdrawal method?')) return;
     
-    const updatedMethods = withdrawalMethods.filter(m => m.id !== id);
-    saveWithdrawalMethods(updatedMethods);
-    toast.success('Withdrawal method deleted successfully');
+    try {
+      if (isPlatform) {
+        await api.paymentMethods.delete(id);
+      } else {
+        await api.withdrawalMethods.delete(id);
+      }
+      toast.success('Withdrawal method deleted successfully');
+      fetchMethods();
+    } catch (error) {
+      console.error('Failed to delete withdrawal method:', error);
+      toast.error('Failed to delete withdrawal method');
+    }
   };
   
-  const handleToggleStatus = (id: string) => {
-    const updatedMethods = withdrawalMethods.map(m =>
-      m.id === id ? { ...m, enabled: !m.enabled } : m
-    );
-    saveWithdrawalMethods(updatedMethods);
-    toast.success('Withdrawal method status updated');
+  const handleToggleStatus = async (id: string, isPlatform: boolean, currentStatus: boolean) => {
+    try {
+      if (isPlatform) {
+        await api.paymentMethods.update(id, { is_active: !currentStatus });
+      } else {
+        await api.withdrawalMethods.update(id, { enabled: !currentStatus });
+      }
+      toast.success('Withdrawal method status updated');
+      fetchMethods();
+    } catch (error) {
+      console.error('Failed to update status:', error);
+      toast.error('Failed to update status');
+    }
   };
 
   const openAddDialog = () => {
@@ -505,7 +614,7 @@ export default function WithdrawalMethodsManagement() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleToggleStatus(method.id)}
+                        onClick={() => handleToggleStatus(method.id, method.applyToAllUsers || method.userId === 'all-users', method.enabled)}
                       >
                         {method.enabled ? 'Disable' : 'Enable'}
                       </Button>
@@ -519,7 +628,7 @@ export default function WithdrawalMethodsManagement() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDeleteMethod(method.id)}
+                        onClick={() => handleDeleteMethod(method.id, method.applyToAllUsers || method.userId === 'all-users')}
                       >
                         <Trash2 className="w-4 h-4 text-red-600" />
                       </Button>

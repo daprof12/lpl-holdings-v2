@@ -11,48 +11,24 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+import { useAuth } from './AuthContext';
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  // Get current user from AuthContext if available (optional)
-  const [userId, setUserId] = useState<string | null>(null);
+  const { currentUser, userPreferences, updatePreferences } = useAuth();
   
-  // Listen for auth changes from localStorage
-  useEffect(() => {
-    const checkAuth = () => {
-      const storedUser = localStorage.getItem('gross_current_user');
-      if (storedUser) {
-        try {
-          const user = JSON.parse(storedUser);
-          setUserId(user.id);
-        } catch (e) {
-          setUserId(null);
-        }
-      } else {
-        setUserId(null);
-      }
-    };
-    
-    checkAuth();
-    
-    // Listen for storage changes
-    window.addEventListener('storage', checkAuth);
-    
-    return () => window.removeEventListener('storage', checkAuth);
-  }, []);
-  
-  const { preferences, updatePreference, loading } = useUserPreferences(userId);
   const [theme, setTheme] = useState<Theme>(() => {
-    // Try localStorage first for immediate load (before Supabase loads)
+    // Immediate load from localStorage fallback
     const saved = localStorage.getItem('theme');
     return (saved as Theme) || 'dark';
   });
 
-  // Sync theme from Supabase preferences
+  // Sync theme from AuthContext preferences
   useEffect(() => {
-    if (!loading && preferences.theme) {
-      setTheme(preferences.theme);
+    if (userPreferences?.theme) {
+      setTheme(userPreferences.theme);
     }
-  }, [preferences.theme, loading]);
-
+  }, [userPreferences?.theme]);
+  
   // Apply theme to document
   useEffect(() => {
     if (theme === 'dark') {
@@ -60,23 +36,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } else {
       document.documentElement.classList.remove('dark');
     }
-    
-    // Also keep in localStorage for quick load
-    localStorage.setItem('theme', theme);
   }, [theme]);
 
   const toggleTheme = async () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
     
-    // Update in Supabase if user is logged in
-    if (userId) {
-      await updatePreference('theme', newTheme);
+    if (currentUser) {
+      await updatePreferences({ theme: newTheme });
     }
+    
+    // Fallback for immediate load on next refresh
+    localStorage.setItem('theme', newTheme);
   };
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, loading }}>
+    <ThemeContext.Provider value={{ theme, toggleTheme, loading: false }}>
       {children}
     </ThemeContext.Provider>
   );

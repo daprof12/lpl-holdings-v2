@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback } from 'react';
 import { useMarketData } from './MarketDataContext';
 import { useAuth } from './AuthContext';
-import { supabase, getKV, setKV } from '../utils/supabase/client';
-import { publicAnonKey } from '../utils/supabase/info';
+import { supabase, serverUrl, publicAnonKey } from '../utils/supabase/client';
+import { api } from '../utils/supabase/api';
 
 // @refresh reset
 
@@ -11,7 +11,6 @@ import { publicAnonKey } from '../utils/supabase/info';
 // ============================================
 
 // serverUrl is imported from ../utils/supabase/client
-import { serverUrl } from '../utils/supabase/client';
 
 // ============================================
 // TYPES
@@ -133,165 +132,99 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     bonus: 0,
     credit: 0,
   });
-  // Guard: prevent the save effect from overwriting a stored balance on first mount
-  const isAccountHydrated = useRef(false);
-  const pendingHydration = useRef(false);
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioSnapshot[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const [tradingMode, setTradingMode] = useState<'live' | 'paper'>('live');
+  // Flag to prevent sync-back effect from re-writing values that just arrived via Realtime
+  const skipNextSyncRef = useRef(false);
 
   // ============================================
   // API FUNCTIONS - Database Integration
   // ============================================
 
   /**
-   * Fetch positions from database for current user
+   * Fetch trading data from database for current user
    */
-  const fetchPositionsFromDatabase = async (userId: string) => {
+  const fetchAllTradingData = async (userId: string) => {
     try {
-      const response = await fetch(`${serverUrl}/positions/user/${userId}/open`, {
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`
-        }
-      });
+      const [dbPositions, dbHistory, dbOrders, dbAccount] = await Promise.all([
+        api.positions.getByUserId(userId),
+        api.tradeHistory.getByUserId(userId),
+        api.pendingOrders.getByUserId(userId),
+        api.tradingAccounts.getByUserId(userId)
+      ]);
 
-      if (!response.ok) {
-        console.error('Failed to fetch positions:', response.statusText);
-        return [];
+      // Transform and set positions
+      if (Array.isArray(dbPositions)) {
+        setPositions(dbPositions.map((dbPos: any) => ({
+          id: dbPos.id,
+          userId: dbPos.user_id,
+          symbol: dbPos.symbol,
+          side: dbPos.type,
+          units: parseFloat(dbPos.amount),
+          entryPrice: parseFloat(dbPos.entry_price),
+          currentPrice: parseFloat(dbPos.current_price || dbPos.entry_price),
+          stopLoss: dbPos.stop_loss ? parseFloat(dbPos.stop_loss) : undefined,
+          takeProfit: dbPos.take_profit ? parseFloat(dbPos.take_profit) : undefined,
+          leverage: dbPos.leverage || 1,
+          pnl: parseFloat(dbPos.profit || 0),
+          margin: (parseFloat(dbPos.amount) * parseFloat(dbPos.entry_price)) / (dbPos.leverage || 1),
+          timestamp: new Date(dbPos.created_at),
+          status: dbPos.status
+        })));
       }
 
-      const dbPositions = await response.json();
-      console.log('✅ Positions loaded from database:', dbPositions.length);
-      
-      // Transform database positions to match our Position interface
-      return dbPositions.map((dbPos: any) => ({
-        id: dbPos.id,
-        userId: dbPos.user_id,
-        symbol: dbPos.symbol,
-        side: dbPos.type, // 'buy' or 'sell'
-        units: parseFloat(dbPos.amount),
-        entryPrice: parseFloat(dbPos.entry_price),
-        currentPrice: parseFloat(dbPos.current_price || dbPos.entry_price),
-        stopLoss: dbPos.stop_loss ? parseFloat(dbPos.stop_loss) : undefined,
-        takeProfit: dbPos.take_profit ? parseFloat(dbPos.take_profit) : undefined,
-        leverage: dbPos.leverage || 1,
-        pnl: parseFloat(dbPos.profit || 0),
-        margin: (parseFloat(dbPos.amount) * parseFloat(dbPos.entry_price)) / (dbPos.leverage || 1),
-        timestamp: new Date(dbPos.created_at),
-        status: dbPos.status
-      }));
-    } catch (error) {
-      console.error('Error fetching positions from database:', error);
-      return [];
-    }
-  };
-
-  /**
-   * Fetch trade history from database for current user
-   */
-  const fetchTradeHistoryFromDatabase = async (userId: string) => {
-    try {
-      const response = await fetch(`${serverUrl}/trade-history/user/${userId}`, {
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`
-        }
-      });
-
-      if (!response.ok) {
-        console.error('Failed to fetch trade history:', response.statusText);
-        return [];
+      // Transform and set history
+      if (Array.isArray(dbHistory)) {
+        setHistory(dbHistory.map((dbItem: any) => ({
+          id: dbItem.id,
+          userId: dbItem.user_id,
+          symbol: dbItem.symbol,
+          side: dbItem.type,
+          type: 'market',
+          units: parseFloat(dbItem.amount),
+          price: parseFloat(dbItem.exit_price || dbItem.entry_price),
+          entryPrice: parseFloat(dbItem.entry_price),
+          entryTimestamp: new Date(dbItem.created_at),
+          pnl: parseFloat(dbItem.profit || 0),
+          timestamp: new Date(dbItem.closed_at || dbItem.created_at),
+          status: 'closed'
+        })));
       }
 
-      const dbHistory = await response.json();
-      console.log('✅ Trade history loaded from database:', dbHistory.length);
-      
-      // Transform database history to match our HistoryItem interface
-      return dbHistory.map((dbItem: any) => ({
-        id: dbItem.id,
-        userId: dbItem.user_id,
-        symbol: dbItem.symbol,
-        side: dbItem.type, // 'buy' or 'sell'
-        type: 'market', // Default to market order
-        units: parseFloat(dbItem.amount),
-        price: parseFloat(dbItem.exit_price || dbItem.entry_price),
-        entryPrice: parseFloat(dbItem.entry_price),
-        entryTimestamp: new Date(dbItem.created_at),
-        pnl: parseFloat(dbItem.profit || 0),
-        timestamp: new Date(dbItem.closed_at || dbItem.created_at),
-        status: 'closed'
-      }));
-    } catch (error) {
-      console.error('Error fetching trade history from database:', error);
-      return [];
-    }
-  };
-
-  /**
-   * Create position in database
-   */
-  const createPositionInDatabase = async (position: Position) => {
-    try {
-      const response = await fetch(`${serverUrl}/positions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          user_id: position.userId,
-          symbol: position.symbol,
-          type: position.side,
-          amount: position.units,
-          entry_price: position.entryPrice,
-          current_price: position.currentPrice,
-          leverage: position.leverage,
-          take_profit: position.takeProfit,
-          stop_loss: position.stopLoss,
-          status: 'open'
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to create position');
+      // Transform and set orders
+      if (Array.isArray(dbOrders)) {
+        setOrders(dbOrders.map((dbOrder: any) => ({
+          id: dbOrder.id,
+          userId: dbOrder.user_id,
+          symbol: dbOrder.symbol,
+          side: dbOrder.type,
+          type: dbOrder.order_type || 'limit',
+          units: parseFloat(dbOrder.amount),
+          price: parseFloat(dbOrder.price),
+          stopLoss: dbOrder.stop_loss ? parseFloat(dbOrder.stop_loss) : undefined,
+          takeProfit: dbOrder.take_profit ? parseFloat(dbOrder.take_profit) : undefined,
+          leverage: dbOrder.leverage || 1,
+          status: dbOrder.status,
+          timestamp: new Date(dbOrder.created_at)
+        })));
       }
 
-      const createdPosition = await response.json();
-      console.log('✅ Position created in database:', createdPosition.id);
-      return createdPosition;
-    } catch (error) {
-      console.error('Error creating position in database:', error);
-      throw error;
-    }
-  };
-
-  /**
-   * Close position in database
-   */
-  const closePositionInDatabase = async (positionId: string, exitPrice: number) => {
-    try {
-      const response = await fetch(`${serverUrl}/positions/${positionId}/close`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          exit_price: exitPrice
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to close position');
+      // Set account
+      if (dbAccount) {
+        setAccount({
+          balance: parseFloat(dbAccount.balance || 0),
+          equity: parseFloat(dbAccount.equity || 0),
+          realizedPnL: parseFloat(dbAccount.realized_pnl || 0),
+          unrealizedPnL: parseFloat(dbAccount.unrealized_pnl || 0),
+          margin: parseFloat(dbAccount.margin || 0),
+          availableFunds: parseFloat(dbAccount.available_funds || 0),
+          bonus: parseFloat(dbAccount.bonus || 0),
+          credit: parseFloat(dbAccount.credit || 0),
+        });
       }
-
-      const closedPosition = await response.json();
-      console.log('✅ Position closed in database:', closedPosition.id);
-      return closedPosition;
     } catch (error) {
-      console.error('Error closing position in database:', error);
-      throw error;
+      console.error('Error fetching all trading data:', error);
     }
   };
 
@@ -300,7 +233,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   // ============================================
 
   /**
-   * Load all trading data (positions, history, account) from database or KV store
+   * Load all trading data (positions, history, account) from database
    */
   const loadTradingData = useCallback(async () => {
     const userId = auth.currentUser?.id;
@@ -308,48 +241,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
     try {
       console.log('🔄 Syncing trading data from database for user:', userId);
-      
-      // 1. Fetch Relational Data
-      const [dbPositions, dbHistory] = await Promise.all([
-        fetchPositionsFromDatabase(userId),
-        fetchTradeHistoryFromDatabase(userId)
-      ]);
-
-      // 2. Fetch KV Data (Backup and metadata)
-      const [accountDb, posDb, ordDb, hisDb] = await Promise.all([
-        getKV(`gross_live_account_${userId}`),
-        getKV('gross_live_positions'),
-        getKV('gross_live_orders'),
-        getKV('gross_live_history')
-      ]);
-
-      const filterByUser = (items: any[]) => (items || []).filter(item => item.userId === userId);
-
-      // 3. Hydrate Account State
-      if (accountDb) {
-        setAccount(accountDb);
-        isAccountHydrated.current = true;
-      }
-
-      // 4. Hydrate Positions
-      const positionsFromKV = filterByUser(posDb);
-      if (dbPositions.length > 0) {
-        setPositions(dbPositions);
-      } else if (positionsFromKV.length > 0) {
-        setPositions(positionsFromKV);
-      }
-
-      // 5. Hydrate History
-      const historyFromKV = filterByUser(hisDb);
-      if (dbHistory.length > 0) {
-        setHistory(dbHistory);
-      } else if (historyFromKV.length > 0) {
-        setHistory(historyFromKV);
-      }
-
-      // 6. Hydrate Orders
-      if (ordDb) setOrders(filterByUser(ordDb));
-      
+      await fetchAllTradingData(userId);
       console.log('✅ Trading data successfully hydrated');
       setIsHydrated(true);
     } catch (err) {
@@ -362,28 +254,67 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     loadTradingData();
   }, [loadTradingData]);
 
-  // Combined real-time subscription for global trading lists
+  // monitor effects removed in v2.0 - sync happens via actions
+
+  // Account metrics sync v2.2 (Relational)
+  // Only sync DERIVED values (equity, margin, P&L) to DB.
+  // Balance, credit, and bonus are "source of truth" values that are only changed
+  // via explicit actions (deposit, withdraw, admin fund), never overwritten by this effect.
   useEffect(() => {
+    const userId = auth.currentUser?.id;
+    if (!userId || !isHydrated) return;
+    if (skipNextSyncRef.current) {
+      skipNextSyncRef.current = false;
+      return;
+    }
+    
+    const timeout = setTimeout(async () => {
+      try {
+        await api.tradingAccounts.update(userId, {
+          equity: account.equity,
+          realized_pnl: account.realizedPnL,
+          unrealized_pnl: account.unrealizedPnL,
+          margin: account.margin,
+          available_funds: account.availableFunds
+        });
+      } catch (err) {
+        console.error('Failed to sync account metrics to DB:', err);
+      }
+    }, 5000); // 5s debounce to prevent DB spam
+
+    return () => clearTimeout(timeout);
+  }, [account.equity, auth.currentUser?.id, isHydrated]);
+
+  // ── REALTIME: Listen for admin changes to trading_accounts ──────────────────
+  // When admin adds balance/credit/bonus, this picks it up instantly.
+  useEffect(() => {
+    const userId = auth.currentUser?.id;
+    if (!userId) return;
+
     const channel = supabase
-      .channel('public:kv_store_trading')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'kv_store_5d4be467' 
-      }, (payload: any) => {
-        const { key, value } = payload.new;
-        const userId = auth.currentUser?.id;
-        if (!userId) return;
-
-        const filterByUser = (items: any[]) => (items || []).filter(item => item.userId === userId);
-
-        switch (key) {
-          case `gross_live_account_${userId}`:  setAccount(value); break;
-          case 'gross_live_positions':  setPositions(filterByUser(value)); break;
-          case 'gross_live_orders':     setOrders(filterByUser(value)); break;
-          case 'gross_live_history':    setHistory(filterByUser(value)); break;
+      .channel(`trading-account-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'trading_accounts',
+          filter: `user_id=eq.${userId}`
+        },
+        (payload) => {
+          console.log('⚡ Realtime: trading_accounts updated', payload);
+          const updated = payload.new as any;
+          if (updated) {
+            skipNextSyncRef.current = true; // don't sync these values back
+            setAccount(prev => ({
+              ...prev,
+              balance: parseFloat(updated.balance ?? prev.balance),
+              credit: parseFloat(updated.credit ?? prev.credit),
+              bonus: parseFloat(updated.bonus ?? prev.bonus),
+            }));
+          }
         }
-      })
+      )
       .subscribe();
 
     return () => {
@@ -391,275 +322,114 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     };
   }, [auth.currentUser?.id]);
 
-  // Central Sync for Global Lists (Debounced)
-  const syncGlobalListsTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
-
-  const syncListToDB = useCallback((key: string, items: any[]) => {
-    if (syncGlobalListsTimeoutRef.current[key]) {
-      clearTimeout(syncGlobalListsTimeoutRef.current[key]);
-    }
-
-    syncGlobalListsTimeoutRef.current[key] = setTimeout(async () => {
-      try {
-        await setKV(key, items);
-        console.log(`✅ Global list ${key} synced to Supabase KV`);
-      } catch (error) {
-        console.error(`❌ Failed to sync global list ${key}:`, error);
-      }
-    }, 3000); // 3 second debounce to reduce write frequency
-  }, []);
-
-  // Monitor positions for changes and sync
-  useEffect(() => {
-    if (!isHydrated) return;
-    const allStr = localStorage.getItem('gross_live_positions');
-    if (allStr) syncListToDB('gross_live_positions', JSON.parse(allStr));
-  }, [positions, isHydrated, syncListToDB]);
-
-  useEffect(() => {
-    if (!isHydrated) return;
-    const allStr = localStorage.getItem('gross_live_history');
-    if (allStr) syncListToDB('gross_live_history', JSON.parse(allStr));
-  }, [history, isHydrated, syncListToDB]);
-
-  useEffect(() => {
-    if (!isHydrated) return;
-    const allStr = localStorage.getItem('gross_live_orders');
-    if (allStr) syncListToDB('gross_live_orders', JSON.parse(allStr));
-  }, [orders, isHydrated, syncListToDB]);
-
-  // Helper to update global localStorage lists without overwriting other users' data
-  const updateGlobalList = (key: string, updater: (items: any[]) => any[]) => {
-    const userId = auth.currentUser?.id;
-    if (!userId) return;
-    
-    try {
-      const raw = localStorage.getItem(key);
-      const items = raw ? JSON.parse(raw) : [];
-      // Pass the WHOLE list to updater, or handle merging here.
-      // Actually, it's easier to just handle it in the add/remove functions.
-    } catch (err) {
-      console.error(`Error updating global list ${key}:`, err);
-    }
-  };
-
-  // Cross-tab sync: listen for storage events on global keys and re-filter
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      const userId = auth.currentUser?.id;
-      if (!userId || !e.newValue) return;
-
-      try {
-        const items = JSON.parse(e.newValue);
-        const filtered = items.filter((item: any) => item.userId === userId || !item.userId);
-
-        if (e.key === 'gross_live_positions') setPositions(filtered);
-        if (e.key === 'gross_live_orders') setOrders(filtered);
-        if (e.key === 'gross_live_history') setHistory(filtered);
-      } catch (err) {
-        console.error('Cross-tab sync error:', err);
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, [auth.currentUser?.id]);
-
-  // Account balance isolation is still per-user (correct for singletons)
-  useEffect(() => {
-    const userId = auth.currentUser?.id;
-    if (!userId) {
-      isAccountHydrated.current = false;
-      return;
-    }
-
-    // Reset hydration state for the new user context
-    isAccountHydrated.current = false;
-    pendingHydration.current = false;
-
-    // Always prioritize per-user key for explicit session isolation
-    const stored = localStorage.getItem(`gross_live_account_${userId}`);
-
-    if (stored) {
-      try {
-        setAccount(JSON.parse(stored));
-        pendingHydration.current = true;
-      } catch { 
-        // fallback for malformed data
-        isAccountHydrated.current = true;
-      }
-    } else {
-      // No stored data — nothing to overwrite, safe to allow saves immediately
-      isAccountHydrated.current = true;
-    }
-  }, [auth.currentUser?.id]);
-
-  // Complete hydration AFTER setAccount has been processed by React.
-  // This ensures the save effect sees the correct (hydrated) account
-  // value rather than the stale initial { balance: 0 }.
-  useEffect(() => {
-    if (pendingHydration.current) {
-      pendingHydration.current = false;
-      isAccountHydrated.current = true;
-    }
-  }, [account]);
-
-  // Guarded save: only write after the stored value has been loaded,
-  // and always use the per-user key so each user has their own balance.
-  useEffect(() => {
-    const userId = auth.currentUser?.id;
-    if (!isAccountHydrated.current || !userId) return;
-    
-    // 1. Local cache
-    const liveKey = `gross_live_account_${userId}`;
-    localStorage.setItem(liveKey, JSON.stringify(account));
-    // Keep the generic key in sync so the storage-event listener can still read it
-    localStorage.setItem('gross_live_account', JSON.stringify(account));
-
-    // 2. Database Sync (Aggressive 1s debounce)
-    const timeout = setTimeout(() => {
-      setKV(liveKey, account);
-      console.log('✅ Account synced to DB for user:', userId);
-    }, 1000);
-
-    return () => clearTimeout(timeout);
-  }, [account, auth.currentUser?.id]);
-
-  // Listen for storage events to sync balance changes from admin in real-time
-  useEffect(() => {
-    const handleStorageChange = (e?: StorageEvent) => {
-      const currentUserId = auth.currentUser?.id;
-      if (!currentUserId) return;
-
-      // Only respond to events for THIS user's specific account key
-      const liveKey = `gross_live_account_${currentUserId}`;
-
-      // If it's a StorageEvent (from another tab), only react if it's our key.
-      if (e && 'key' in e && e.key && e.key !== liveKey) {
-        return;
-      }
-
-      console.log('📬 Storage event received for user:', currentUserId);
-      const rawLive = localStorage.getItem(liveKey);
-      if (rawLive) {
-        try {
-          const parsed = JSON.parse(rawLive);
-          setAccount(parsed);
-          isAccountHydrated.current = true;
-          console.log(`✅ Balance synced for ${currentUserId}: $${parsed.balance}`);
-        } catch { /* ignore */ }
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, [auth.currentUser?.id]);
-
-  // Helper getters
-
-  // Helper to persist changes to the global list in a way that doesn't overwrite others
-  const patchGlobalList = useCallback((key: string, items: any[]) => {
-    const userId = auth.currentUser?.id;
-    if (!userId) return;
-
-    try {
-      // 1. Get current global state
-      const raw = localStorage.getItem(key);
-      const globalItems = raw ? JSON.parse(raw) : [];
-      
-      // 2. Filter out ALL items belonging to THIS user from the global list
-      const otherUsersItems = globalItems.filter((item: any) => item.userId !== userId);
-      
-      // 3. Merge this user's current LOCAL state (already filtered) into the global list
-      const merged = [...items, ...otherUsersItems];
-      
-      // 4. Save back to global key
-      localStorage.setItem(key, JSON.stringify(merged));
-      // 5. Important: storage event doesn't fire for the same window, so this ensures other tabs see it
-      window.dispatchEvent(new Event('storage'));
-    } catch (err) {
-      console.error(`Failed to patch global list ${key}:`, err);
-    }
-  }, [auth.currentUser?.id]);
-
   // Actions
-  const addPosition = (position: Position) => {
+  const addPosition = async (position: Position) => {
     const userId = auth.currentUser?.id;
     if (!userId) return;
 
-    const priceData = marketData.getPrice(position.symbol);
-    const currentMarketPrice = priceData?.price || position.entryPrice;
-    
-    const positionWithUserId: Position = {
-      ...position,
-      userId,
-      currentPrice: currentMarketPrice
-    };
-    
-    const next = [...positions, positionWithUserId];
-    setPositions(next);
-    patchGlobalList('gross_live_positions', next);
-    
-    // SYNC TO RELATIONAL DATABASE
-    createPositionInDatabase(positionWithUserId).catch(err => {
-      console.error('Failed to sync new position to relational DB:', err);
-    });
-  };
-
-  const removePosition = (positionId: string) => {
-    const position = positions.find(p => p.id === positionId);
-    const next = positions.filter(p => p.id !== positionId);
-    setPositions(next);
-    patchGlobalList('gross_live_positions', next);
-
-    // SYNC TO RELATIONAL DATABASE
-    if (position) {
-      closePositionInDatabase(positionId, position.currentPrice).catch(err => {
-        console.error('Failed to sync position closure to relational DB:', err);
+    try {
+      const priceData = marketData.getPrice(position.symbol);
+      const currentMarketPrice = priceData?.price || position.entryPrice;
+      
+      const res = await api.positions.create({
+        user_id: userId,
+        symbol: position.symbol,
+        type: position.side,
+        amount: position.units,
+        entry_price: position.entryPrice,
+        current_price: currentMarketPrice,
+        leverage: position.leverage,
+        take_profit: position.takeProfit,
+        stop_loss: position.stopLoss,
+        status: 'open'
       });
+
+      if (res && res.id) {
+        loadTradingData();
+        toast.success('Position opened');
+      }
+    } catch (err) {
+      console.error('Failed to open position:', err);
+      toast.error('Failed to open position in database');
     }
   };
 
-  const updatePosition = (positionId: string, updates: Partial<Position>) => {
-    const next = positions.map(p => p.id === positionId ? { ...p, ...updates } : p);
-    setPositions(next);
-    patchGlobalList('gross_live_positions', next);
+  const removePosition = async (positionId: string) => {
+    try {
+      const position = positions.find(p => p.id === positionId);
+      if (!position) return;
+
+      const res = await api.positions.close(positionId, position.currentPrice);
+      if (res) {
+        loadTradingData();
+        toast.success('Position closed');
+      }
+    } catch (err) {
+      console.error('Failed to close position:', err);
+      toast.error('Failed to close position');
+    }
   };
 
-  const addOrder = (order: Order) => {
+  const updatePosition = async (positionId: string, updates: Partial<Position>) => {
+    try {
+      setPositions(prev => prev.map(p => p.id === positionId ? { ...p, ...updates } : p));
+      await api.positions.update(positionId, updates);
+    } catch (err) {
+      console.error('Failed to update position:', err);
+    }
+  };
+
+  const addOrder = async (order: Order) => {
     const userId = auth.currentUser?.id;
     if (!userId) return;
 
-    const orderWithUserId: Order = { ...order, userId };
-    const next = [...orders, orderWithUserId];
-    setOrders(next);
-    patchGlobalList('gross_live_orders', next);
+    try {
+      await api.pendingOrders.create({
+        user_id: userId,
+        symbol: order.symbol,
+        type: order.side,
+        order_type: order.type,
+        amount: order.units,
+        price: order.price,
+        stop_loss: order.stopLoss,
+        take_profit: order.takeProfit,
+        leverage: order.leverage,
+        status: 'pending'
+      });
+      loadTradingData();
+      toast.success('Order placed');
+    } catch (err) {
+      console.error('Failed to add order:', err);
+    }
   };
 
-  const removeOrder = (orderId: string) => {
-    const next = orders.filter(o => o.id !== orderId);
-    setOrders(next);
-    patchGlobalList('gross_live_orders', next);
+  const removeOrder = async (orderId: string) => {
+    try {
+      await api.pendingOrders.delete(orderId);
+      loadTradingData();
+      toast.success('Order cancelled');
+    } catch (err) {
+      console.error('Failed to remove order:', err);
+    }
   };
 
-  const updateOrder = (orderId: string, updates: Partial<Order>) => {
-    const next = orders.map(o => o.id === orderId ? { ...o, ...updates } : o);
-    setOrders(next);
-    patchGlobalList('gross_live_orders', next);
+  const updateOrder = async (orderId: string, updates: Partial<Order>) => {
+    try {
+      await api.pendingOrders.update(orderId, updates);
+      loadTradingData();
+    } catch (err) {
+      console.error('Failed to update order:', err);
+    }
   };
 
-  const addHistory = (item: HistoryItem) => {
+  const addHistory = async (item: HistoryItem) => {
     const userId = auth.currentUser?.id;
     if (!userId) return;
-
-    const itemWithUserId: HistoryItem = { ...item, userId };
-    const next = [itemWithUserId, ...history];
-    setHistory(next);
-    patchGlobalList('gross_live_history', next);
+    setHistory(prev => [{ ...item, userId }, ...prev]);
   };
 
   const updateAccount = (updates: Partial<Account>) => {
-    setAccount({ ...account, ...updates });
+    setAccount(prev => ({ ...prev, ...updates }));
   };
 
   const addPortfolioSnapshot = () => {
@@ -669,32 +439,41 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       balance: account.balance,
       pnl: account.realizedPnL + account.unrealizedPnL,
     };
-    setPortfolioHistory([...portfolioHistory, snapshot]);
+    setPortfolioHistory(prev => [...prev, snapshot]);
   };
 
+  const depositToTradingAccount = async (amount: number) => {
+    const userId = auth.currentUser?.id;
+    if (!userId) return;
 
-  const depositToTradingAccount = (amount: number) => {
     const newBalance = account.balance + amount;
-    const newAcc = { ...account, balance: newBalance };
-    setAccount(newAcc);
+    setAccount(prev => ({ ...prev, balance: newBalance }));
     
-    // Update global user record
-    if (auth.currentUser) {
-      auth.updateUser(auth.currentUser.id, { balance: newBalance, liveBalance: newBalance });
+    try {
+      await api.tradingAccounts.update(userId, { balance: newBalance });
+      auth.updateUser(userId, { balance: newBalance, liveBalance: newBalance });
+    } catch (err) {
+      console.error('Failed to deposit to trading account:', err);
     }
   };
 
-  const withdrawFromTradingAccount = (amount: number) => {
+  const withdrawFromTradingAccount = async (amount: number) => {
+    const userId = auth.currentUser?.id;
+    if (!userId) return false;
+
     if (account.balance < amount) return false;
-    const newBalance = account.balance - amount;
-    const newAcc = { ...account, balance: newBalance };
-    setAccount(newAcc);
     
-    // Update global user record
-    if (auth.currentUser) {
-      auth.updateUser(auth.currentUser.id, { balance: newBalance, liveBalance: newBalance });
+    const newBalance = account.balance - amount;
+    setAccount(prev => ({ ...prev, balance: newBalance }));
+    
+    try {
+      await api.tradingAccounts.update(userId, { balance: newBalance });
+      auth.updateUser(userId, { balance: newBalance, liveBalance: newBalance });
+      return true;
+    } catch (err) {
+      console.error('Failed to withdraw from trading account:', err);
+      return false;
     }
-    return true;
   };
 
   // Subscribe to market data for all positions and update prices in real-time

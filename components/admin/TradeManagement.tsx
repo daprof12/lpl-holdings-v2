@@ -13,8 +13,8 @@ import {
 } from '../ui/dialog';
 import { useTrading } from '../../contexts/TradingContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { setKV, getKV, serverUrl } from '../../utils/supabase/client';
-import { publicAnonKey } from '../../utils/supabase/info';
+import { supabase } from '../../utils/supabase/client';
+import { api } from '../../utils/supabase/api';
 import { useMarketData } from '../../contexts/MarketDataContext';
 import { toast } from 'sonner';
 import { Label } from '../ui/label';
@@ -25,7 +25,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { initialAssets } from '../../data/assets';
 import { getMarketStatus } from '../../utils/tradingHours';
 
 interface Trade {
@@ -51,40 +50,33 @@ interface Trade {
 
 // Helper function to determine asset category
 const getAssetCategory = (symbol: string): string => {
+  if (!symbol) return 'Other';
+  const s = symbol.toUpperCase();
   // Crypto
-  if (symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('XRP') || 
-      symbol.includes('LTC') || symbol.includes('ADA') || symbol.includes('DOT') ||
-      symbol.includes('DOGE') || symbol.includes('SOL')) {
+  if (s.includes('BTC') || s.includes('ETH') || s.includes('XRP') || 
+      s.includes('LTC') || s.includes('ADA') || s.includes('DOT') ||
+      s.includes('DOGE') || s.includes('SOL')) {
     return 'Crypto';
   }
   // Forex
-  if (['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'NZDUSD', 'USDCHF'].includes(symbol)) {
+  if (['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'NZDUSD', 'USDCHF'].includes(s)) {
     return 'Forex';
   }
   // Stocks
-  if (['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'V', 'NFLX', 'DIS'].includes(symbol)) {
+  if (['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'V', 'NFLX', 'DIS'].includes(s)) {
     return 'Stocks';
   }
   // Commodities
-  if (symbol.includes('XAU') || symbol.includes('XAG') || symbol.includes('OIL') || symbol.includes('GC') || symbol.includes('CL')) {
+  if (s.includes('XAU') || s.includes('XAG') || s.includes('OIL') || s.includes('GC') || s.includes('CL')) {
     return 'Commodities';
   }
   // Indices
-  if (symbol.includes('SPX') || symbol.includes('NDX') || symbol.includes('DJI') || ['SPY', 'QQQ', 'VOO'].includes(symbol)) {
+  if (s.includes('SPX') || s.includes('NDX') || s.includes('DJI') || ['SPY', 'QQQ', 'VOO'].includes(s)) {
     return 'Indices';
-  }
-  // ETFs/Funds
-  if (['SPY', 'QQQ', 'VOO', 'VTI', 'IWM'].includes(symbol)) {
-    return 'Funds';
-  }
-  // Futures
-  if (['ES', 'NQ', 'YM', 'GC', 'CL'].includes(symbol)) {
-    return 'Futures';
   }
   
   return 'Other';
 };
-
 export default function TradeManagement() {
   const { 
     positions: allPositions, 
@@ -93,10 +85,8 @@ export default function TradeManagement() {
     addHistory, 
     updateAccount, 
     account, 
-    updatePosition, 
-    livePositions, 
-    liveHistory, 
-    setLiveHistory
+    updatePosition,
+    setHistory
   } = useTrading();
   const { users } = useAuth();
   const { getPrice, subscribeToSymbol, unsubscribeFromSymbol } = useMarketData();
@@ -125,12 +115,13 @@ export default function TradeManagement() {
     const loadAllTrades = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch(`${serverUrl}/positions/all`, {
-          headers: { 'Authorization': `Bearer ${publicAnonKey}` }
-        });
-        if (response.ok) {
-          const dbPos = await response.json();
-          setDbOpenTrades(dbPos.map((pos: any) => ({
+        const [openPositions, closedHistory] = await Promise.all([
+          api.positions.getAll(),
+          api.tradeHistory.getAll()
+        ]);
+
+        if (Array.isArray(openPositions)) {
+          setDbOpenTrades(openPositions.map((pos: any) => ({
             id: pos.id,
             user: getUserEmail(pos.user_id),
             asset: pos.symbol,
@@ -148,12 +139,9 @@ export default function TradeManagement() {
             userId: pos.user_id,
           })));
         }
-        const hResponse = await fetch(`${serverUrl}/trade-history/all`, {
-          headers: { 'Authorization': `Bearer ${publicAnonKey}` }
-        });
-        if (hResponse.ok) {
-          const dbHis = await hResponse.json();
-          setDbClosedTrades(dbHis.map((h: any) => ({
+
+        if (Array.isArray(closedHistory)) {
+          setDbClosedTrades(closedHistory.map((h: any) => ({
             id: h.id,
             user: getUserEmail(h.user_id),
             asset: h.symbol,
@@ -172,10 +160,21 @@ export default function TradeManagement() {
             userId: h.user_id,
           })));
         }
-      } catch (err) { console.error(err); } finally { setIsLoading(false); }
+      } catch (err) { 
+        console.error('Failed to load trades:', err); 
+      } finally { 
+        setIsLoading(false); 
+      }
     };
+    
     loadAllTrades();
+
+    // In a real app, we might use Supabase real-time to listen for position updates
+    const interval = setInterval(loadAllTrades, 30000); // 30s refresh as fallback
+    
+    return () => clearInterval(interval);
   }, [users]);
+
 
   const trades = [...dbOpenTrades, ...dbClosedTrades];
 
@@ -257,114 +256,59 @@ export default function TradeManagement() {
     setShowDialog(true);
   };
 
-  const handleForcClose = (tradeId: string) => {
+  const handleForcClose = async (tradeId: string) => {
     if (window.confirm('Are you sure you want to force close this trade?')) {
-      const positionsKey = 'gross_live_positions';
-      const currentPositions = JSON.parse(localStorage.getItem(positionsKey) || '[]');
-      const position = currentPositions.find((p: any) => p.id === tradeId);
-
-      if (position) {
-        const userId = position.userId;
-        const priceDiff = position.side === 'buy' 
-          ? position.currentPrice - position.entryPrice 
-          : position.entryPrice - position.currentPrice;
-        const pnl = priceDiff * position.units;
-
-        const updatedPositions = currentPositions.filter((p: any) => p.id !== tradeId);
-        localStorage.setItem(positionsKey, JSON.stringify(updatedPositions));
-
-        const historyKey = 'gross_live_history';
-        const currentHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
-        const newHistoryItem = {
-          id: position.id,
-          userId: position.userId,
-          symbol: position.symbol,
-          side: position.side,
-          type: 'market',
-          units: position.units,
-          price: position.currentPrice,
-          entryPrice: position.entryPrice,
-          pnl,
-          timestamp: new Date(),
-          status: 'closed',
-          mode: 'live'
-        };
-        localStorage.setItem(historyKey, JSON.stringify([newHistoryItem, ...currentHistory]));
-
-        const accountKey = `gross_live_account_${userId}`;
-        const storedAccount = localStorage.getItem(accountKey);
-        if (storedAccount) {
-          const userAccount = JSON.parse(storedAccount);
-          const userPositions = updatedPositions.filter((p: any) => p.userId === userId);
-          const remainingUnrealizedPnL = userPositions.reduce((sum: number, p: any) => sum + (p.pnl || 0), 0);
-          const remainingMargin = userPositions.reduce((sum: number, p: any) => sum + (p.margin || 0), 0);
-          const newBalance = userAccount.balance + pnl;
-          const newEquity = newBalance + remainingUnrealizedPnL;
-
-          const updatedAccount = {
-            ...userAccount,
-            balance: newBalance,
-            equity: newEquity,
-            realizedPnL: (userAccount.realizedPnL || 0) + pnl,
-            unrealizedPnL: remainingUnrealizedPnL,
-            margin: remainingMargin,
-            availableFunds: newEquity - remainingMargin,
-          };
-          localStorage.setItem(accountKey, JSON.stringify(updatedAccount));
+      try {
+        const position = dbOpenTrades.find(p => p.id === tradeId);
+        if (!position) {
+          toast.error('Position not found');
+          return;
         }
 
-        // Trigger storage event for cross-tab sync
-        window.dispatchEvent(new Event('storage'));
+        const res = await api.positions.close(tradeId, position.currentPrice);
         
-        // Sync to Supabase KV and optionally Relational DB
-        setKV(positionsKey, updatedPositions).catch(console.error);
-        setKV(historyKey, [newHistoryItem, ...currentHistory]).catch(console.error);
-        
-        fetch(`${serverUrl}/positions/${tradeId}/close`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ exit_price: position.currentPrice })
-        }).catch(err => console.error('Failed to close position in relational DB:', err));
-        
-        toast.success('Trade force closed successfully');
-      } else {
-        toast.error('Position not found');
+        if (res) {
+          toast.success('Trade force closed successfully');
+          // Refresh list
+          const [openPositions, closedHistory] = await Promise.all([
+            api.positions.getAll(),
+            api.tradeHistory.getAll()
+          ]);
+          setDbOpenTrades(openPositions.map((p: any) => ({ ...p, status: 'open' }))); // simplified for state update
+          // Full refresh would be better, but this notifies UI
+          window.location.reload(); // Quickest way to ensure all state is fresh after major balance change
+        }
+      } catch (err) {
+        console.error('Failed to close position:', err);
+        toast.error('Failed to close position');
       }
     }
   };
 
-  const handleDelete = (tradeId: string) => {
+  const handleDelete = async (tradeId: string) => {
     if (window.confirm('Are you sure you want to permanently delete this trade record? This action cannot be undone.')) {
-      const position = dbOpenTrades.find(p => p.id === tradeId);
-      const historyItem = dbClosedTrades.find(h => h.id === tradeId);
-      
-      if (position) {
-        const positionsKey = 'gross_live_positions';
-        const currentPositions = JSON.parse(localStorage.getItem(positionsKey) || '[]');
-        const updatedPositions = currentPositions.filter((p: any) => p.id !== tradeId);
-        localStorage.setItem(positionsKey, JSON.stringify(updatedPositions));
-        window.dispatchEvent(new Event('storage'));
-        setKV(positionsKey, updatedPositions).catch(console.error);
-        toast.success('Open position deleted successfully');
-      } else if (historyItem) {
-        const historyKey = 'gross_live_history';
-        const currentHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
-        const updatedHistory = currentHistory.filter((h: any) => h.id !== tradeId);
-        localStorage.setItem(historyKey, JSON.stringify(updatedHistory));
-        setKV(historyKey, updatedHistory).catch(console.error);
-        setLiveHistory(updatedHistory);
-        window.dispatchEvent(new Event('storage'));
-        toast.success('Closed trade deleted from history successfully');
-      } else {
-        toast.error('Trade not found');
+      try {
+        const position = dbOpenTrades.find(p => p.id === tradeId);
+        const historyItem = dbClosedTrades.find(h => h.id === tradeId);
+        
+        if (position) {
+          await supabase.from('positions').delete().eq('id', tradeId);
+          toast.success('Open position deleted successfully');
+        } else if (historyItem) {
+          await supabase.from('trade_history').delete().eq('id', tradeId);
+          toast.success('Closed trade deleted from history successfully');
+        }
+        
+        // Refresh
+        window.location.reload();
+      } catch (err) {
+        console.error('Delete failed:', err);
+        toast.error('Failed to delete trade');
       }
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedTrade) return;
 
     const newEntryPrice = parseFloat(formData.entryPrice);
@@ -374,202 +318,44 @@ export default function TradeManagement() {
     const newStopLoss = formData.stopLoss ? parseFloat(formData.stopLoss) : undefined;
     const newTakeProfit = formData.takeProfit ? parseFloat(formData.takeProfit) : undefined;
 
-    // Validate inputs
     if (!newEntryPrice || !newCurrentPrice || !newQuantity || !newLeverage) {
       toast.error('Please fill in all required fields');
       return;
     }
 
-    // Find if it's an open position or closed trade in our states
-    const position = dbOpenTrades.find(p => p.id === selectedTrade.id);
-    const historyItem = dbClosedTrades.find(h => h.id === selectedTrade.id);
-    
-    // Determine trade type
-    const tradeType = selectedTrade.type === 'long' ? 'long' : 'short';
-    const tradeSide = tradeType === 'long' ? 'buy' : 'sell';
+    try {
+      const updates = {
+        symbol: formData.asset,
+        entry_price: newEntryPrice,
+        current_price: newCurrentPrice,
+        amount: newQuantity,
+        leverage: newLeverage,
+        stop_loss: newStopLoss,
+        take_profit: newTakeProfit,
+        status: formData.status === 'closed' ? 'closed' : 'open'
+      };
 
-    // Calculate new P&L based on edited values
-    const priceDiff = tradeType === 'long'
-      ? newCurrentPrice - newEntryPrice
-      : newEntryPrice - newCurrentPrice;
-    const newPnL = priceDiff * newQuantity * newLeverage;
-    const newMargin = (newQuantity * newEntryPrice) / newLeverage;
-    
-    if (position && selectedTrade.status === 'open') {
-      const userId = position.userId;
-      const positionsKey = 'gross_live_positions';
-      const currentPositions = JSON.parse(localStorage.getItem(positionsKey) || '[]');
-      
-      const oldMargin = position.margin;
-      const oldPnL = position.pnl;
-
-      if (formData.status === 'closed') {
-        const updatedPositions = currentPositions.filter((p: any) => p.id !== position.id);
-        localStorage.setItem(positionsKey, JSON.stringify(updatedPositions));
-
-        const historyKey = 'gross_live_history';
-        const currentHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
-        const newHistoryItem = {
-          id: position.id,
-          userId: userId,
-          symbol: formData.asset,
-          side: tradeSide,
-          type: 'market',
-          units: newQuantity,
-          price: newCurrentPrice,
-          entryPrice: newEntryPrice,
-          pnl: newPnL,
-          timestamp: formData.closedAt ? new Date(formData.closedAt) : new Date(),
-          status: 'closed',
-          mode: 'live'
-        };
-        localStorage.setItem(historyKey, JSON.stringify([newHistoryItem, ...currentHistory]));
-
-        const accountKey = `gross_live_account_${userId}`;
-        const storedAccount = localStorage.getItem(accountKey);
-        if (storedAccount) {
-          const userAccount = JSON.parse(storedAccount);
-          const userPositions = updatedPositions.filter((p: any) => p.userId === userId);
-          const remainingUnrealizedPnL = userPositions.reduce((sum: number, p: any) => sum + (p.pnl || 0), 0);
-          const remainingMargin = userPositions.reduce((sum: number, p: any) => sum + (p.margin || 0), 0);
-          
-          const updatedAccount = {
-            ...userAccount,
-            balance: (userAccount.balance || 0) + newPnL,
-            equity: (userAccount.equity || 0) - oldPnL + newPnL - oldMargin,
-            realizedPnL: (userAccount.realizedPnL || 0) + newPnL,
-            margin: remainingMargin,
-            availableFunds: (userAccount.availableFunds || 0) + oldMargin + newPnL,
-            unrealizedPnL: remainingUnrealizedPnL
-          };
-          localStorage.setItem(accountKey, JSON.stringify(updatedAccount));
+      if (selectedTrade.status === 'open') {
+        await api.positions.update(selectedTrade.id, updates);
+        
+        if (formData.status === 'closed') {
+          await api.positions.close(selectedTrade.id, newCurrentPrice);
         }
       } else {
-        // Update the position with new values (still open)
-        const updatedPositions = currentPositions.map((p: any) => {
-          if (p.id === position.id) {
-            return {
-              ...p,
-              symbol: formData.asset,
-              entryPrice: newEntryPrice,
-              currentPrice: newCurrentPrice,
-              units: newQuantity,
-              leverage: newLeverage,
-              stopLoss: newStopLoss,
-              takeProfit: newTakeProfit,
-              pnl: newPnL,
-              margin: newMargin,
-              timestamp: formData.openedAt ? new Date(formData.openedAt).getTime() : p.timestamp,
-            };
-          }
-          return p;
-        });
-
-        localStorage.setItem(positionsKey, JSON.stringify(updatedPositions));
-
-        const accountKey = `gross_live_account_${userId}`;
-        const storedAccount = localStorage.getItem(accountKey);
-        if (storedAccount) {
-          const userAccount = JSON.parse(storedAccount);
-          const marginDiff = newMargin - oldMargin;
-          const pnlDiff = newPnL - oldPnL;
-
-          const updatedAccount = {
-            ...userAccount,
-            equity: (userAccount.equity || 0) + pnlDiff,
-            unrealizedPnL: (userAccount.unrealizedPnL || 0) + pnlDiff,
-            margin: (userAccount.margin || 0) + marginDiff,
-            availableFunds: (userAccount.availableFunds || 0) - marginDiff
-          };
-          localStorage.setItem(accountKey, JSON.stringify(updatedAccount));
-        }
+        // Update history item
+        await supabase
+          .from('trade_history')
+          .update(updates)
+          .eq('id', selectedTrade.id);
       }
-      
-      window.dispatchEvent(new Event('storage'));
+
       toast.success('Trade updated successfully!');
-    } else if (historyItem && selectedTrade.status === 'closed') {
-      const targetHistory = liveHistory;
-      
-      const updatedHistory = targetHistory.map((h: any) => {
-        if (h.id === selectedTrade.id) {
-          return {
-            ...h,
-            symbol: formData.asset,
-            side: tradeSide,
-            units: newQuantity,
-            price: newCurrentPrice,
-            entryPrice: newEntryPrice,
-            pnl: newPnL,
-            timestamp: formData.closedAt ? new Date(formData.closedAt) : h.timestamp,
-            status: formData.status,
-          };
-        }
-        return h;
-      });
-
-      const historyKey = 'gross_live_history';
-      localStorage.setItem(historyKey, JSON.stringify(updatedHistory));
-      setLiveHistory(updatedHistory);
-
-      // Trigger storage event for cross-tab sync
-      window.dispatchEvent(new Event('storage'));
-
-      // If status changed to open, reopen the trade as a position
-      if (formData.status === 'open') {
-        const filteredHistory = targetHistory.filter((h: any) => h.id !== selectedTrade.id);
-        localStorage.setItem(historyKey, JSON.stringify(filteredHistory));
-        setLiveHistory(filteredHistory);
-
-        const accountKey = `gross_live_account_${historyItem.userId}`;
-        const storedAccount = localStorage.getItem(accountKey);
-        if (storedAccount) {
-          const userAccount = JSON.parse(storedAccount);
-          const oldPnL = historyItem.pnl || 0;
-          
-          const updatedAccount = {
-            ...userAccount,
-            balance: (userAccount.balance || 0) - oldPnL, // Reverse realized P&L
-            equity: (userAccount.equity || 0) - oldPnL + newPnL, // Switch to new unrealized P&L
-            realizedPnL: (userAccount.realizedPnL || 0) - oldPnL,
-            unrealizedPnL: (userAccount.unrealizedPnL || 0) + newPnL,
-            margin: (userAccount.margin || 0) + newMargin,
-            availableFunds: (userAccount.availableFunds || 0) - newMargin
-          };
-          localStorage.setItem(accountKey, JSON.stringify(updatedAccount));
-        }
-
-        // 3. Add as new position
-        const newPosition = {
-          id: selectedTrade.id,
-          userId: historyItem.userId,
-          symbol: formData.asset,
-          side: tradeSide,
-          units: newQuantity,
-          entryPrice: newEntryPrice,
-          currentPrice: newCurrentPrice,
-          leverage: newLeverage,
-          stopLoss: newStopLoss,
-          takeProfit: newTakeProfit,
-          pnl: newPnL,
-          margin: newMargin,
-          timestamp: formData.openedAt ? new Date(formData.openedAt).getTime() : historyItem.timestamp,
-          mode: 'live',
-        };
-
-        const positionsKey = 'gross_live_positions';
-        const currentPositions = JSON.parse(localStorage.getItem(positionsKey) || '[]');
-        currentPositions.push(newPosition);
-        localStorage.setItem(positionsKey, JSON.stringify(currentPositions));
-        setKV(positionsKey, currentPositions).catch(console.error);
-        window.dispatchEvent(new Event('storage'));
-      }
-
-      toast.success('Closed trade updated successfully in history!');
-    } else {
-      toast.error('Trade not found');
+      setShowDialog(false);
+      window.location.reload();
+    } catch (err) {
+      console.error('Update failed:', err);
+      toast.error('Failed to update trade');
     }
-
-    setShowDialog(false);
   };
 
   return (

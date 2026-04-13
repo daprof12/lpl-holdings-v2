@@ -1,15 +1,8 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from './AuthContext';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
-import { supabase, getKV, setKV } from '../utils/supabase/client';
-import { useRef } from 'react';
-
-// ============================================
-// API CONFIGURATION
-// ============================================
-
-const serverUrl = `https://${projectId}.supabase.co/functions/v1/make-server-5d4be467`;
+import { api } from '../utils/supabase/api';
+import { serverUrl } from '../utils/supabase/client';
 
 // ============================================
 // TYPES
@@ -78,66 +71,18 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
   const { currentUser } = useAuth();
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Sync to Supabase KV Store (Debounced)
-  useEffect(() => {
-    if (tickets.length === 0) return;
-
-    if (syncTimeoutRef.current) {
-      clearTimeout(syncTimeoutRef.current);
-    }
-
-    syncTimeoutRef.current = setTimeout(async () => {
-      try {
-        await setKV('gross_tickets', tickets);
-        console.log('✅ Tickets synced to Supabase KV');
-      } catch (error) {
-        console.error('❌ Failed to sync tickets to Supabase:', error);
-      }
-    }, 2000); // 2 second debounce
-
-    return () => {
-      if (syncTimeoutRef.current) {
-        clearTimeout(syncTimeoutRef.current);
-      }
-    };
-  }, [tickets]);
-
-  // ============================================
-  // API FUNCTIONS - Database Integration
-  // ============================================
-
-  /**
-   * Fetch tickets from database for current user
-   */
-  const fetchTickets = async (userId: string) => {
+  // Refresh tickets v2.0
+  const refreshTickets = async () => {
+    if (!currentUser?.id) return;
+    setLoading(true);
     try {
-      const response = await fetch(`${serverUrl}/tickets/user/${userId}`, {
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`
-        }
-      });
-
-      if (!response.ok) {
-        console.error('Failed to fetch tickets:', response.statusText);
-        return [];
-      }
-
-      const dbTickets = await response.json();
-      console.log('✅ Tickets loaded from database:', dbTickets.length);
+      const dbTickets = currentUser.role === 'admin' ? await api.tickets.getAll() : await api.tickets.getByUserId(currentUser.id);
       
-      // Fetch messages for each ticket
-      const ticketsWithMessages = await Promise.all(
-        dbTickets.map(async (ticket: any) => {
-          const messagesResponse = await fetch(`${serverUrl}/tickets/${ticket.id}/messages`, {
-            headers: {
-              'Authorization': `Bearer ${publicAnonKey}`
-            }
-          });
-
-          let messages = [];
-          if (messagesResponse.ok) {
-            const dbMessages = await messagesResponse.json();
-            messages = dbMessages.map((msg: any) => ({
+      if (Array.isArray(dbTickets)) {
+        const ticketsWithMessages = await Promise.all(
+          dbTickets.map(async (ticket: any) => {
+            const dbMessages = await api.tickets.getMessages(ticket.id).catch(() => []);
+            const messages = Array.isArray(dbMessages) ? dbMessages.map((msg: any) => ({
               id: msg.id,
               senderId: msg.sender_id,
               senderName: msg.sender_name || 'Unknown',
@@ -145,237 +90,39 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
               message: msg.message,
               timestamp: new Date(msg.created_at),
               attachments: msg.attachments ? JSON.parse(msg.attachments) : undefined
-            }));
-          }
+            })) : [];
 
-          return {
-            id: ticket.id,
-            userId: ticket.user_id,
-            userEmail: ticket.user_email || '',
-            userName: ticket.user_name || '',
-            subject: ticket.subject,
-            category: ticket.category || 'other',
-            priority: ticket.priority || 'medium',
-            status: ticket.status,
-            messages: messages,
-            createdAt: new Date(ticket.created_at),
-            updatedAt: new Date(ticket.updated_at),
-            assignedTo: ticket.assigned_to
-          };
-        })
-      );
-      
-      return ticketsWithMessages;
-    } catch (error) {
-      console.error('Error fetching tickets:', error);
-      return [];
-    }
-  };
-
-  /**
-   * Create ticket in database
-   */
-  const createTicketInDatabase = async (data: {
-    subject: string;
-    category: string;
-    priority: string;
-    message: string;
-    userId: string;
-    userEmail: string;
-    userName: string;
-  }) => {
-    try {
-      const response = await fetch(`${serverUrl}/tickets`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          user_id: data.userId,
-          user_email: data.userEmail,
-          user_name: data.userName,
-          subject: data.subject,
-          category: data.category,
-          priority: data.priority,
-          status: 'open'
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to create ticket');
+            return {
+              id: ticket.id,
+              userId: ticket.user_id,
+              userEmail: ticket.user_email || '',
+              userName: ticket.user_name || '',
+              subject: ticket.subject,
+              category: ticket.category || 'other',
+              priority: ticket.priority || 'medium',
+              status: ticket.status,
+              messages,
+              createdAt: new Date(ticket.created_at),
+              updatedAt: new Date(ticket.updated_at),
+              assignedTo: ticket.assigned_to
+            };
+          })
+        );
+        setTickets(ticketsWithMessages);
       }
-
-      const ticket = await response.json();
-      console.log('✅ Ticket created in database:', ticket.id);
-
-      // Add initial message
-      await fetch(`${serverUrl}/tickets/${ticket.id}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          sender_id: data.userId,
-          sender_name: data.userName,
-          sender_role: 'user',
-          message: data.message
-        })
-      });
-
-      return ticket;
     } catch (error) {
-      console.error('Error creating ticket:', error);
-      throw error;
-    }
-  };
-
-  /**
-   * Add message to ticket in database
-   */
-  const addMessageToDatabase = async (ticketId: string, data: {
-    senderId: string;
-    senderName: string;
-    senderRole: string;
-    message: string;
-  }) => {
-    try {
-      const response = await fetch(`${serverUrl}/tickets/${ticketId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          sender_id: data.senderId,
-          sender_name: data.senderName,
-          sender_role: data.senderRole,
-          message: data.message
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to add message');
-      }
-
-      console.log('✅ Message added to ticket:', ticketId);
-    } catch (error) {
-      console.error('Error adding message:', error);
-    }
-  };
-
-  /**
-   * Update ticket status in database
-   */
-  const updateTicketStatusInDatabase = async (ticketId: string, status: string) => {
-    try {
-      const response = await fetch(`${serverUrl}/tickets/${ticketId}/status`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ status })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update ticket status');
-      }
-
-      console.log('✅ Ticket status updated:', ticketId);
-    } catch (error) {
-      console.error('Error updating ticket status:', error);
-    }
-  };
-
-  /**
-   * Refresh tickets from database
-   */
-  const refreshTickets = async () => {
-    if (!currentUser?.id) return;
-    
-    setLoading(true);
-    try {
-      const dbTickets = await fetchTickets(currentUser.id);
-      setTickets(dbTickets);
-    } catch (error) {
-      console.error('Error refreshing tickets:', error);
+       console.error('Failed to refresh tickets:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  // ============================================
-  // LOAD DATA FROM DATABASE ON MOUNT
-  // ============================================
-
-  /**
-   * Load tickets when user is authenticated
-   */
   useEffect(() => {
-    const loadUserTickets = async () => {
-      if (currentUser && currentUser.id) {
-        console.log('🔄 Loading tickets for user:', currentUser.id);
-        await refreshTickets();
-      }
-    };
-
-    loadUserTickets();
+    if (currentUser?.id) refreshTickets();
   }, [currentUser?.id]);
 
-  // Load data from localStorage on mount (Global keys, will filter in state)
-  useEffect(() => {
-    const userId = currentUser?.id;
-
-    try {
-      const storedTickets = localStorage.getItem('gross_tickets');
-      if (storedTickets && userId) {
-        const items = JSON.parse(storedTickets);
-        setTickets(items.filter((t: any) => t.userId === userId || !t.userId));
-      }
-    } catch (error) {
-      console.error('Failed to load tickets:', error);
-    }
-  }, [currentUser?.id]);
-
-  // Patch helper for global sets
-  const patchGlobalList = (key: string, items: any[]) => {
-    const userId = currentUser?.id;
-    if (!userId) return;
-
-    try {
-      const raw = localStorage.getItem(key);
-      const globalItems = raw ? JSON.parse(raw) : [];
-      const others = globalItems.filter((item: any) => item.userId !== userId);
-      const merged = [...items, ...others];
-      localStorage.setItem(key, JSON.stringify(merged));
-      window.dispatchEvent(new Event('storage'));
-    } catch (err) {
-      console.error('Patch error:', err);
-    }
-  };
-
-  // Cross-tab sync via storage event (Global key with filtering)
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      const userId = currentUser?.id;
-      if (!userId || !e.newValue) return;
-
-      if (e.key === 'gross_tickets') {
-        try {
-          const items = JSON.parse(e.newValue);
-          setTickets(items.filter((t: any) => t.userId === userId || !t.userId));
-        } catch (error) {
-          console.error('Cross-tab tickets sync failed:', error);
-        }
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, [currentUser?.id]);
+  // Legacy sync logic and real-time listeners removed
+  // All state changes are now triggered via API calls with local refresh
 
   const createTicket = (data: {
     subject: string;
@@ -386,50 +133,16 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
     userEmail: string;
     userName: string;
   }) => {
-    const newTicket: Ticket = {
-      id: `ticket-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      userId: data.userId,
-      userEmail: data.userEmail,
-      userName: data.userName,
+    api.tickets.create({
+      user_id: data.userId,
+      user_email: data.userEmail,
+      user_name: data.userName,
       subject: data.subject,
       category: data.category,
       priority: data.priority,
       status: 'open',
-      messages: [
-        {
-          id: `msg-${Date.now()}`,
-          senderId: data.userId,
-          senderName: data.userName,
-          senderRole: 'user',
-          message: data.message,
-          timestamp: new Date(),
-        },
-      ],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    setTickets(prev => {
-      const next = [newTicket, ...prev];
-      patchGlobalList('gross_tickets', next);
-      return next;
-    });
-    
-    // Sync to database table
-    createTicketInDatabase(data).catch(err => 
-      console.error('Failed to sync ticket to database:', err)
-    );
-    
-    // Trigger notification event for admins
-    window.dispatchEvent(new CustomEvent('ticket-created', { 
-      detail: { 
-        ticketId: newTicket.id, 
-        userId: data.userId, 
-        userName: data.userName,
-        subject: data.subject 
-      } 
-    }));
-    
+      initial_message: data.message
+    }).then(() => refreshTickets());
     toast.success('Support ticket created successfully');
   };
 
@@ -440,108 +153,28 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
     senderName: string,
     senderRole: 'user' | 'admin'
   ) => {
-    setTickets(prev => {
-      const next = prev.map(ticket => {
-        if (ticket.id === ticketId) {
-          const newMessage: TicketMessage = {
-            id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            senderId,
-            senderName,
-            senderRole,
-            message,
-            timestamp: new Date(),
-          };
-
-          // Trigger notification event
-          window.dispatchEvent(new CustomEvent('ticket-message', { 
-            detail: { 
-              ticketId, 
-              senderRole, 
-              senderName,
-              userId: ticket.userId,
-              message: message.substring(0, 100) 
-            } 
-          }));
-
-          return {
-            ...ticket,
-            messages: [...ticket.messages, newMessage],
-            updatedAt: new Date(),
-            status: senderRole === 'admin' ? 'pending' : ticket.status as any,
-          };
-        }
-        return ticket;
-      });
-      patchGlobalList('gross_tickets', next);
-      
-      // Sync message to database table
-      addMessageToDatabase(ticketId, { senderId, senderName, senderRole, message }).catch(err =>
-        console.error('Failed to sync ticket message to database:', err)
-      );
-      
-      return next;
-    });
+    api.tickets.addMessage(ticketId, {
+      sender_id: senderId,
+      sender_name: senderName,
+      sender_role: senderRole,
+      message
+    }).then(() => refreshTickets());
   };
 
   const updateTicketStatus = (ticketId: string, status: Ticket['status']) => {
-    setTickets(prev => {
-      const next = prev.map(ticket => {
-        if (ticket.id === ticketId) {
-          // Trigger notification event when status changes
-          window.dispatchEvent(new CustomEvent('ticket-status-changed', { 
-            detail: { 
-              ticketId, 
-              status, 
-              userId: ticket.userId,
-              subject: ticket.subject
-            } 
-          }));
-          
-          return { ...ticket, status, updatedAt: new Date() };
-        }
-        return ticket;
-      });
-      patchGlobalList('gross_tickets', next);
-      
-      // Sync status to database table
-      updateTicketStatusInDatabase(ticketId, status).catch(err =>
-        console.error('Failed to sync ticket status to database:', err)
-      );
-      
-      return next;
-    });
+    api.tickets.updateStatus(ticketId, status).then(() => refreshTickets());
   };
 
   const updateTicketPriority = (ticketId: string, priority: Ticket['priority']) => {
-    setTickets(prev => {
-      const next = prev.map(ticket =>
-        ticket.id === ticketId
-          ? { ...ticket, priority, updatedAt: new Date() }
-          : ticket
-      );
-      patchGlobalList('gross_tickets', next);
-      return next;
-    });
+    api.tickets.updatePriority(ticketId, priority).then(() => refreshTickets());
   };
 
   const assignTicket = (ticketId: string, adminId: string) => {
-    setTickets(prev => {
-      const next = prev.map(ticket =>
-        ticket.id === ticketId
-          ? { ...ticket, assignedTo: adminId, updatedAt: new Date() }
-          : ticket
-      );
-      patchGlobalList('gross_tickets', next);
-      return next;
-    });
+    api.tickets.assign(ticketId, adminId).then(() => refreshTickets());
   };
 
   const deleteTicket = (ticketId: string) => {
-    setTickets(prev => {
-      const next = prev.filter(ticket => ticket.id !== ticketId);
-      patchGlobalList('gross_tickets', next);
-      return next;
-    });
+    api.tickets.delete(ticketId).then(() => refreshTickets());
   };
 
   const getUserTickets = (userId: string) => {

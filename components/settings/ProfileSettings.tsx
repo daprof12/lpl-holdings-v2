@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { useAuth } from '../../contexts/AuthContext';
+import { api } from '../../utils/supabase/api';
 import { toast } from 'sonner';
 
 // ── KYC doc types stored per-user in localStorage ──────────────────────────
@@ -20,14 +21,11 @@ interface KycDocs {
 }
 
 function getKycDocs(userId: string): KycDocs {
-  try {
-    const raw = localStorage.getItem(`kyc_docs_${userId}`);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+  return {}; // No longer using localStorage for draft docs
 }
 
 function saveKycDocs(userId: string, docs: KycDocs) {
-  localStorage.setItem(`kyc_docs_${userId}`, JSON.stringify(docs));
+  // Persistence handled via relational API on submission
 }
 
 // ── Verification badge ──────────────────────────────────────────────────────
@@ -135,15 +133,32 @@ export default function ProfileSettings() {
     }
   };
 
-  const handleSubmitKyc = () => {
+  const handleSubmitKyc = async () => {
     if (!currentUser) return;
     if (!kycDocs.identity || !kycDocs.proofOfAddress) {
       toast.error('Please upload both documents'); return;
     }
-    // Mark KYC as pending review
-    updateProfile(currentUser.id, { kycStatus: 'pending' });
-    toast.success('KYC documents submitted for admin review');
-    setShowKycModal(false);
+    
+    try {
+      // Save submission to relational database
+      await api.kyc.create({
+        userId: currentUser.id,
+        status: 'pending',
+        submittedAt: new Date().toISOString(),
+        details: {
+          identityDocName: kycDocs.identity.name,
+          proofOfAddressDocName: kycDocs.proofOfAddress.name
+        }
+      });
+      
+      // Update local profile state
+      updateProfile(currentUser.id, { kycStatus: 'pending' });
+      toast.success('KYC documents submitted for admin review');
+      setShowKycModal(false);
+    } catch (err) {
+      console.error('Failed to submit KYC:', err);
+      toast.error('Submission failed. Please try again.');
+    }
   };
 
   if (!currentUser) {

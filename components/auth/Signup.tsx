@@ -53,7 +53,8 @@ export default function Signup() {
         setError('An account with this email already exists');
       }
     } catch (err) {
-      setError('Registration failed. Please try again.');
+      console.error('Registration error:', err);
+      setError(`Registration failed: ${(err as any).message || 'Please try again.'}`);
     } finally {
       setIsLoading(false);
     }

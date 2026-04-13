@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../utils/supabase/client';
 import { Search, Trash2, Eye, Monitor, Smartphone, Globe, Clock, LogIn, LogOut, X, Filter, Calendar } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { toast } from 'sonner';
-import { setKV } from '../../utils/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -63,7 +63,7 @@ export default function SessionManagement() {
         month: 30 * 24 * 60 * 60 * 1000,
       };
       const range = ranges[dateRange];
-      activities = activities.filter(a => now - a.timestamp < range);
+      activities = activities.filter(a => now - (a.timestamp instanceof Date ? a.timestamp.getTime() : typeof a.timestamp === 'number' ? a.timestamp : new Date(a.timestamp).getTime()) < range);
     }
 
     // Apply search query
@@ -84,34 +84,42 @@ export default function SessionManagement() {
       });
     }
 
-    return activities.sort((a, b) => b.timestamp - a.timestamp);
+    return activities.sort((a, b) => {
+      const timeA = a.timestamp instanceof Date ? a.timestamp.getTime() : typeof a.timestamp === 'number' ? a.timestamp : new Date(a.timestamp).getTime();
+      const timeB = b.timestamp instanceof Date ? b.timestamp.getTime() : typeof b.timestamp === 'number' ? b.timestamp : new Date(b.timestamp).getTime();
+      return timeB - timeA;
+    });
   }, [userActivities, filterType, selectedUserId, dateRange, searchQuery, users]);
 
-  const handleDeleteSession = (sessionId: string) => {
+  const handleDeleteSession = async (sessionId: string) => {
     if (confirm('Are you sure you want to delete this session record? This cannot be undone.')) {
       try {
-        const allActivities = JSON.parse(localStorage.getItem('gross_user_activities') || '[]');
-        const updated = allActivities.filter((a: any) => a.id !== sessionId);
-        localStorage.setItem('gross_user_activities', JSON.stringify(updated));
-        setKV('gross_user_activities', updated).catch(console.error);
-        window.dispatchEvent(new Event('storage'));
+        const { error } = await supabase
+          .from('activity_logs')
+          .delete()
+          .eq('id', sessionId);
+        
+        if (error) throw error;
         toast.success('Session record deleted successfully');
       } catch (error) {
+        console.error('Failed to delete session:', error);
         toast.error('Failed to delete session record');
       }
     }
   };
 
-  const handleDeleteAllSessions = () => {
+  const handleDeleteAllSessions = async () => {
     if (confirm('Are you sure you want to delete ALL session records? This will permanently remove all login/logout history.')) {
       try {
-        const allActivities = JSON.parse(localStorage.getItem('gross_user_activities') || '[]');
-        const updated = allActivities.filter((a: any) => a.type !== 'login' && a.type !== 'logout');
-        localStorage.setItem('gross_user_activities', JSON.stringify(updated));
-        setKV('gross_user_activities', updated).catch(console.error);
-        window.dispatchEvent(new Event('storage'));
+        const { error } = await supabase
+          .from('activity_logs')
+          .delete()
+          .in('action', ['login', 'logout']);
+        
+        if (error) throw error;
         toast.success('All session records deleted successfully');
       } catch (error) {
+        console.error('Failed to delete sessions:', error);
         toast.error('Failed to delete session records');
       }
     }

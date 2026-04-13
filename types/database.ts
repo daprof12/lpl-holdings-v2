@@ -2,7 +2,7 @@
 // DATABASE SCHEMA TYPES FOR METATRADE PRO
 // ============================================
 // This file defines all data structures used across client and admin sides
-// Data is stored in Supabase KV store with prefixed keys for organization
+// Data is stored in Supabase relational tables for optimal performance and integrity.
 
 // ============================================
 // USER MANAGEMENT
@@ -43,15 +43,26 @@ export interface User {
   subscriptionStatus: 'active' | 'expired' | 'cancelled';
   subscriptionExpiresAt?: number; // timestamp
   
+  // Access Flags
+  hasInvestmentAccess?: boolean;
+  hasAutoTradeAccess?: boolean;
+  hasSignalAccess?: boolean;
+
   // Metadata
   lastLoginAt?: number;
   lastActivityAt?: number;
   ipAddress?: string;
   deviceInfo?: string;
+
+  // Migration Additions v2.0
+  enabledDepositMethods?: string[]; // Array of allowed method types: 'crypto', 'credit_card', 'bank_transfer'
+  enabledWithdrawalMethods?: string[]; // Array of allowed method types
+  cryptoWallets?: Record<string, { address: string; network: string }>; // Per-user custom wallets
+  passwordHash?: string;
+  isAdmin?: boolean;
 }
 
-// KV Store Key: user:{userId}
-// Example: user:usr_abc123
+// Relational Table: users
 
 // ============================================
 // KYC VERIFICATION
@@ -82,8 +93,7 @@ export interface KYCDocument {
   metadata?: Record<string, any>;
 }
 
-// KV Store Key: kyc:{userId}
-// Example: kyc:usr_abc123
+// Relational Table: kyc_documents
 
 // ============================================
 // TRADING POSITIONS
@@ -138,10 +148,7 @@ export interface Position {
   tags?: string[];
 }
 
-// KV Store Keys:
-// - position:open:{userId}:{positionId} - For open positions
-// - position:closed:{userId}:{positionId} - For closed positions
-// - position:pending:{userId}:{positionId} - For pending orders
+// Relational Tables: positions, trade_history, pending_orders
 
 // ============================================
 // TRADING HISTORY
@@ -172,8 +179,7 @@ export interface TradeHistory {
   reason?: string; // e.g., "Stop loss triggered", "Manual close"
 }
 
-// KV Store Key: history:{userId}:{tradeId}
-// Example: history:usr_abc123:trade_xyz789
+// Relational Table: trade_history
 
 // ============================================
 // DEPOSITS
@@ -228,8 +234,7 @@ export interface Deposit {
   metadata?: Record<string, any>;
 }
 
-// KV Store Key: deposit:{userId}:{depositId}
-// Example: deposit:usr_abc123:dep_xyz789
+// Relational Table: deposits
 
 // ============================================
 // WITHDRAWALS
@@ -292,8 +297,7 @@ export interface Withdrawal {
   metadata?: Record<string, any>;
 }
 
-// KV Store Key: withdrawal:{userId}:{withdrawalId}
-// Example: withdrawal:usr_abc123:wd_xyz789
+// Relational Table: withdrawals
 
 // ============================================
 // NOTIFICATIONS
@@ -326,8 +330,7 @@ export interface Notification {
   icon?: string;
 }
 
-// KV Store Key: notification:{userId}:{notificationId}
-// Example: notification:usr_abc123:notif_xyz789
+// Relational Table: notifications
 
 // ============================================
 // USER PREFERENCES
@@ -382,8 +385,7 @@ export interface UserPreferences {
   updatedAt: number;
 }
 
-// KV Store Key: preferences:{userId}
-// Example: preferences:usr_abc123
+// Relational Table: user_preferences
 
 // ============================================
 // TRADING SIGNALS
@@ -441,8 +443,7 @@ export interface TradingSignal {
   requiredTier: 'free' | 'basic' | 'pro' | 'premium' | 'vip';
 }
 
-// KV Store Key: signal:{signalId}
-// Example: signal:sig_abc123
+// Relational Table: signals
 
 // ============================================
 // AUTO TRADER CONFIGURATION
@@ -519,8 +520,7 @@ export interface AutoTraderConfig {
   lastExecutedAt?: number;
 }
 
-// KV Store Key: autotrader:{userId}:{configId}
-// Example: autotrader:usr_abc123:at_xyz789
+// Relational Table: auto_trader_configs
 
 // ============================================
 // ADMIN SETTINGS
@@ -657,8 +657,7 @@ export interface AdminSettings {
   updatedAt: number;
 }
 
-// KV Store Key: settings:global
-// Example: settings:global
+// Relational Table: global_settings
 
 // ============================================
 // ACTIVITY LOGS (for admin audit trail)
@@ -695,8 +694,7 @@ export interface ActivityLog {
   metadata?: Record<string, any>;
 }
 
-// KV Store Key: log:{timestamp}:{logId}
-// Example: log:1703001234567:log_abc123
+// Relational Table: activity_logs
 
 // ============================================
 // PRICE ALERTS
@@ -731,8 +729,226 @@ export interface PriceAlert {
   expiresAt?: number;
 }
 
-// KV Store Key: alert:{userId}:{alertId}
-// Example: alert:usr_abc123:alert_xyz789
+// Relational Table: price_alerts
+
+// ============================================
+// PENDING ORDERS
+// ============================================
+
+export interface PendingOrder {
+  id: string;
+  userId: string;
+  symbol: string;
+  side: 'buy' | 'sell';
+  type: 'limit' | 'stop' | 'stop_limit';
+  price: number;
+  units: number;
+  leverage?: number;
+  margin?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  status: 'pending' | 'filled' | 'cancelled' | 'expired';
+  mode: 'live' | 'demo';
+  expiresAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ============================================
+// TRADING ACCOUNTS (Per-user live balance)
+// ============================================
+
+export interface TradingAccount {
+  userId: string;
+  balance: number;
+  equity: number;
+  credit: number;
+  bonus: number;
+  realizedPnl: number;
+  unrealizedPnl: number;
+  margin: number;
+  availableFunds: number;
+  currency: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ============================================
+// INVESTMENT WALLETS
+// ============================================
+
+export interface InvestmentWallet {
+  userId: string;
+  portfolio: number;
+  ecn: number;
+  ipo: number;
+  updatedAt: number;
+}
+
+// ============================================
+// USER SESSIONS
+// ============================================
+
+export interface UserSession {
+  id: string;
+  userId: string;
+  device?: string;
+  browser?: string;
+  os?: string;
+  ipAddress?: string;
+  location?: string;
+  isActive: boolean;
+  lastActiveAt: number;
+  createdAt: number;
+  expiresAt?: number;
+}
+
+// ============================================
+// LOGIN HISTORY
+// ============================================
+
+export interface LoginHistory {
+  id: string;
+  userId: string;
+  action: 'login' | 'logout' | 'failed_login' | 'password_change' | 'session_revoked';
+  ipAddress?: string;
+  device?: string;
+  browser?: string;
+  os?: string;
+  location?: string;
+  success: boolean;
+  failureReason?: string;
+  createdAt: number;
+}
+
+// ============================================
+// PASSWORD RESETS
+// ============================================
+
+export interface PasswordReset {
+  id: string;
+  userId: string;
+  email: string;
+  token: string;
+  status: 'pending' | 'approved' | 'rejected' | 'expired' | 'used';
+  newPasswordHash?: string;
+  requestedAt: number;
+  expiresAt: number;
+  resolvedAt?: number;
+  resolvedBy?: string;
+  rejectionReason?: string;
+}
+
+// ============================================
+// CRM MESSAGING
+// ============================================
+
+export interface CRMMessage {
+  id: string;
+  type: 'general' | 'personal' | 'promo' | 'announcement' | 'offer';
+  recipientType: 'individual' | 'segment' | 'broadcast' | 'all' | 'specific';
+  recipientIds: string[];
+  channels: string[];
+  title?: string;
+  message: string;
+  status: 'draft' | 'scheduled' | 'sent' | 'failed';
+  metadata?: Record<string, any>;
+  scheduledFor?: number;
+  sentAt?: number;
+  createdAt: number;
+}
+
+// ============================================
+// EMAIL TEMPLATES
+// ============================================
+
+export interface EmailTemplateBlock {
+  id: string;
+  type: 'text' | 'button' | 'image' | 'feature_list' | 'spacer' | 'footer';
+  content: string;
+  style?: Record<string, any>;
+}
+
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  category: 'deposit' | 'withdrawal' | 'deals' | 'subscription' | 'promotion' | 'general';
+  subject: string;
+  logoUrl?: string;
+  heroImage?: string;
+  heroTitle?: string;
+  accentColor?: string;
+  footerText?: string;
+  blocks: EmailTemplateBlock[];
+  createdBy?: string;
+  lastModified: number;
+  createdAt: number;
+}
+
+// ============================================
+// SMTP CONFIGURATION
+// ============================================
+
+export interface SMTPConfig {
+  id: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  auth: {
+    user: string;
+    pass: string;
+  };
+  fromEmail: string;
+  fromName: string;
+  isVerified: boolean;
+  lastTestedAt?: number;
+  updatedAt: number;
+}
+
+// ============================================
+// CONTACT SUBMISSIONS
+// ============================================
+
+export interface ContactSubmission {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  subject: string;
+  message: string;
+  status: 'new' | 'read' | 'replied' | 'archived';
+  repliedBy?: string;
+  repliedAt?: number;
+  replyMessage?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ============================================
+// USER WITHDRAWAL METHODS
+// ============================================
+
+export interface UserWithdrawalMethod {
+  id: string;
+  userId: string;
+  type: 'bank' | 'paypal' | 'crypto';
+  isDefault: boolean;
+  // Bank fields
+  bankName?: string;
+  accountHolderName?: string;
+  accountNumber?: string;
+  routingNumber?: string;
+  swiftCode?: string;
+  iban?: string;
+  // PayPal fields
+  paypalEmail?: string;
+  // Crypto fields
+  cryptoType?: string;
+  walletAddress?: string;
+  network?: string;
+  createdAt: number;
+  updatedAt: number;
+}
 
 // ============================================
 // KEY NAMING CONVENTIONS
@@ -755,6 +971,10 @@ export interface PriceAlert {
 // Price alerts: alert:{userId}:{alertId}
 // Activity logs: log:{timestamp}:{logId}
 // Admin settings: settings:global
+// CRM messages: crm:message:{messageId}
+// Email templates: crm:template:{templateId}
+// SMTP config: crm:smtp
+// User withdrawal methods: withdrawal:method:{userId}:{methodId}
 //
 // Index keys (for querying):
 // user:index:email:{email} -> userId
