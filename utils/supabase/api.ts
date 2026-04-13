@@ -255,73 +255,127 @@ export const api = {
 
   // Deposits
   deposits: {
-    getByUserId: (userId: string) => fetch(`${serverUrl}/deposits/user/${userId}`, { headers }).then(r => r.json()),
-    getAll: () => fetch(`${serverUrl}/deposits`, { headers }).then(r => r.json()),
-    create: (data: any) => fetch(`${serverUrl}/deposits`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    }).then(r => r.json()),
-    update: (id: string, updates: any) => fetch(`${serverUrl}/deposits/${id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify(updates)
-    }).then(r => r.json()),
+    getByUserId: async (userId: string) => {
+        const items = JSON.parse(localStorage.getItem('gross_deposits') || '[]');
+        return items.filter((i: any) => i.userId === userId || i.user_id === userId);
+    },
+    getAll: async () => JSON.parse(localStorage.getItem('gross_deposits') || '[]'),
+    create: async (data: any) => {
+        const items = JSON.parse(localStorage.getItem('gross_deposits') || '[]');
+        const newItem = { id: `dep_${Date.now()}`, ...data, created_at: new Date().toISOString() };
+        items.push(newItem);
+        localStorage.setItem('gross_deposits', JSON.stringify(items));
+        return newItem;
+    },
+    update: async (id: string, updates: any) => {
+        const items = JSON.parse(localStorage.getItem('gross_deposits') || '[]');
+        const index = items.findIndex((i: any) => i.id === id);
+        if (index > -1) {
+            items[index] = { ...items[index], ...updates, updated_at: new Date().toISOString() };
+            localStorage.setItem('gross_deposits', JSON.stringify(items));
+            return items[index];
+        }
+        throw new Error('Not found');
+    },
   },
 
   // Withdrawals
   withdrawals: {
-    getByUserId: (userId: string) => fetch(`${serverUrl}/withdrawals/user/${userId}`, { headers }).then(r => r.json()),
-    getAll: () => fetch(`${serverUrl}/withdrawals`, { headers }).then(r => r.json()),
-    create: (data: any) => fetch(`${serverUrl}/withdrawals`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    }).then(r => r.json()),
-    update: (id: string, updates: any) => fetch(`${serverUrl}/withdrawals/${id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify(updates)
-    }).then(r => r.json()),
+    getByUserId: async (userId: string) => {
+        const items = JSON.parse(localStorage.getItem('gross_withdrawals') || '[]');
+        return items.filter((i: any) => i.userId === userId || i.user_id === userId);
+    },
+    getAll: async () => JSON.parse(localStorage.getItem('gross_withdrawals') || '[]'),
+    create: async (data: any) => {
+        const items = JSON.parse(localStorage.getItem('gross_withdrawals') || '[]');
+        const newItem = { id: `wd_${Date.now()}`, ...data, created_at: new Date().toISOString() };
+        items.push(newItem);
+        localStorage.setItem('gross_withdrawals', JSON.stringify(items));
+        return newItem;
+    },
+    update: async (id: string, updates: any) => {
+        const items = JSON.parse(localStorage.getItem('gross_withdrawals') || '[]');
+        const index = items.findIndex((i: any) => i.id === id);
+        if (index > -1) {
+            items[index] = { ...items[index], ...updates, updated_at: new Date().toISOString() };
+            localStorage.setItem('gross_withdrawals', JSON.stringify(items));
+            return items[index];
+        }
+        throw new Error('Not found');
+    },
   },
 
   // Withdrawal Methods
   withdrawalMethods: {
-    getByUserId: (userId: string) => fetch(`${serverUrl}/withdrawal-methods/${userId}`, { headers }).then(r => r.json()),
-    getAll: () => fetch(`${serverUrl}/withdrawal-methods`, { headers }).then(r => r.json()),
-    create: (data: any) => fetch(`${serverUrl}/withdrawal-methods`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    }).then(r => r.json()),
-    setDefault: (userId: string, methodId: string) => fetch(`${serverUrl}/withdrawal-methods/${methodId}/default`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({ userId })
-    }).then(r => r.json()),
-    update: (id: string, updates: any) => fetch(`${serverUrl}/withdrawal-methods/${id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify(updates)
-    }).then(r => r.json()),
-    delete: (id: string) => fetch(`${serverUrl}/withdrawal-methods/${id}`, { method: 'DELETE', headers }).then(r => r.json()),
+    getByUserId: async (userId: string) => {
+        const items = JSON.parse(localStorage.getItem('gross_withdrawal_methods') || '[]');
+        return items.filter((i: any) => i.userId === userId || i.user_id === userId);
+    },
+    getAll: async () => JSON.parse(localStorage.getItem('gross_withdrawal_methods') || '[]'),
+    create: async (data: any) => {
+        const items = JSON.parse(localStorage.getItem('gross_withdrawal_methods') || '[]');
+        const newItem = { id: `wm_${Date.now()}`, ...data, created_at: new Date().toISOString() };
+        items.push(newItem);
+        localStorage.setItem('gross_withdrawal_methods', JSON.stringify(items));
+        return newItem;
+    },
+    setDefault: async (userId: string, methodId: string) => {
+        const items = JSON.parse(localStorage.getItem('gross_withdrawal_methods') || '[]');
+        const updated = items.map((i: any) => ({
+            ...i,
+            isDefault: (i.userId === userId || i.user_id === userId) ? (i.id === methodId) : i.isDefault
+        }));
+        localStorage.setItem('gross_withdrawal_methods', JSON.stringify(updated));
+        return updated.find((i: any) => i.id === methodId);
+    },
+    update: async (id: string, updates: any) => {
+        const items = JSON.parse(localStorage.getItem('gross_withdrawal_methods') || '[]');
+        const index = items.findIndex((i: any) => i.id === id);
+        if (index > -1) {
+            items[index] = { ...items[index], ...updates, updated_at: new Date().toISOString() };
+            localStorage.setItem('gross_withdrawal_methods', JSON.stringify(items));
+            return items[index];
+        }
+        throw new Error('Not found');
+    },
+    delete: async (id: string) => {
+        let items = JSON.parse(localStorage.getItem('gross_withdrawal_methods') || '[]');
+        items = items.filter((i: any) => i.id !== id);
+        localStorage.setItem('gross_withdrawal_methods', JSON.stringify(items));
+        return true;
+    },
   },
 
   // Payment Methods
   paymentMethods: {
-    getAll: () => fetch(`${serverUrl}/payment-methods`, { headers }).then(r => r.json()),
-    getById: (id: string) => fetch(`${serverUrl}/payment-methods/${id}`, { headers }).then(r => r.json()),
-    create: (data: any) => fetch(`${serverUrl}/payment-methods`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    }).then(r => r.json()),
-    update: (id: string, updates: any) => fetch(`${serverUrl}/payment-methods/${id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify(updates)
-    }).then(r => r.json()),
-    delete: (id: string) => fetch(`${serverUrl}/payment-methods/${id}`, { method: 'DELETE', headers }).then(r => r.json()),
+    getAll: async () => JSON.parse(localStorage.getItem('gross_payment_methods') || '[]'),
+    getById: async (id: string) => {
+        const items = JSON.parse(localStorage.getItem('gross_payment_methods') || '[]');
+        return items.find((i: any) => i.id === id);
+    },
+    create: async (data: any) => {
+        const items = JSON.parse(localStorage.getItem('gross_payment_methods') || '[]');
+        const newItem = { id: `pm_${Date.now()}`, ...data, created_at: new Date().toISOString() };
+        items.push(newItem);
+        localStorage.setItem('gross_payment_methods', JSON.stringify(items));
+        return newItem;
+    },
+    update: async (id: string, updates: any) => {
+        const items = JSON.parse(localStorage.getItem('gross_payment_methods') || '[]');
+        const index = items.findIndex((i: any) => i.id === id);
+        if (index > -1) {
+            items[index] = { ...items[index], ...updates, updated_at: new Date().toISOString() };
+            localStorage.setItem('gross_payment_methods', JSON.stringify(items));
+            return items[index];
+        }
+        throw new Error('Not found');
+    },
+    delete: async (id: string) => {
+        let items = JSON.parse(localStorage.getItem('gross_payment_methods') || '[]');
+        items = items.filter((i: any) => i.id !== id);
+        localStorage.setItem('gross_payment_methods', JSON.stringify(items));
+        return true;
+    },
   },
 
   // Investment Offers
