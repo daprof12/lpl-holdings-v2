@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { useNavigate } from 'react-router-dom';
 import { useMarketData } from '../../contexts/MarketDataContext';
+import { useAuth } from '../../contexts/AuthContext';
 import DashboardLayout from '../layouts/DashboardLayout';
 import { formatPercentage } from '../../utils/formatNumber';
 import { Star, Search, TrendingUp, TrendingDown, BarChart2, List } from 'lucide-react';
