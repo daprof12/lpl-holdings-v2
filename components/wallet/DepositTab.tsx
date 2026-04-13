@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, Wallet, Building2, Bitcoin, AlertCircle, Copy, Check, Upload, FileText, Camera, User } from 'lucide-react';
+import { CreditCard, Wallet, Building2, Bitcoin, AlertCircle, Copy, Check, Upload, FileText, Camera, User, ArrowRight } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
