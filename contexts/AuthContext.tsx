@@ -187,9 +187,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             hasAutoTradeAccess: u.has_auto_trade_access ?? false,
             hasSignalAccess: u.has_signal_access ?? false,
             investmentBalances: {
-              ipo: parseFloat(iw.ipo || u.investment_balances?.ipo || 0),
-              ecn: parseFloat(iw.ecn || u.investment_balances?.ecn || 0),
-              portfolio: parseFloat(iw.portfolio || u.investment_balances?.portfolio || 0),
+              ipo: parseFloat(iw.ipo ?? u.ipo_balance ?? u.investment_balances?.ipo ?? 0),
+              ecn: parseFloat(iw.ecn ?? u.ecn_balance ?? u.investment_balances?.ecn ?? 0),
+              portfolio: parseFloat(iw.portfolio ?? u.portfolio_balance ?? u.investment_balances?.portfolio ?? 0),
             }
           };
         });
@@ -304,9 +304,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 hasAutoTradeAccess: u.has_auto_trade_access ?? false,
                 hasSignalAccess: u.has_signal_access ?? false,
                 investmentBalances: {
-                  ipo: parseFloat((iw as any)?.ipo || u.investment_balances?.ipo || 0),
-                  ecn: parseFloat((iw as any)?.ecn || u.investment_balances?.ecn || 0),
-                  portfolio: parseFloat((iw as any)?.portfolio || u.investment_balances?.portfolio || 0),
+                  ipo: parseFloat((iw as any)?.ipo ?? u.ipo_balance ?? u.investment_balances?.ipo ?? 0),
+                  ecn: parseFloat((iw as any)?.ecn ?? u.ecn_balance ?? u.investment_balances?.ecn ?? 0),
+                  portfolio: parseFloat((iw as any)?.portfolio ?? u.portfolio_balance ?? u.investment_balances?.portfolio ?? 0),
                 }
               };
               setCurrentUser(latestUser);
