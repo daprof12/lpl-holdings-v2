@@ -211,16 +211,16 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       }
 
       // Set account
-      if (dbAccount) {
+      if (dbAccount || auth.currentUser) {
         setAccount({
-          balance: parseFloat(dbAccount.balance || 0),
-          equity: parseFloat(dbAccount.equity || 0),
-          realizedPnL: parseFloat(dbAccount.realized_pnl || 0),
-          unrealizedPnL: parseFloat(dbAccount.unrealized_pnl || 0),
-          margin: parseFloat(dbAccount.margin || 0),
-          availableFunds: parseFloat(dbAccount.available_funds || 0),
-          bonus: parseFloat(dbAccount.bonus || 0),
-          credit: parseFloat(dbAccount.credit || 0),
+          balance: parseFloat(dbAccount?.balance ?? auth.currentUser?.balance ?? auth.currentUser?.liveBalance ?? 0),
+          equity: parseFloat(dbAccount?.equity || 0),
+          realizedPnL: parseFloat(dbAccount?.realized_pnl || 0),
+          unrealizedPnL: parseFloat(dbAccount?.unrealized_pnl || 0),
+          margin: parseFloat(dbAccount?.margin || 0),
+          availableFunds: parseFloat(dbAccount?.available_funds || 0),
+          bonus: parseFloat(dbAccount?.bonus ?? auth.currentUser?.bonus ?? 0),
+          credit: parseFloat(dbAccount?.credit ?? auth.currentUser?.credit ?? 0),
         });
       }
     } catch (error) {
