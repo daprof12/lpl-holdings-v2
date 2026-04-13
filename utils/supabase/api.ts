@@ -157,46 +157,73 @@ export const api = {
 
   // Positions
   positions: {
-    getByUserId: (userId: string) => fetch(`${serverUrl}/positions/user/${userId}/open`, { headers }).then(r => r.json()),
-    getAll: () => fetch(`${serverUrl}/positions/all`, { headers }).then(r => r.json()),
-    create: (data: any) => fetch(`${serverUrl}/positions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    }).then(r => r.json()),
-    close: (id: string, exitPrice: number) => fetch(`${serverUrl}/positions/${id}/close`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ exit_price: exitPrice })
-    }).then(r => r.json()),
-    update: (id: string, updates: any) => fetch(`${serverUrl}/positions/${id}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(updates)
-    }).then(r => r.json()),
+    getByUserId: async (userId: string) => {
+        const { data, error } = await supabase.from('positions').select('*').eq('user_id', userId).eq('status', 'open').order('created_at', { ascending: false });
+        return error ? [] : data;
+    },
+    getAll: async () => {
+        const { data, error } = await supabase.from('positions').select('*').order('created_at', { ascending: false });
+        return error ? [] : data;
+    },
+    create: async (data: any) => {
+        const { data: res, error } = await supabase.from('positions').insert(data).select().single();
+        if (error) throw error;
+        return res;
+    },
+    close: async (id: string, exitPrice: number) => {
+        const { data, error } = await supabase.from('positions').update({ status: 'closed', exit_price: exitPrice }).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+    },
+    update: async (id: string, updates: any) => {
+        const { data, error } = await supabase.from('positions').update(updates).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+    },
   },
 
   // Pending Orders
   pendingOrders: {
-    getByUserId: (userId: string) => fetch(`${serverUrl}/pending-orders/user/${userId}`, { headers }).then(r => r.json()),
-    getAll: () => fetch(`${serverUrl}/pending-orders`, { headers }).then(r => r.json()),
-    create: (data: any) => fetch(`${serverUrl}/pending-orders`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    }).then(r => r.json()),
-    update: (id: string, updates: any) => fetch(`${serverUrl}/pending-orders/${id}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(updates)
-    }).then(r => r.json()),
-    delete: (id: string) => fetch(`${serverUrl}/pending-orders/${id}`, { method: 'DELETE', headers }).then(r => r.json()),
+    getByUserId: async (userId: string) => {
+        const { data, error } = await supabase.from('pending_orders').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+        // Handle "does not exist" or permissions
+        if (error) return [];
+        return data;
+    },
+    getAll: async () => {
+        const { data, error } = await supabase.from('pending_orders').select('*');
+        if (error) return [];
+        return data;
+    },
+    create: async (data: any) => {
+        const { data: res, error } = await supabase.from('pending_orders').insert(data).select().single();
+        if (error) throw error;
+        return res;
+    },
+    update: async (id: string, updates: any) => {
+        const { data, error } = await supabase.from('pending_orders').update(updates).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+    },
+    delete: async (id: string) => {
+        const { error } = await supabase.from('pending_orders').delete().eq('id', id);
+        if (error) throw error;
+        return true;
+    },
   },
 
   // Trade History
   tradeHistory: {
-    getByUserId: (userId: string) => fetch(`${serverUrl}/trade-history/user/${userId}`, { headers }).then(r => r.json()),
-    getAll: () => fetch(`${serverUrl}/trade-history/all`, { headers }).then(r => r.json()),
+    getByUserId: async (userId: string) => {
+        const { data, error } = await supabase.from('trade_history').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+        if (error) return [];
+        return data;
+    },
+    getAll: async () => {
+        const { data, error } = await supabase.from('trade_history').select('*').order('created_at', { ascending: false });
+        if (error) return [];
+        return data;
+    },
   },
 
   // Transactions
