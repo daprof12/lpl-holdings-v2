@@ -574,7 +574,8 @@ export const api = {
 if (typeof window !== 'undefined') {
   try {
     const existingPM = JSON.parse(localStorage.getItem('gross_payment_methods') || '[]');
-    if (existingPM.length === 0) {
+    // Force reseed if we have less than the new expanded set of 10 items
+    if (existingPM.length < 10) {
       const defaultPMs = [
           // DEPOSIT METHODS
           {
@@ -626,6 +627,38 @@ if (typeof window !== 'undefined') {
                   isWithdrawal: false
               }
           },
+          {
+              id: 'pm_paypal_dep',
+              type: 'paypal',
+              name: 'PayPal Deposit',
+              is_active: true,
+              details: {
+                  paypalEmail: 'payments@lplholdings.com',
+                  isWithdrawal: false
+              }
+          },
+          {
+              id: 'pm_stripe_card_dep',
+              type: 'card',
+              name: 'Credit/Debit Card (Stripe)',
+              is_active: true,
+              details: {
+                  processor: 'Stripe',
+                  processorName: 'Stripe Payments',
+                  isWithdrawal: false
+              }
+          },
+          {
+              id: 'pm_other_card_dep',
+              type: 'card',
+              name: 'Credit/Debit Card (Alternative)',
+              is_active: true,
+              details: {
+                  processor: 'Other',
+                  processorName: 'SecurePay Terminal',
+                  isWithdrawal: false
+              }
+          },
           // WITHDRAWAL METHODS (Global config for users to choose from)
           {
               id: 'pm_wd_crypto',
@@ -660,6 +693,20 @@ if (typeof window !== 'undefined') {
                   isWithdrawal: true,
                   fixedFee: 25,
                   instructionNote: 'International wires may incur additional intermediary bank fees.'
+              }
+          },
+          {
+              id: 'pm_wd_paypal',
+              type: 'paypal',
+              name: 'PayPal Withdrawal',
+              is_active: true,
+              min_amount: 50,
+              max_amount: 10000,
+              fee_percentage: 2,
+              processing_time: '1-2 business days',
+              details: {
+                  isWithdrawal: true,
+                  instructionNote: 'Please ensure your PayPal profile is verified to accept incoming payments.'
               }
           }
       ];
