@@ -61,60 +61,23 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
     setPositionToClose(position);
   };
 
-  const confirmClosePosition = () => {
+  const confirmClosePosition = async () => {
     if (!positionToClose) return;
     const position = positionToClose;
-    const priceDiff = position.side === 'buy'
-      ? currentPrice - position.entryPrice
-      : position.entryPrice - currentPrice;
-    const pnl = priceDiff * position.units;
-
-    removePosition(position.id);
-
-    const historyItem: HistoryItem = {
-      id: `history-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      userId: currentUser?.id || 'unknown',
-      symbol: position.symbol,
-      side: position.side,
-      type: 'market',
-      units: position.units,
-      price: currentPrice,
-      entryPrice: position.entryPrice,
-      entryTimestamp: position.timestamp,
-      pnl,
-      timestamp: new Date(),
-      status: 'closed',
-      mode: tradingMode
-    };
-    addHistory(historyItem);
-
-    // Compute remaining unrealized P&L and margin from other open positions
-    const remainingPositions = positions.filter(p => p.id !== position.id);
-    const remainingUnrealizedPnL = remainingPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
-    const remainingMargin = remainingPositions.reduce((sum, p) => sum + (p.margin || 0), 0);
-    const newBalance = account.balance + pnl;
-    const newEquity = newBalance + (account.bonus || 0) + (account.credit || 0) + remainingUnrealizedPnL;
-
-    updateAccount({
-      balance: newBalance,
-      equity: newEquity,
-      realizedPnL: account.realizedPnL + pnl,
-      unrealizedPnL: remainingUnrealizedPnL,
-      margin: remainingMargin,
-      availableFunds: newEquity - remainingMargin,
-    });
-
-    const pnlPercent = (pnl / position.margin) * 100;
-    if (pnl >= 0) {
-      toast.success('Position Closed - Profit', {
-        description: `+$${pnl.toFixed(2)} (+${formatPercentage(pnlPercent)}) | ${position.symbol} ${position.side.toUpperCase()}`,
-      });
-    } else {
-      toast.error('Position Closed - Loss', {
-        description: `-$${Math.abs(pnl).toFixed(2)} (${formatPercentage(pnlPercent)}) | ${position.symbol} ${position.side.toUpperCase()}`,
-      });
+    
+    try {
+      // 1. Close the position in DB
+      await removePosition(position.id);
+      
+      // The DB trigger now handles moving it to trade_history automatically.
+      // The TradingContext handles balance/equity recalculation on the next poll/realtime event.
+      
+      // Close the modal
+      setPositionToClose(null);
+    } catch (err) {
+      console.error('Failed to close position:', err);
+      toast.error('Failed to close position. Please try again.');
     }
-    setPositionToClose(null);
   };
 
   const handleCancelOrder = (order: Order) => {

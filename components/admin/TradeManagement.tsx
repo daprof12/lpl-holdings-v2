@@ -108,36 +108,41 @@ export default function TradeManagement() {
   // State for trades
   const [dbOpenTrades, setDbOpenTrades] = useState<Trade[]>([]);
   const [dbClosedTrades, setDbClosedTrades] = useState<Trade[]>([]);
+  const [dbPendingOrders, setDbPendingOrders] = useState<Trade[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load trades from database on mount
+  // Load trades from database on mount and subscribe to changes
   useEffect(() => {
     const loadAllTrades = async () => {
       setIsLoading(true);
       try {
-        const [openPositions, closedHistory] = await Promise.all([
+        const [openPositions, closedHistory, pendingOrders] = await Promise.all([
           api.positions.getAll(),
-          api.tradeHistory.getAll()
+          api.tradeHistory.getAll(),
+          api.pendingOrders.getAll()
         ]);
 
         if (Array.isArray(openPositions)) {
-          setDbOpenTrades(openPositions.map((pos: any) => ({
-            id: pos.id,
-            user: getUserEmail(pos.user_id),
-            asset: pos.symbol,
-            category: getAssetCategory(pos.symbol),
-            type: pos.type === 'buy' ? 'long' : 'short',
-            entryPrice: parseFloat(pos.entry_price),
-            currentPrice: parseFloat(pos.current_price || pos.entry_price),
-            quantity: parseFloat(pos.amount),
-            leverage: pos.leverage || 1,
-            margin: (parseFloat(pos.amount) * parseFloat(pos.entry_price)) / (pos.leverage || 1),
-            pnl: parseFloat(pos.profit || 0),
-            status: 'open',
-            openedAt: new Date(pos.created_at).toISOString().replace('T', ' ').substring(0, 19),
-            mode: 'live',
-            userId: pos.user_id,
-          })));
+          // Only show 'open' status in the open trades list
+          setDbOpenTrades(openPositions
+            .filter((pos: any) => pos.status === 'open')
+            .map((pos: any) => ({
+              id: pos.id,
+              user: getUserEmail(pos.user_id),
+              asset: pos.symbol,
+              category: getAssetCategory(pos.symbol),
+              type: pos.type === 'buy' ? 'long' : 'short',
+              entryPrice: parseFloat(pos.entry_price),
+              currentPrice: parseFloat(pos.current_price || pos.entry_price),
+              quantity: parseFloat(pos.amount),
+              leverage: pos.leverage || 1,
+              margin: (parseFloat(pos.amount) * parseFloat(pos.entry_price)) / (pos.leverage || 1),
+              pnl: parseFloat(pos.profit || 0),
+              status: 'open',
+              openedAt: new Date(pos.created_at).toISOString().replace('T', ' ').substring(0, 19),
+              mode: 'live',
+              userId: pos.user_id,
+            })));
         }
 
         if (Array.isArray(closedHistory)) {
@@ -160,6 +165,26 @@ export default function TradeManagement() {
             userId: h.user_id,
           })));
         }
+
+        if (Array.isArray(pendingOrders)) {
+          setDbPendingOrders(pendingOrders.map((o: any) => ({
+            id: o.id,
+            user: getUserEmail(o.user_id),
+            asset: o.symbol,
+            category: getAssetCategory(o.symbol),
+            type: o.type === 'buy' ? 'long' : 'short',
+            entryPrice: parseFloat(o.price), // In orders, price is the target entry
+            currentPrice: parseFloat(o.price),
+            quantity: parseFloat(o.amount),
+            leverage: o.leverage || 1,
+            margin: (parseFloat(o.amount) * parseFloat(o.price)) / (o.leverage || 1),
+            pnl: 0,
+            status: 'order',
+            openedAt: new Date(o.created_at).toISOString().replace('T', ' ').substring(0, 19),
+            mode: 'live',
+            userId: o.user_id,
+          })));
+        }
       } catch (err) { 
         console.error('Failed to load trades:', err); 
       } finally { 
@@ -169,14 +194,40 @@ export default function TradeManagement() {
     
     loadAllTrades();
 
-    // In a real app, we might use Supabase real-time to listen for position updates
-    const interval = setInterval(loadAllTrades, 30000); // 30s refresh as fallback
+    // Subscribe to REALTIME changes for ALL trades
+    const posChannel = supabase
+      .channel('admin-positions-all')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'positions' }, () => {
+        console.log('⚡ Admin Realtime: Positions updated');
+        loadAllTrades();
+      })
+      .subscribe();
+
+    const historyChannel = supabase
+      .channel('admin-history-all')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trade_history' }, () => {
+        console.log('⚡ Admin Realtime: History updated');
+        loadAllTrades();
+      })
+      .subscribe();
+
+    const orderChannel = supabase
+      .channel('admin-orders-all')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pending_orders' }, () => {
+        console.log('⚡ Admin Realtime: Orders updated');
+        loadAllTrades();
+      })
+      .subscribe();
     
-    return () => clearInterval(interval);
+    return () => {
+      supabase.removeChannel(posChannel);
+      supabase.removeChannel(historyChannel);
+      supabase.removeChannel(orderChannel);
+    };
   }, [users]);
 
 
-  const trades = [...dbOpenTrades, ...dbClosedTrades];
+  const trades = [...dbOpenTrades, ...dbClosedTrades, ...dbPendingOrders];
 
   const [formData, setFormData] = useState({
     asset: '',
@@ -269,14 +320,7 @@ export default function TradeManagement() {
         
         if (res) {
           toast.success('Trade force closed successfully');
-          // Refresh list
-          const [openPositions, closedHistory] = await Promise.all([
-            api.positions.getAll(),
-            api.tradeHistory.getAll()
-          ]);
-          setDbOpenTrades(openPositions.map((p: any) => ({ ...p, status: 'open' }))); // simplified for state update
-          // Full refresh would be better, but this notifies UI
-          window.location.reload(); // Quickest way to ensure all state is fresh after major balance change
+          // Realtime will refresh the lists automatically
         }
       } catch (err) {
         console.error('Failed to close position:', err);
@@ -298,9 +342,7 @@ export default function TradeManagement() {
           await supabase.from('trade_history').delete().eq('id', tradeId);
           toast.success('Closed trade deleted from history successfully');
         }
-        
-        // Refresh
-        window.location.reload();
+        // Realtime will refresh lists
       } catch (err) {
         console.error('Delete failed:', err);
         toast.error('Failed to delete trade');
@@ -351,7 +393,7 @@ export default function TradeManagement() {
 
       toast.success('Trade updated successfully!');
       setShowDialog(false);
-      window.location.reload();
+      // Realtime will refresh lists
     } catch (err) {
       console.error('Update failed:', err);
       toast.error('Failed to update trade');

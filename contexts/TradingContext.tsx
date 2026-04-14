@@ -285,42 +285,63 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timeout);
   }, [account.equity, auth.currentUser?.id, isHydrated]);
 
-  // ── REALTIME: Listen for admin changes to trading_accounts ──────────────────
-  // When admin adds balance/credit/bonus, this picks it up instantly.
+  // ── REALTIME: Listen for all trading changes ──────────────────
   useEffect(() => {
     const userId = auth.currentUser?.id;
     if (!userId) return;
 
-    const channel = supabase
+    // 1. Account Subscription
+    const accountChannel = supabase
       .channel(`trading-account-${userId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'trading_accounts',
-          filter: `user_id=eq.${userId}`
-        },
-        (payload) => {
-          console.log('⚡ Realtime: trading_accounts updated', payload);
-          const updated = payload.new as any;
-          if (updated) {
-            skipNextSyncRef.current = true; // don't sync these values back
-            setAccount(prev => ({
-              ...prev,
-              balance: parseFloat(updated.balance ?? prev.balance),
-              credit: parseFloat(updated.credit ?? prev.credit),
-              bonus: parseFloat(updated.bonus ?? prev.bonus),
-            }));
-          }
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trading_accounts', filter: `user_id=eq.${userId}` }, (payload) => {
+        console.log('⚡ Realtime: account updated', payload);
+        const updated = payload.new as any;
+        if (updated) {
+          skipNextSyncRef.current = true;
+          setAccount(prev => ({
+            ...prev,
+            balance: parseFloat(updated.balance ?? prev.balance),
+            credit: parseFloat(updated.credit ?? prev.credit),
+            bonus: parseFloat(updated.bonus ?? prev.bonus),
+          }));
         }
-      )
+      })
+      .subscribe();
+
+    // 2. Positions Subscription
+    const posChannel = supabase
+      .channel(`positions-${userId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'positions', filter: `user_id=eq.${userId}` }, () => {
+        console.log('⚡ Realtime: positions changed');
+        loadTradingData();
+      })
+      .subscribe();
+
+    // 3. Orders Subscription
+    const orderChannel = supabase
+      .channel(`orders-${userId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pending_orders', filter: `user_id=eq.${userId}` }, () => {
+        console.log('⚡ Realtime: orders changed');
+        loadTradingData();
+      })
+      .subscribe();
+
+    // 4. History Subscription
+    const historyChannel = supabase
+      .channel(`history-${userId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trade_history', filter: `user_id=eq.${userId}` }, () => {
+        console.log('⚡ Realtime: history changed');
+        loadTradingData();
+      })
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(accountChannel);
+      supabase.removeChannel(posChannel);
+      supabase.removeChannel(orderChannel);
+      supabase.removeChannel(historyChannel);
     };
-  }, [auth.currentUser?.id]);
+  }, [auth.currentUser?.id, loadTradingData]);
 
   // Actions
   const addPosition = async (position: Position) => {
@@ -372,8 +393,23 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
   const updatePosition = async (positionId: string, updates: Partial<Position>) => {
     try {
+      // Optmistic UI update
       setPositions(prev => prev.map(p => p.id === positionId ? { ...p, ...updates } : p));
-      await api.positions.update(positionId, updates);
+      
+      // Map camelCase to snake_case for DB
+      const dbUpdates: any = {};
+      if (updates.symbol !== undefined) dbUpdates.symbol = updates.symbol;
+      if (updates.side !== undefined) dbUpdates.type = updates.side;
+      if (updates.units !== undefined) dbUpdates.amount = updates.units;
+      if (updates.entryPrice !== undefined) dbUpdates.entry_price = updates.entryPrice;
+      if (updates.currentPrice !== undefined) dbUpdates.current_price = updates.currentPrice;
+      if (updates.leverage !== undefined) dbUpdates.leverage = updates.leverage;
+      if (updates.stopLoss !== undefined) dbUpdates.stop_loss = updates.stopLoss;
+      if (updates.takeProfit !== undefined) dbUpdates.take_profit = updates.takeProfit;
+      if (updates.status !== undefined) dbUpdates.status = updates.status;
+
+      await api.positions.update(positionId, dbUpdates);
+      // loadTradingData will be triggered by Realtime
     } catch (err) {
       console.error('Failed to update position:', err);
     }
@@ -415,8 +451,19 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
   const updateOrder = async (orderId: string, updates: Partial<Order>) => {
     try {
-      await api.pendingOrders.update(orderId, updates);
-      loadTradingData();
+      // Map camelCase to snake_case for DB
+      const dbUpdates: any = {};
+      if (updates.symbol !== undefined) dbUpdates.symbol = updates.symbol;
+      if (updates.side !== undefined) dbUpdates.type = updates.side;
+      if (updates.type !== undefined) dbUpdates.order_type = updates.type;
+      if (updates.units !== undefined) dbUpdates.amount = updates.units;
+      if (updates.price !== undefined) dbUpdates.price = updates.price;
+      if (updates.stopLoss !== undefined) dbUpdates.stop_loss = updates.stopLoss;
+      if (updates.takeProfit !== undefined) dbUpdates.take_profit = updates.takeProfit;
+      if (updates.leverage !== undefined) dbUpdates.leverage = updates.leverage;
+      if (updates.status !== undefined) dbUpdates.status = updates.status;
+
+      await api.pendingOrders.update(orderId, dbUpdates);
     } catch (err) {
       console.error('Failed to update order:', err);
     }
@@ -506,13 +553,61 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     const PRICE_UPDATE_INTERVAL = 5000; // Same 5s as MarketDataContext
     
     const updateAllPositionPrices = () => {
-      const updatePositionPrices = (
+    const updatePositionPrices = (
         currentPositions: Position[],
         setPositionsState: (pos: Position[]) => void,
         currentAccount: Account,
-        setAccountState: (acc: Account) => void
+        setAccountState: (acc: Account) => void,
+        currentOrders: Order[]
       ) => {
-        // When no positions remain, reset unrealized P&L, margin, and derived values
+        // --- 1. HANDLE ORDER FILLING ---
+        currentOrders.forEach(async (order) => {
+          if (order.status !== 'pending') return;
+          
+          const priceData = marketData.getPrice(order.symbol);
+          if (!priceData || !priceData.price) return;
+          
+          const currentPrice = priceData.price;
+          let shouldFill = false;
+
+          if (order.side === 'buy') {
+            // Limit Buy: fill if price falls to or below limit
+            if (order.type === 'limit' && currentPrice <= order.price) shouldFill = true;
+            // Stop Buy: fill if price rises to or above stop
+            if (order.type === 'stop' && currentPrice >= order.price) shouldFill = true;
+          } else {
+            // Limit Sell: fill if price rises to or above limit
+            if (order.type === 'limit' && currentPrice >= order.price) shouldFill = true;
+            // Stop Sell: fill if price falls to or below stop
+            if (order.type === 'stop' && currentPrice <= order.price) shouldFill = true;
+          }
+
+          if (shouldFill) {
+            console.log(`🎯 Order filled! Converting Order ${order.id} to Position`);
+            // Convert to position
+            await addPosition({
+              id: '', // Will be generated by DB
+              userId: order.userId,
+              symbol: order.symbol,
+              side: order.side,
+              units: order.units,
+              entryPrice: currentPrice, // Or order.price depending on slippage policy
+              currentPrice: currentPrice,
+              leverage: order.leverage,
+              margin: (order.units * currentPrice) / order.leverage,
+              pnl: 0,
+              timestamp: new Date(),
+              status: 'open',
+              stopLoss: order.stopLoss,
+              takeProfit: order.takeProfit
+            });
+            // Remove the order
+            await api.pendingOrders.delete(order.id);
+            // Realtime will handle the list refreshes
+          }
+        });
+
+        // --- 2. HANDLE POSITION PRICE UPDATES ---
         if (currentPositions.length === 0) {
           const targetEquity = currentAccount.balance + (currentAccount.bonus || 0) + (currentAccount.credit || 0);
           if (currentAccount.unrealizedPnL !== 0 || currentAccount.margin !== 0 || currentAccount.availableFunds !== targetEquity || currentAccount.equity !== targetEquity) {
@@ -581,7 +676,8 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
       updatePositionPrices(
         positionsRef.current, setPositions,
-        accountRef.current, setAccount
+        accountRef.current, setAccount,
+        orders
       );
     };
 
