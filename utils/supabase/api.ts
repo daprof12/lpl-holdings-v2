@@ -9,63 +9,63 @@ export const api = {
   // Users
   users: {
     getAll: async () => {
-        const { data, error } = await supabase.from('users').select('*');
-        if (error) {
-            console.error('[API] Error in getAll users:', error);
-            return [];
-        }
-        return data;
+      const { data, error } = await supabase.from('users').select('*');
+      if (error) {
+        console.error('[API] Error in getAll users:', error);
+        return [];
+      }
+      return data;
     },
     getById: async (id: string) => {
-        const { data, error } = await supabase.from('users').select('*').eq('id', id).maybeSingle();
-        if (error) {
-            console.error('[API] Error in getById user:', error);
-            return null;
-        }
-        return data;
+      const { data, error } = await supabase.from('users').select('*').eq('id', id).maybeSingle();
+      if (error) {
+        console.error('[API] Error in getById user:', error);
+        return null;
+      }
+      return data;
     },
     getByEmail: async (email: string) => {
-        const { data, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('email', email)
-            .maybeSingle();
-        
-        if (error) {
-            console.error('[API] Error in getByEmail:', error);
-            return null;
-        }
-        return data;
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (error) {
+        console.error('[API] Error in getByEmail:', error);
+        return null;
+      }
+      return data;
     },
     update: async (id: string, updates: any) => {
-        const { data, error } = await supabase.from('users').update(updates).eq('id', id).select().maybeSingle();
-        if (error) throw error;
-        return data;
+      const { data, error } = await supabase.from('users').update(updates).eq('id', id).select().maybeSingle();
+      if (error) throw error;
+      return data;
     },
     updateBalance: async (id: string, balance: number) => {
-        const { data, error } = await supabase.from('users').update({ balance }).eq('id', id).select().maybeSingle();
-        if (error) throw error;
-        return data;
+      const { data, error } = await supabase.from('users').update({ balance }).eq('id', id).select().maybeSingle();
+      if (error) throw error;
+      return data;
     },
   },
 
   // Trading Accounts
   tradingAccounts: {
     getByUserId: async (userId: string) => {
-        const { data, error } = await supabase.from('trading_accounts').select('*').eq('user_id', userId).maybeSingle();
-        return error ? null : data;
+      const { data, error } = await supabase.from('trading_accounts').select('*').eq('user_id', userId).maybeSingle();
+      return error ? null : data;
     },
     update: async (userId: string, updates: any) => {
-        const { data, error } = await supabase.from('trading_accounts').update(updates).eq('user_id', userId).select().maybeSingle();
-        return error ? null : data;
+      const { data, error } = await supabase.from('trading_accounts').update(updates).eq('user_id', userId).select().maybeSingle();
+      return error ? null : data;
     },
     insert: async (data: any) => {
-        const { data: res, error } = await supabase.from('trading_accounts').insert(data).select().maybeSingle();
-        return error ? null : res;
+      const { data: res, error } = await supabase.from('trading_accounts').insert(data).select().maybeSingle();
+      return error ? null : res;
     },
     getAll: async () => {
-        const { data, error } = await supabase.from('trading_accounts').select('*');
-        return error ? [] : data;
+      const { data, error } = await supabase.from('trading_accounts').select('*');
+      return error ? [] : data;
     },
   },
 
@@ -112,20 +112,20 @@ export const api = {
   investmentWallets: {
     get: (userId: string) => fetch(`${serverUrl}/investment-wallets/${userId}`, { headers }).then(r => r.json()),
     update: async (userId: string, updates: any) => {
-        const { data, error } = await supabase.from('investment_wallets').update(updates).eq('user_id', userId).select().maybeSingle();
-        return error ? null : data;
+      const { data, error } = await supabase.from('investment_wallets').update(updates).eq('user_id', userId).select().maybeSingle();
+      return error ? null : data;
     },
     insert: async (data: any) => {
-        const { data: res, error } = await supabase.from('investment_wallets').insert(data).select().maybeSingle();
-        return error ? null : res;
+      const { data: res, error } = await supabase.from('investment_wallets').insert(data).select().maybeSingle();
+      return error ? null : res;
     },
     getByUserId: async (userId: string) => {
-        const { data, error } = await supabase.from('investment_wallets').select('*').eq('user_id', userId).maybeSingle();
-        return error ? null : data;
+      const { data, error } = await supabase.from('investment_wallets').select('*').eq('user_id', userId).maybeSingle();
+      return error ? null : data;
     },
     getAll: async () => {
-        const { data, error } = await supabase.from('investment_wallets').select('*');
-        return error ? [] : data;
+      const { data, error } = await supabase.from('investment_wallets').select('*');
+      return error ? [] : data;
     },
   },
 
@@ -144,7 +144,7 @@ export const api = {
     }).then(r => r.json()),
     delete: (id: string) => fetch(`${serverUrl}/withdrawal-methods/${id}`, { method: 'DELETE', headers }).then(r => r.json()),
   },
-  
+
   // SMTP Config
   smtpConfig: {
     get: () => fetch(`${serverUrl}/smtp-config`, { headers }).then(r => r.json()),
@@ -158,295 +158,282 @@ export const api = {
   // Positions
   positions: {
     getByUserId: async (userId: string) => {
-        const { data, error } = await supabase.from('positions').select('*').eq('user_id', userId).eq('status', 'open').order('created_at', { ascending: false });
-        return error ? [] : data;
+      const { data, error } = await supabase.from('positions').select('*').eq('user_id', userId).eq('status', 'open').order('created_at', { ascending: false });
+      return error ? [] : data;
     },
     getAll: async () => {
-        const { data, error } = await supabase.from('positions').select('*').order('created_at', { ascending: false });
-        return error ? [] : data;
+      const { data, error } = await supabase.from('positions').select('*').order('created_at', { ascending: false });
+      return error ? [] : data;
     },
     create: async (data: any) => {
-        const { data: res, error } = await supabase.from('positions').insert(data).select().single();
-        if (error) throw error;
-        return res;
+      const { data: res, error } = await supabase.from('positions').insert(data).select().single();
+      if (error) throw error;
+      return res;
     },
     close: async (id: string, exitPrice: number) => {
-        const { data, error } = await supabase.from('positions').update({ status: 'closed', exit_price: exitPrice }).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+      const { data, error } = await supabase.from('positions').update({ status: 'closed', exit_price: exitPrice }).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
     },
     update: async (id: string, updates: any) => {
-        const { data, error } = await supabase.from('positions').update(updates).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+      const { data, error } = await supabase.from('positions').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
     },
   },
 
   // Pending Orders
   pendingOrders: {
     getByUserId: async (userId: string) => {
-        const { data, error } = await supabase.from('pending_orders').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-        // Handle "does not exist" or permissions
-        if (error) return [];
-        return data;
+      const { data, error } = await supabase.from('pending_orders').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+      // Handle "does not exist" or permissions
+      if (error) return [];
+      return data;
     },
     getAll: async () => {
-        const { data, error } = await supabase.from('pending_orders').select('*');
-        if (error) return [];
-        return data;
+      const { data, error } = await supabase.from('pending_orders').select('*');
+      if (error) return [];
+      return data;
     },
     create: async (data: any) => {
-        const { data: res, error } = await supabase.from('pending_orders').insert(data).select().single();
-        if (error) throw error;
-        return res;
+      const { data: res, error } = await supabase.from('pending_orders').insert(data).select().single();
+      if (error) throw error;
+      return res;
     },
     update: async (id: string, updates: any) => {
-        const { data, error } = await supabase.from('pending_orders').update(updates).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+      const { data, error } = await supabase.from('pending_orders').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
     },
     delete: async (id: string) => {
-        const { error } = await supabase.from('pending_orders').delete().eq('id', id);
-        if (error) throw error;
-        return true;
+      const { error } = await supabase.from('pending_orders').delete().eq('id', id);
+      if (error) throw error;
+      return true;
     },
   },
 
   // Trade History
   tradeHistory: {
     getByUserId: async (userId: string) => {
-        const { data, error } = await supabase.from('trade_history').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-        if (error) return [];
-        return data;
+      const { data, error } = await supabase.from('trade_history').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+      if (error) return [];
+      return data;
     },
     getAll: async () => {
-        const { data, error } = await supabase.from('trade_history').select('*').order('created_at', { ascending: false });
-        if (error) return [];
-        return data;
+      const { data, error } = await supabase.from('trade_history').select('*').order('created_at', { ascending: false });
+      if (error) return [];
+      return data;
     },
   },
 
   // Transactions
   transactions: {
     getByUserId: async (userId: string) => {
-        const { data, error } = await supabase.from('transactions').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-        return error ? [] : data;
+      const { data, error } = await supabase.from('transactions').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+      return error ? [] : data;
     },
     getAll: async () => {
-        const { data, error } = await supabase.from('transactions').select('*').order('created_at', { ascending: false });
-        return error ? [] : data;
+      const { data, error } = await supabase.from('transactions').select('*').order('created_at', { ascending: false });
+      return error ? [] : data;
     },
     create: async (data: any) => {
-        const { data: res, error } = await supabase.from('transactions').insert(data).select().single();
-        if (error) throw error;
-        return res;
+      const { data: res, error } = await supabase.from('transactions').insert(data).select().single();
+      if (error) throw error;
+      return res;
     },
     update: async (id: string, updates: any) => {
-        const { data: res, error } = await supabase.from('transactions').update(updates).eq('id', id).select().single();
-        if (error) throw error;
-        return res;
+      const { data: res, error } = await supabase.from('transactions').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      return res;
     },
     delete: async (id: string) => {
-        const { error } = await supabase.from('transactions').delete().eq('id', id);
-        if (error) throw error;
-        return true;
+      const { error } = await supabase.from('transactions').delete().eq('id', id);
+      if (error) throw error;
+      return true;
     }
   },
 
   // Deposits
   deposits: {
     getByUserId: async (userId: string) => {
-        const items = JSON.parse(localStorage.getItem('gross_deposits') || '[]');
-        return items.filter((i: any) => i.userId === userId || i.user_id === userId);
+      const items = JSON.parse(localStorage.getItem('gross_deposits') || '[]');
+      return items.filter((i: any) => i.userId === userId || i.user_id === userId);
     },
     getAll: async () => JSON.parse(localStorage.getItem('gross_deposits') || '[]'),
     create: async (data: any) => {
-        const items = JSON.parse(localStorage.getItem('gross_deposits') || '[]');
-        const newItem = { id: `dep_${Date.now()}`, ...data, created_at: new Date().toISOString() };
-        items.push(newItem);
-        localStorage.setItem('gross_deposits', JSON.stringify(items));
-        return newItem;
+      const items = JSON.parse(localStorage.getItem('gross_deposits') || '[]');
+      const newItem = { id: `dep_${Date.now()}`, ...data, created_at: new Date().toISOString() };
+      items.push(newItem);
+      localStorage.setItem('gross_deposits', JSON.stringify(items));
+      return newItem;
     },
     update: async (id: string, updates: any) => {
-        const items = JSON.parse(localStorage.getItem('gross_deposits') || '[]');
-        const index = items.findIndex((i: any) => i.id === id);
-        if (index > -1) {
-            items[index] = { ...items[index], ...updates, updated_at: new Date().toISOString() };
-            localStorage.setItem('gross_deposits', JSON.stringify(items));
-            return items[index];
-        }
-        throw new Error('Not found');
+      const items = JSON.parse(localStorage.getItem('gross_deposits') || '[]');
+      const index = items.findIndex((i: any) => i.id === id);
+      if (index > -1) {
+        items[index] = { ...items[index], ...updates, updated_at: new Date().toISOString() };
+        localStorage.setItem('gross_deposits', JSON.stringify(items));
+        return items[index];
+      }
+      throw new Error('Not found');
     },
   },
 
   // Withdrawals
   withdrawals: {
     getByUserId: async (userId: string) => {
-        const items = JSON.parse(localStorage.getItem('gross_withdrawals') || '[]');
-        return items.filter((i: any) => i.userId === userId || i.user_id === userId);
+      const items = JSON.parse(localStorage.getItem('gross_withdrawals') || '[]');
+      return items.filter((i: any) => i.userId === userId || i.user_id === userId);
     },
     getAll: async () => JSON.parse(localStorage.getItem('gross_withdrawals') || '[]'),
     create: async (data: any) => {
-        const items = JSON.parse(localStorage.getItem('gross_withdrawals') || '[]');
-        const newItem = { id: `wd_${Date.now()}`, ...data, created_at: new Date().toISOString() };
-        items.push(newItem);
-        localStorage.setItem('gross_withdrawals', JSON.stringify(items));
-        return newItem;
+      const items = JSON.parse(localStorage.getItem('gross_withdrawals') || '[]');
+      const newItem = { id: `wd_${Date.now()}`, ...data, created_at: new Date().toISOString() };
+      items.push(newItem);
+      localStorage.setItem('gross_withdrawals', JSON.stringify(items));
+      return newItem;
     },
     update: async (id: string, updates: any) => {
-        const items = JSON.parse(localStorage.getItem('gross_withdrawals') || '[]');
-        const index = items.findIndex((i: any) => i.id === id);
-        if (index > -1) {
-            items[index] = { ...items[index], ...updates, updated_at: new Date().toISOString() };
-            localStorage.setItem('gross_withdrawals', JSON.stringify(items));
-            return items[index];
-        }
-        throw new Error('Not found');
+      const items = JSON.parse(localStorage.getItem('gross_withdrawals') || '[]');
+      const index = items.findIndex((i: any) => i.id === id);
+      if (index > -1) {
+        items[index] = { ...items[index], ...updates, updated_at: new Date().toISOString() };
+        localStorage.setItem('gross_withdrawals', JSON.stringify(items));
+        return items[index];
+      }
+      throw new Error('Not found');
     },
   },
 
   // Withdrawal Methods
   withdrawalMethods: {
     getByUserId: async (userId: string) => {
-        const items = JSON.parse(localStorage.getItem('gross_withdrawal_methods') || '[]');
-        return items.filter((i: any) => i.userId === userId || i.user_id === userId);
+      const { data, error } = await supabase.from('withdrawal_methods').select('*').eq('user_id', userId);
+      return error ? [] : data;
     },
-    getAll: async () => JSON.parse(localStorage.getItem('gross_withdrawal_methods') || '[]'),
+    getAll: async () => {
+      const { data, error } = await supabase.from('withdrawal_methods').select('*').order('created_at', { ascending: false });
+      return error ? [] : data;
+    },
     create: async (data: any) => {
-        const items = JSON.parse(localStorage.getItem('gross_withdrawal_methods') || '[]');
-        const newItem = { id: `wm_${Date.now()}`, ...data, created_at: new Date().toISOString() };
-        items.push(newItem);
-        localStorage.setItem('gross_withdrawal_methods', JSON.stringify(items));
-        return newItem;
+      const { data: res, error } = await supabase.from('withdrawal_methods').insert(data).select().single();
+      if (error) throw error;
+      return res;
     },
     setDefault: async (userId: string, methodId: string) => {
-        const items = JSON.parse(localStorage.getItem('gross_withdrawal_methods') || '[]');
-        const updated = items.map((i: any) => ({
-            ...i,
-            isDefault: (i.userId === userId || i.user_id === userId) ? (i.id === methodId) : i.isDefault
-        }));
-        localStorage.setItem('gross_withdrawal_methods', JSON.stringify(updated));
-        return updated.find((i: any) => i.id === methodId);
+      await supabase.from('withdrawal_methods').update({ is_default: false }).eq('user_id', userId);
+      const { data, error } = await supabase.from('withdrawal_methods').update({ is_default: true }).eq('id', methodId).select().single();
+      if (error) throw error;
+      return data;
     },
     update: async (id: string, updates: any) => {
-        const items = JSON.parse(localStorage.getItem('gross_withdrawal_methods') || '[]');
-        const index = items.findIndex((i: any) => i.id === id);
-        if (index > -1) {
-            items[index] = { ...items[index], ...updates, updated_at: new Date().toISOString() };
-            localStorage.setItem('gross_withdrawal_methods', JSON.stringify(items));
-            return items[index];
-        }
-        throw new Error('Not found');
+      const { data, error } = await supabase.from('withdrawal_methods').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
     },
     delete: async (id: string) => {
-        let items = JSON.parse(localStorage.getItem('gross_withdrawal_methods') || '[]');
-        items = items.filter((i: any) => i.id !== id);
-        localStorage.setItem('gross_withdrawal_methods', JSON.stringify(items));
-        return true;
+      const { error } = await supabase.from('withdrawal_methods').delete().eq('id', id);
+      if (error) throw error;
+      return true;
     },
   },
 
   // Payment Methods
   paymentMethods: {
-    getAll: async () => JSON.parse(localStorage.getItem('gross_payment_methods') || '[]'),
+    getAll: async () => {
+      const { data, error } = await supabase.from('payment_methods').select('*').order('created_at', { ascending: false });
+      return error ? [] : data;
+    },
     getById: async (id: string) => {
-        const items = JSON.parse(localStorage.getItem('gross_payment_methods') || '[]');
-        return items.find((i: any) => i.id === id);
+      const { data, error } = await supabase.from('payment_methods').select('*').eq('id', id).maybeSingle();
+      return error ? null : data;
     },
     create: async (data: any) => {
-        const items = JSON.parse(localStorage.getItem('gross_payment_methods') || '[]');
-        const newItem = { id: `pm_${Date.now()}`, ...data, created_at: new Date().toISOString() };
-        items.push(newItem);
-        localStorage.setItem('gross_payment_methods', JSON.stringify(items));
-        return newItem;
+      const { data: res, error } = await supabase.from('payment_methods').insert(data).select().single();
+      if (error) throw error;
+      return res;
     },
     update: async (id: string, updates: any) => {
-        const items = JSON.parse(localStorage.getItem('gross_payment_methods') || '[]');
-        const index = items.findIndex((i: any) => i.id === id);
-        if (index > -1) {
-            items[index] = { ...items[index], ...updates, updated_at: new Date().toISOString() };
-            localStorage.setItem('gross_payment_methods', JSON.stringify(items));
-            return items[index];
-        }
-        throw new Error('Not found');
+      const { data, error } = await supabase.from('payment_methods').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
     },
     delete: async (id: string) => {
-        let items = JSON.parse(localStorage.getItem('gross_payment_methods') || '[]');
-        items = items.filter((i: any) => i.id !== id);
-        localStorage.setItem('gross_payment_methods', JSON.stringify(items));
-        return true;
+      const { error } = await supabase.from('payment_methods').delete().eq('id', id);
+      if (error) throw error;
+      return true;
     },
   },
 
   // Investment Offers
   investmentOffers: {
     getAll: async () => {
-        const { data, error } = await supabase.from('investment_offers').select('*').order('created_at', { ascending: false });
-        return error ? [] : data;
+      const { data, error } = await supabase.from('investment_offers').select('*').order('created_at', { ascending: false });
+      return error ? [] : data;
     },
     create: async (data: any) => {
-        const { data: res, error } = await supabase.from('investment_offers').insert(data).select().single();
-        if (error) throw error;
-        return res;
+      const { data: res, error } = await supabase.from('investment_offers').insert(data).select().single();
+      if (error) throw error;
+      return res;
     },
     update: async (id: string, updates: any) => {
-        const { data: res, error } = await supabase.from('investment_offers').update(updates).eq('id', id).select().single();
-        if (error) throw error;
-        return res;
+      const { data: res, error } = await supabase.from('investment_offers').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      return res;
     },
     delete: async (id: string) => {
-        const { error } = await supabase.from('investment_offers').delete().eq('id', id);
-        if (error) throw error;
-        return true;
+      const { error } = await supabase.from('investment_offers').delete().eq('id', id);
+      if (error) throw error;
+      return true;
     }
   },
 
   // User Investments
   investments: {
     getByUserId: async (userId: string) => {
-        const { data, error } = await supabase.from('user_investments').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-        return error ? [] : data;
+      const { data, error } = await supabase.from('user_investments').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+      return error ? [] : data;
     },
     getAll: async () => {
-        const { data, error } = await supabase.from('user_investments').select('*').order('created_at', { ascending: false });
-        return error ? [] : data;
+      const { data, error } = await supabase.from('user_investments').select('*').order('created_at', { ascending: false });
+      return error ? [] : data;
     },
     create: async (data: any) => {
-        const { data: res, error } = await supabase.from('user_investments').insert(data).select().single();
-        if (error) throw error;
-        return res;
+      const { data: res, error } = await supabase.from('user_investments').insert(data).select().single();
+      if (error) throw error;
+      return res;
     },
     update: async (id: string, updates: any) => {
-        const { data: res, error } = await supabase.from('user_investments').update(updates).eq('id', id).select().single();
-        if (error) throw error;
-        return res;
+      const { data: res, error } = await supabase.from('user_investments').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      return res;
     },
     delete: async (id: string) => {
-        const { error } = await supabase.from('user_investments').delete().eq('id', id);
-        if (error) throw error;
-        return true;
+      const { error } = await supabase.from('user_investments').delete().eq('id', id);
+      if (error) throw error;
+      return true;
     }
   },
 
   // Sell Requests
   sellRequests: {
     getByUserId: async (userId: string) => {
-        const { data, error } = await supabase.from('sell_requests').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-        return error ? [] : data;
+      const { data, error } = await supabase.from('sell_requests').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+      return error ? [] : data;
     },
     getAll: async () => {
-        const { data, error } = await supabase.from('sell_requests').select('*').order('created_at', { ascending: false });
-        return error ? [] : data;
+      const { data, error } = await supabase.from('sell_requests').select('*').order('created_at', { ascending: false });
+      return error ? [] : data;
     },
     create: async (data: any) => {
-        const { data: res, error } = await supabase.from('sell_requests').insert(data).select().single();
-        if (error) throw error;
-        return res;
+      const { data: res, error } = await supabase.from('sell_requests').insert(data).select().single();
+      if (error) throw error;
+      return res;
     },
     update: async (id: string, updates: any) => {
-        const { data: res, error } = await supabase.from('sell_requests').update(updates).eq('id', id).select().single();
-        if (error) throw error;
-        return res;
+      const { data: res, error } = await supabase.from('sell_requests').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      return res;
     },
   },
 
@@ -570,149 +557,3 @@ export const api = {
   }
 };
 
-// Seed default payment and withdrawal methods if empty
-if (typeof window !== 'undefined') {
-  try {
-    const existingPM = JSON.parse(localStorage.getItem('gross_payment_methods') || '[]');
-    // Force reseed if we have less than the new expanded set of 10 items
-    if (existingPM.length < 10) {
-      const defaultPMs = [
-          // DEPOSIT METHODS
-          {
-              id: 'pm_crypto_btc_dep',
-              type: 'crypto',
-              name: 'Bitcoin',
-              is_active: true,
-              details: {
-                  cryptoType: 'BTC',
-                  network: 'Bitcoin',
-                  walletAddress: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
-                  isWithdrawal: false
-              }
-          },
-          {
-              id: 'pm_crypto_eth_dep',
-              type: 'crypto',
-              name: 'Ethereum',
-              is_active: true,
-              details: {
-                  cryptoType: 'ETH',
-                  network: 'ERC20',
-                  walletAddress: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
-                  isWithdrawal: false
-              }
-          },
-          {
-              id: 'pm_crypto_usdt_dep',
-              type: 'crypto',
-              name: 'USDT (TRC20)',
-              is_active: true,
-              details: {
-                  cryptoType: 'USDT',
-                  network: 'TRC20',
-                  walletAddress: 'TXLAQ63Xg1ZWV8TfMw1KXYi4H1sX5e43Lp',
-                  isWithdrawal: false
-              }
-          },
-          {
-              id: 'pm_bank_dep',
-              type: 'bank',
-              name: 'Platform Bank Account',
-              is_active: true,
-              details: {
-                  bankName: 'JP Morgan Chase',
-                  accountHolderName: 'LPL Holdings LLC',
-                  accountNumber: '1234567890',
-                  routingNumber: '021000021',
-                  isWithdrawal: false
-              }
-          },
-          {
-              id: 'pm_paypal_dep',
-              type: 'paypal',
-              name: 'PayPal Deposit',
-              is_active: true,
-              details: {
-                  paypalEmail: 'payments@lplholdings.com',
-                  isWithdrawal: false
-              }
-          },
-          {
-              id: 'pm_stripe_card_dep',
-              type: 'card',
-              name: 'Credit/Debit Card (Stripe)',
-              is_active: true,
-              details: {
-                  processor: 'Stripe',
-                  processorName: 'Stripe Payments',
-                  isWithdrawal: false
-              }
-          },
-          {
-              id: 'pm_other_card_dep',
-              type: 'card',
-              name: 'Credit/Debit Card (Alternative)',
-              is_active: true,
-              details: {
-                  processor: 'Other',
-                  processorName: 'SecurePay Terminal',
-                  isWithdrawal: false
-              }
-          },
-          // WITHDRAWAL METHODS (Global config for users to choose from)
-          {
-              id: 'pm_wd_crypto',
-              type: 'crypto',
-              name: 'Crypto Withdrawal',
-              is_active: true,
-              min_amount: 50,
-              max_amount: 100000,
-              fee_percentage: 1.5,
-              processing_time: '1-6 hours',
-              details: {
-                  isWithdrawal: true,
-                  instructionNote: 'Please ensure you use the correct network for your withdrawal.',
-                  cryptoAssets: [
-                      { assetType: 'BTC', network: 'Bitcoin', enabled: true },
-                      { assetType: 'ETH', network: 'ERC20', enabled: true },
-                      { assetType: 'USDT', network: 'TRC20', enabled: true },
-                      { assetType: 'USDT', network: 'ERC20', enabled: true }
-                  ]
-              }
-          },
-          {
-              id: 'pm_wd_bank',
-              type: 'bank',
-              name: 'Bank Transfer Withdrawal',
-              is_active: true,
-              min_amount: 500,
-              max_amount: 500000,
-              fee_percentage: 0,
-              processing_time: '1-3 business days',
-              details: {
-                  isWithdrawal: true,
-                  fixedFee: 25,
-                  instructionNote: 'International wires may incur additional intermediary bank fees.'
-              }
-          },
-          {
-              id: 'pm_wd_paypal',
-              type: 'paypal',
-              name: 'PayPal Withdrawal',
-              is_active: true,
-              min_amount: 50,
-              max_amount: 10000,
-              fee_percentage: 2,
-              processing_time: '1-2 business days',
-              details: {
-                  isWithdrawal: true,
-                  instructionNote: 'Please ensure your PayPal profile is verified to accept incoming payments.'
-              }
-          }
-      ];
-      localStorage.setItem('gross_payment_methods', JSON.stringify(defaultPMs));
-    }
-  } catch (error) {
-    console.error('Failed to seed default payment methods:', error);
-  }
-}
