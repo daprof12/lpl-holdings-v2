@@ -180,14 +180,14 @@ export function TradingProvider({ children }: { children: ReactNode }) {
           id: dbItem.id,
           userId: dbItem.user_id,
           symbol: dbItem.symbol,
-          side: dbItem.type,
+          side: dbItem.type === 'buy' ? 'buy' : 'sell',
           type: 'market',
-          units: parseFloat(dbItem.amount),
-          price: parseFloat(dbItem.exit_price || dbItem.entry_price),
-          entryPrice: parseFloat(dbItem.entry_price),
-          entryTimestamp: new Date(dbItem.created_at),
+          units: parseFloat(dbItem.volume || dbItem.amount || 0),
+          price: parseFloat(dbItem.exit_price || dbItem.entry_price || 0),
+          entryPrice: parseFloat(dbItem.entry_price || 0),
+          entryTimestamp: new Date(dbItem.opened_at || dbItem.created_at || now),
           pnl: parseFloat(dbItem.profit || 0),
-          timestamp: new Date(dbItem.closed_at || dbItem.created_at),
+          timestamp: new Date(dbItem.closed_at || dbItem.created_at || now),
           status: 'closed'
         })));
       }
@@ -198,15 +198,15 @@ export function TradingProvider({ children }: { children: ReactNode }) {
           id: dbOrder.id,
           userId: dbOrder.user_id,
           symbol: dbOrder.symbol,
-          side: dbOrder.type,
+          side: dbOrder.type === 'buy' ? 'buy' : 'sell',
           type: dbOrder.order_type || 'limit',
-          units: parseFloat(dbOrder.amount),
-          price: parseFloat(dbOrder.price),
+          units: parseFloat(dbOrder.amount || 0),
+          price: parseFloat(dbOrder.price || 0),
           stopLoss: dbOrder.stop_loss ? parseFloat(dbOrder.stop_loss) : undefined,
           takeProfit: dbOrder.take_profit ? parseFloat(dbOrder.take_profit) : undefined,
           leverage: dbOrder.leverage || 1,
-          status: dbOrder.status,
-          timestamp: new Date(dbOrder.created_at)
+          status: dbOrder.status || 'pending',
+          timestamp: new Date(dbOrder.created_at || now)
         })));
       }
 
@@ -351,18 +351,29 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     try {
       const priceData = marketData.getPrice(position.symbol);
       const currentMarketPrice = priceData?.price || position.entryPrice;
+      const asset = initialAssets.find(a => a.symbol === position.symbol);
+      const now = Date.now();
       
       const res = await api.positions.create({
+        id: `pos-${now}-${Math.random().toString(36).substring(2, 9)}`,
         user_id: userId,
         symbol: position.symbol,
+        asset_name: asset?.name || position.symbol,
+        asset_category: asset?.category || 'Forex',
         type: position.side,
-        amount: position.units,
+        amount: position.units, // for legacy if needed
+        volume: position.units, // from schema
+        units: position.units,  // from schema
         entry_price: position.entryPrice,
         current_price: currentMarketPrice,
         leverage: position.leverage,
         take_profit: position.takeProfit,
         stop_loss: position.stopLoss,
-        status: 'open'
+        status: 'open',
+        opened_at: now,
+        created_at: now,
+        updated_at: now,
+        source: 'manual'
       });
 
       if (res && res.id) {

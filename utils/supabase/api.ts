@@ -171,7 +171,28 @@ export const api = {
       return res;
     },
     close: async (id: string, exitPrice: number) => {
-      const { data, error } = await supabase.from('positions').update({ status: 'closed', exit_price: exitPrice }).eq('id', id).select().single();
+      // 1. Fetch current position to calculate profit
+      const { data: pos, error: fetchErr } = await supabase.from('positions').select('*').eq('id', id).single();
+      if (fetchErr) throw fetchErr;
+
+      // 2. Calculate profit
+      const priceDiff = pos.type === 'buy' ? exitPrice - pos.entry_price : pos.entry_price - exitPrice;
+      const profit = priceDiff * pos.units;
+      const now = Date.now();
+
+      // 3. Update position
+      const { data, error } = await supabase.from('positions')
+        .update({ 
+          status: 'closed', 
+          exit_price: exitPrice, 
+          profit: profit,
+          closed_at: now,
+          updated_at: now
+        })
+        .eq('id', id)
+        .select()
+        .single();
+        
       if (error) throw error;
       return data;
     },
