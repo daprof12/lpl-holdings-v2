@@ -167,7 +167,10 @@ export const api = {
     },
     create: async (data: any) => {
       const { data: res, error } = await supabase.from('positions').insert(data).select().single();
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Database Error (createPosition):', error);
+        throw error;
+      }
       return res;
     },
     close: async (id: string, exitPrice: number) => {
