@@ -27,6 +27,7 @@ import {
   Type,
   ListChecks,
   Square,
+  Copy,
   Image as ImageIcon
 } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -599,6 +600,13 @@ export default function CRMMessaging() {
             <div className="p-3 border-t border-gray-100 dark:border-slate-700 flex justify-between items-center bg-gray-50/50 dark:bg-slate-800/50">
               <span className="text-[10px] text-gray-600 dark:text-gray-400 font-medium truncate max-w-[150px]">{template.subject}</span>
               <div className="flex gap-1.5">
+                <button onClick={() => {
+                  setEditingTemplate(null);
+                  setTemplateForm({ ...template, name: `${template.name} (Copy)` });
+                  setShowTemplateDialog(true);
+                }} className="p-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded text-emerald-600 transition-colors" title="Clone Template">
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
                 <button onClick={() => {
                   setEditingTemplate(template);
                   setTemplateForm({ ...template });

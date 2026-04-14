@@ -55,7 +55,17 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
   useEffect(() => {
     const loadWithdrawalConfigs = async () => {
       try {
-        const allMethods = await api.paymentMethods.getAll();
+        const allMethodsRaw = await api.paymentMethods.getAll();
+        const allMethods = Array.isArray(allMethodsRaw) ? allMethodsRaw.map((m: any) => ({
+          id: m.id,
+          type: m.type,
+          enabled: m.is_active,
+          cryptoType: m.currency,
+          withdrawalFeeType: m.details?.withdrawalFeeType,
+          withdrawalFee: m.details?.withdrawalFee,
+          network: m.details?.network,
+          ...(m.details || {})
+        })) : [];
         const cryptoMethods = allMethods.filter((m: any) => m.type === 'crypto' && m.enabled);
         setAdminCryptoMethods(cryptoMethods);
         

@@ -195,19 +195,19 @@ export default function AdminInvestmentsPage() {
     }
   };
 
-  const handleApproveSellRequest = (request: any) => {
+  const handleApproveSellRequest = async (request: any) => {
     if (confirm(`Approve sell request for ${request.units} units of ${request.offerName}?`)) {
-      updateSellRequest(request.id, {
+      await updateSellRequest(request.id, {
         status: 'approved',
         processedAt: Date.now(),
         processedBy: 'Admin',
-      });
+      } as any);
       
       // Credit user wallet using centralized method
       const userId = request.userId;
       const accountType = request.paymentWallet === 'wallet' ? 'live' : request.paymentWallet;
       
-      addFundsToAccount(userId, request.totalAmount, accountType, 'balance');
+      await addFundsToAccount(userId, request.totalAmount, accountType, 'balance');
       
       // Reduce user's investment units
       const userInv = userInvestments.find(i => i.id === request.investmentId);
@@ -215,7 +215,7 @@ export default function AdminInvestmentsPage() {
         const remainingUnits = userInv.units - request.units;
         if (remainingUnits <= 0) {
           // If all units sold, mark as completed or delete
-          updateUserInvestment(userInv.id, { 
+          await updateUserInvestment(userInv.id, { 
             units: 0, 
             status: 'completed',
             currentValue: 0 
@@ -223,7 +223,7 @@ export default function AdminInvestmentsPage() {
         } else {
           // Update with remaining units and proportionately reduce currentValue
           const ratio = remainingUnits / userInv.units;
-          updateUserInvestment(userInv.id, { 
+          await updateUserInvestment(userInv.id, { 
             units: remainingUnits,
             totalAmount: userInv.totalAmount * ratio,
             currentValue: userInv.currentValue * ratio
@@ -235,15 +235,15 @@ export default function AdminInvestmentsPage() {
     }
   };
 
-  const handleRejectSellRequest = (request: any) => {
+  const handleRejectSellRequest = async (request: any) => {
     const reason = prompt('Enter rejection reason:');
     if (reason) {
-      updateSellRequest(request.id, {
+      await updateSellRequest(request.id, {
         status: 'rejected',
         processedAt: Date.now(),
         processedBy: 'Admin',
         rejectionReason: reason,
-      });
+      } as any);
       showSuccessToast('Sell request rejected');
     }
   };

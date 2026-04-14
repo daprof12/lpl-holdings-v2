@@ -143,6 +143,7 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
           minPurchase: parseFloat(offer.min_investment || 0),
           maxPurchase: parseFloat(offer.max_investment || 0),
           description: offer.description || '',
+          exchanger: offer.exchanger || '',
           enabled: offer.is_active || false,
           createdAt: new Date(offer.created_at).getTime(),
           assetSymbol: offer.asset_symbol || undefined,
@@ -214,6 +215,37 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refreshOffers();
     if (currentUser?.id) refreshInvestments();
+
+    // Enable Realtime Subscriptions for instant updates (User & Admin)
+    const investmentsSubscription = supabase
+      .channel('investment_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_investments' }, (payload) => {
+        console.log('Realtime change detected in user_investments:', payload);
+        refreshInvestments();
+      })
+      .subscribe();
+
+    const sellRequestsSubscription = supabase
+      .channel('sell_request_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sell_requests' }, (payload) => {
+        console.log('Realtime change detected in sell_requests:', payload);
+        refreshInvestments();
+      })
+      .subscribe();
+
+    const offersSubscription = supabase
+      .channel('offer_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'investment_offers' }, (payload) => {
+        console.log('Realtime change detected in investment_offers:', payload);
+        refreshOffers();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(investmentsSubscription);
+      supabase.removeChannel(sellRequestsSubscription);
+      supabase.removeChannel(offersSubscription);
+    };
   }, [currentUser?.id]);
 
   // Legacy sync logic and real-time listeners removed
@@ -226,7 +258,9 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
       name: offer.name,
       logo_url: offer.logo,
       type: offer.type,
+      exchanger: offer.exchanger,
       expected_return: offer.profitability,
+      yield_tier: offer.profitabilityTier,
       duration_days: offer.period,
       category: offer.category,
       price_per_unit: offer.price,
@@ -243,23 +277,26 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
   };
 
   const updateInvestmentOffer = (id: string, updates: Partial<InvestmentOffer>): boolean => {
-    api.investmentOffers.update(id, {
-      name: updates.name,
-      logo_url: updates.logo,
-      type: updates.type,
-      expected_return: updates.profitability,
-      duration_days: updates.period,
-      category: updates.category,
-      price_per_unit: updates.price,
-      total_units: updates.totalUnits,
-      available_units: updates.availableUnits,
-      min_investment: updates.minPurchase,
-      max_investment: updates.maxPurchase,
-      description: updates.description,
-      is_active: updates.enabled,
-      asset_symbol: updates.assetSymbol,
-      market_price: updates.marketPrice
-    }).then(() => refreshOffers());
+    const dbUpdates: any = {};
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.logo !== undefined) dbUpdates.logo_url = updates.logo;
+    if (updates.type !== undefined) dbUpdates.type = updates.type;
+    if (updates.exchanger !== undefined) dbUpdates.exchanger = updates.exchanger;
+    if (updates.profitability !== undefined) dbUpdates.expected_return = updates.profitability;
+    if (updates.profitabilityTier !== undefined) dbUpdates.yield_tier = updates.profitabilityTier;
+    if (updates.period !== undefined) dbUpdates.duration_days = updates.period;
+    if (updates.category !== undefined) dbUpdates.category = updates.category;
+    if (updates.price !== undefined) dbUpdates.price_per_unit = updates.price;
+    if (updates.totalUnits !== undefined) dbUpdates.total_units = updates.totalUnits;
+    if (updates.availableUnits !== undefined) dbUpdates.available_units = updates.availableUnits;
+    if (updates.minPurchase !== undefined) dbUpdates.min_investment = updates.minPurchase;
+    if (updates.maxPurchase !== undefined) dbUpdates.max_investment = updates.maxPurchase;
+    if (updates.description !== undefined) dbUpdates.description = updates.description;
+    if (updates.enabled !== undefined) dbUpdates.is_active = updates.enabled;
+    if (updates.assetSymbol !== undefined) dbUpdates.asset_symbol = updates.assetSymbol;
+    if (updates.marketPrice !== undefined) dbUpdates.market_price = updates.marketPrice;
+
+    api.investmentOffers.update(id, dbUpdates).then(() => refreshOffers());
     return true;
   };
 
@@ -273,27 +310,58 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
   };
 
   // User Investments Management
-  const addUserInvestment = (investment: Omit<UserInvestment, 'id' | 'createdAt'>): string => {
-    const id = `inv-${Date.now()}`;
-    api.investments.create({
-      user_id: investment.userId,
-      offer_id: investment.offerId,
-      offer_name: investment.offerName,
-      offer_logo: investment.offerLogo,
-      offer_type: investment.offerType,
-      units: investment.units,
-      purchase_price: investment.purchasePrice,
-      amount: investment.totalAmount,
-      expected_return: investment.profitability,
-      status: investment.status,
-      show_value_and_date: investment.showValueAndDate
-    }).then(() => refreshInvestments());
-    return id;
+  const addUserInvestment = async (investment: Omit<UserInvestment, 'id' | 'createdAt'>): Promise<string> => {
+    // Generate a valid UUID
+    const id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+
+    try {
+      console.log('Attempting to create investment:', { ...investment, id });
+      await api.investments.create({
+        id: id,
+        user_id: investment.userId,
+        offer_id: investment.offerId,
+        offer_name: investment.offerName,
+        offer_logo: investment.offerLogo || '',
+        offer_type: investment.offerType,
+        units: investment.units,
+        purchase_price: investment.purchasePrice,
+        amount: investment.totalAmount,
+        current_value: investment.currentValue,
+        maturity_date: investment.endDate,
+        expected_return: investment.profitability,
+        status: investment.status,
+        show_value_and_date: investment.showValueAndDate,
+        created_at: Date.now(),
+        updated_at: Date.now()
+      });
+      await refreshInvestments();
+      return id;
+    } catch (error) {
+      console.error('❌ Detailed Database Error (addUserInvestment):', error);
+      throw error; // Let the UI handle it
+    }
   };
 
-  const updateUserInvestment = (id: string, updates: Partial<UserInvestment>): boolean => {
-    api.investments.update(id, updates).then(() => refreshInvestments());
-    return true;
+  const updateUserInvestment = async (id: string, updates: Partial<UserInvestment>): Promise<boolean> => {
+    const dbUpdates: any = { updated_at: Date.now() };
+    if (updates.units !== undefined) dbUpdates.units = updates.units;
+    if (updates.totalAmount !== undefined) dbUpdates.amount = updates.totalAmount;
+    if (updates.currentValue !== undefined) dbUpdates.current_value = updates.currentValue;
+    if (updates.status !== undefined) dbUpdates.status = updates.status;
+    if (updates.endDate !== undefined) dbUpdates.maturity_date = updates.endDate;
+    if (updates.showValueAndDate !== undefined) dbUpdates.show_value_and_date = updates.showValueAndDate;
+
+    try {
+      await api.investments.update(id, dbUpdates);
+      await refreshInvestments();
+      return true;
+    } catch (error) {
+      console.error('Failed to update investment:', error);
+      return false;
+    }
   };
 
   const deleteUserInvestment = (id: string): boolean => {
@@ -306,26 +374,53 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
   };
 
   // Sell Requests Management
-  const createSellRequest = (request: Omit<SellRequest, 'id' | 'createdAt' | 'status'>): string => {
-    const id = `sell-${Date.now()}`;
-    api.sellRequests.create({
-      user_id: request.userId,
-      investment_id: request.investmentId,
-      offer_name: request.offerName,
-      offer_logo: request.offerLogo,
-      offer_type: request.offerType,
-      units: request.units,
-      current_price: request.currentPrice,
-      total_amount: request.totalAmount,
-      payment_wallet: request.paymentWallet,
-      status: 'pending'
-    }).then(() => refreshInvestments());
-    return id;
+  const createSellRequest = async (request: Omit<SellRequest, 'id' | 'createdAt' | 'status'>): Promise<string> => {
+    // Generate a valid UUID
+    const id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+
+    try {
+      console.log('Attempting to create sell request:', { ...request, id });
+      await api.sellRequests.create({
+        id: id,
+        user_id: request.userId,
+        investment_id: (request as any).investment_id || request.investmentId,
+        offer_name: request.offerName,
+        offer_logo: request.offerLogo || '',
+        offer_type: request.offerType,
+        units: request.units,
+        current_price: request.currentPrice,
+        total_amount: request.totalAmount,
+        payment_wallet: request.paymentWallet,
+        status: 'pending',
+        created_at: Date.now(),
+        updated_at: Date.now()
+      });
+      await refreshInvestments();
+      return id;
+    } catch (error) {
+      console.error('❌ Detailed Database Error (createSellRequest):', error);
+      throw error;
+    }
   };
 
-  const updateSellRequest = (id: string, updates: Partial<SellRequest>): boolean => {
-    api.sellRequests.update(id, updates).then(() => refreshInvestments());
-    return true;
+  const updateSellRequest = async (id: string, updates: Partial<SellRequest>): Promise<boolean> => {
+    const dbUpdates: any = { updated_at: Date.now() };
+    if (updates.status !== undefined) dbUpdates.status = updates.status;
+    if ((updates as any).processedAt !== undefined) dbUpdates.processed_at = (updates as any).processedAt;
+    if ((updates as any).processedBy !== undefined) dbUpdates.processed_by = (updates as any).processedBy;
+    if ((updates as any).rejectionReason !== undefined) dbUpdates.rejection_reason = (updates as any).rejectionReason;
+
+    try {
+      await api.sellRequests.update(id, dbUpdates);
+      await refreshInvestments();
+      return true;
+    } catch (error) {
+      console.error('Failed to update sell request:', error);
+      return false;
+    }
   };
 
   const getUserSellRequests = (userId: string): SellRequest[] => {

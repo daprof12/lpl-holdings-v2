@@ -256,52 +256,44 @@ export const api = {
   // Deposits
   deposits: {
     getByUserId: async (userId: string) => {
-      const items = JSON.parse(localStorage.getItem('gross_deposits') || '[]');
-      return items.filter((i: any) => i.userId === userId || i.user_id === userId);
+      const { data, error } = await supabase.from('deposits').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+      return error ? [] : data;
     },
-    getAll: async () => JSON.parse(localStorage.getItem('gross_deposits') || '[]'),
+    getAll: async () => {
+      const { data, error } = await supabase.from('deposits').select('*').order('created_at', { ascending: false });
+      return error ? [] : data;
+    },
     create: async (data: any) => {
-      const items = JSON.parse(localStorage.getItem('gross_deposits') || '[]');
-      const newItem = { id: `dep_${Date.now()}`, ...data, created_at: new Date().toISOString() };
-      items.push(newItem);
-      localStorage.setItem('gross_deposits', JSON.stringify(items));
-      return newItem;
+      const { data: res, error } = await supabase.from('deposits').insert(data).select().single();
+      if (error) throw error;
+      return res;
     },
     update: async (id: string, updates: any) => {
-      const items = JSON.parse(localStorage.getItem('gross_deposits') || '[]');
-      const index = items.findIndex((i: any) => i.id === id);
-      if (index > -1) {
-        items[index] = { ...items[index], ...updates, updated_at: new Date().toISOString() };
-        localStorage.setItem('gross_deposits', JSON.stringify(items));
-        return items[index];
-      }
-      throw new Error('Not found');
+      const { data, error } = await supabase.from('deposits').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
     },
   },
 
   // Withdrawals
   withdrawals: {
     getByUserId: async (userId: string) => {
-      const items = JSON.parse(localStorage.getItem('gross_withdrawals') || '[]');
-      return items.filter((i: any) => i.userId === userId || i.user_id === userId);
+      const { data, error } = await supabase.from('withdrawals').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+      return error ? [] : data;
     },
-    getAll: async () => JSON.parse(localStorage.getItem('gross_withdrawals') || '[]'),
+    getAll: async () => {
+      const { data, error } = await supabase.from('withdrawals').select('*').order('created_at', { ascending: false });
+      return error ? [] : data;
+    },
     create: async (data: any) => {
-      const items = JSON.parse(localStorage.getItem('gross_withdrawals') || '[]');
-      const newItem = { id: `wd_${Date.now()}`, ...data, created_at: new Date().toISOString() };
-      items.push(newItem);
-      localStorage.setItem('gross_withdrawals', JSON.stringify(items));
-      return newItem;
+      const { data: res, error } = await supabase.from('withdrawals').insert(data).select().single();
+      if (error) throw error;
+      return res;
     },
     update: async (id: string, updates: any) => {
-      const items = JSON.parse(localStorage.getItem('gross_withdrawals') || '[]');
-      const index = items.findIndex((i: any) => i.id === id);
-      if (index > -1) {
-        items[index] = { ...items[index], ...updates, updated_at: new Date().toISOString() };
-        localStorage.setItem('gross_withdrawals', JSON.stringify(items));
-        return items[index];
-      }
-      throw new Error('Not found');
+      const { data, error } = await supabase.from('withdrawals').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
     },
   },
 
@@ -541,19 +533,63 @@ export const api = {
 
   // Email Templates
   emailTemplates: {
-    getAll: () => fetch(`${serverUrl}/email-templates`, { headers }).then(r => r.json()),
-    getById: (id: string) => fetch(`${serverUrl}/email-templates/${id}`, { headers }).then(r => r.json()),
-    create: (data: any) => fetch(`${serverUrl}/email-templates`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    }).then(r => r.json()),
-    update: (id: string, updates: any) => fetch(`${serverUrl}/email-templates/${id}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(updates)
-    }).then(r => r.json()),
-    delete: (id: string) => fetch(`${serverUrl}/email-templates/${id}`, { method: 'DELETE', headers }).then(r => r.json()),
+    getAll: async () => {
+      const { data, error } = await supabase.from('email_templates').select('*').order('created_at', { ascending: false });
+      if (error) {
+        console.error("Supabase Error fetch email_templates:", error);
+        return [];
+      }
+      return data;
+    },
+    getById: async (id: string) => {
+      const { data, error } = await supabase.from('email_templates').select('*').eq('id', id).single();
+      if (error) throw error;
+      return data;
+    },
+    create: async (data: any) => {
+      const dbData: any = {
+        name: data.name,
+        category: data.category,
+        subject: data.subject,
+        logo_url: data.logoUrl,
+        hero_image: data.heroImage,
+        hero_title: data.heroTitle,
+        blocks: data.blocks,
+        footer_text: data.footerText || data.footer,
+        accent_color: data.accentColor,
+        updated_at: Date.now(),
+        created_at: Date.now()
+      };
+      // Only attach id if it is a valid UUID, else let Supabase generate it
+      if (data.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data.id)) {
+        dbData.id = data.id;
+      }
+      
+      const { data: res, error } = await supabase.from('email_templates').insert(dbData).select().single();
+      if (error) throw error;
+      return res;
+    },
+    update: async (id: string, updates: any) => {
+      const dbUpdates: any = { updated_at: Date.now() };
+      if (updates.name !== undefined) dbUpdates.name = updates.name;
+      if (updates.category !== undefined) dbUpdates.category = updates.category;
+      if (updates.subject !== undefined) dbUpdates.subject = updates.subject;
+      if (updates.logoUrl !== undefined) dbUpdates.logo_url = updates.logoUrl;
+      if (updates.heroImage !== undefined) dbUpdates.hero_image = updates.heroImage;
+      if (updates.heroTitle !== undefined) dbUpdates.hero_title = updates.heroTitle;
+      if (updates.blocks !== undefined) dbUpdates.blocks = updates.blocks;
+      if (updates.footerText !== undefined || updates.footer !== undefined) dbUpdates.footer_text = updates.footerText || updates.footer;
+      if (updates.accentColor !== undefined) dbUpdates.accent_color = updates.accentColor;
+
+      const { data, error } = await supabase.from('email_templates').update(dbUpdates).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    },
+    delete: async (id: string) => {
+      const { data, error } = await supabase.from('email_templates').delete().eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    },
   }
 };
 

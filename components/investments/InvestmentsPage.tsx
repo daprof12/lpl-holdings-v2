@@ -136,7 +136,7 @@ export default function InvestmentsPage() {
     showSuccessToast(`Transferred $${amount.toFixed(2)} successfully`);
   };
 
-  const handleBuy = () => {
+  const handleBuy = async () => {
     console.log('=== handleBuy Debug Info ===');
     console.log('buyModalOpen:', buyModalOpen);
     console.log('selectedOffer:', selectedOffer);
@@ -199,7 +199,8 @@ export default function InvestmentsPage() {
       }
 
       // Deduct payment from the selected wallet
-      addFundsToAccount(currentUser.id, totalCost * -1, paymentWallet, 'balance');
+      const targetAccount = paymentWallet === 'wallet' ? 'live' : paymentWallet;
+      addFundsToAccount(currentUser.id, totalCost * -1, targetAccount, 'balance');
 
       // Calculate dates
       const startDate = Date.now();
@@ -207,7 +208,7 @@ export default function InvestmentsPage() {
       const currentValue = totalCost * (1 + selectedOffer.profitability / 100);
 
       // Create user investment
-      const investmentId = addUserInvestment({
+      await addUserInvestment({
         userId: currentUser.id,
         offerId: selectedOffer.id,
         offerName: selectedOffer.name,
@@ -237,7 +238,7 @@ export default function InvestmentsPage() {
     }
   };
 
-  const handleSellRequest = () => {
+  const handleSellRequest = async () => {
     if (!selectedInvestment || !currentUser) return;
     
     const units = parseInt(sellUnits);
@@ -250,9 +251,9 @@ export default function InvestmentsPage() {
     const currentPrice = selectedInvestment.currentValue / selectedInvestment.units;
     const totalAmount = currentPrice * units;
 
-    createSellRequest({
+    await createSellRequest({
       userId: currentUser.id,
-      investmentId: selectedInvestment.id,
+      investment_id: selectedInvestment.id,
       offerName: selectedInvestment.offerName,
       offerLogo: selectedInvestment.offerLogo,
       offerType: selectedInvestment.offerType,
@@ -260,7 +261,7 @@ export default function InvestmentsPage() {
       currentPrice,
       totalAmount,
       paymentWallet: sellWallet,
-    });
+    } as any);
 
     setSellModalOpen(false);
     setSellUnits('');

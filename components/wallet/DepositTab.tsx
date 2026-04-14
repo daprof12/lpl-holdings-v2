@@ -77,8 +77,18 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
   useEffect(() => {
     const fetchMethods = async () => {
       try {
-        const methods = await api.paymentMethods.getAll();
-        setAvailableMethods(methods.filter((m: any) => m.enabled));
+        const data = await api.paymentMethods.getAll();
+        const mappedMethods = Array.isArray(data) ? data.map((m: any) => ({
+          id: m.id,
+          type: m.type,
+          enabled: m.is_active,
+          cryptoType: m.currency,
+          minDeposit: m.min_amount,
+          processingFee: m.fee_percentage,
+          notes: m.processing_time,
+          ...(m.details || {})
+        })) : [];
+        setAvailableMethods(mappedMethods.filter((m: any) => m.enabled));
       } catch (error) {
         console.error('Failed to fetch deposit methods:', error);
       } finally {

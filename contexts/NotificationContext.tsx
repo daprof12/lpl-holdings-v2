@@ -164,10 +164,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         console.log('🔄 Loading notification data from relational API...');
         
         const [dbNotifs, dbCrm, dbTemplates, dbSmtp] = await Promise.all([
-          api.notifications.getAll(),
-          api.crm.getAll(),
-          api.emailTemplates.getAll(),
-          api.smtpConfig.get()
+          api.notifications.getAll().catch(e => { console.error('Notif error', e); return null; }),
+          api.crm.getAll().catch(e => { console.error('CRM error', e); return null; }),
+          api.emailTemplates.getAll().catch(e => { console.error('Email templates error', e); return null; }),
+          api.smtpConfig.get().catch(e => { console.error('SMTP config error', e); return null; })
         ]);
 
         if (Array.isArray(dbNotifs)) {
