@@ -55,6 +55,13 @@ export default function AdminInvestmentsPage() {
   const [requestsFilterStatus, setRequestsFilterStatus] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [requestsSortBy, setRequestsSortBy] = useState<string>('createdAt');
   const [requestsSortOrder, setRequestsSortOrder] = useState<'asc' | 'desc'>('desc');
+  
+  // New modal states for sell requests
+  const [showApproveSellModal, setShowApproveSellModal] = useState(false);
+  const [showRejectSellModal, setShowRejectSellModal] = useState(false);
+  const [requestForAction, setRequestForAction] = useState<any>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
 
   const { 
     investmentOffers, 
@@ -195,24 +202,32 @@ export default function AdminInvestmentsPage() {
     }
   };
 
-  const handleApproveSellRequest = async (request: any) => {
-    if (confirm(`Approve sell request for ${request.units} units of ${request.offerName}?`)) {
-      await updateSellRequest(request.id, {
+  const handleApproveSellRequest = (request: any) => {
+    setRequestForAction(request);
+    setShowApproveSellModal(true);
+  };
+
+  const confirmApproveSellRequest = async () => {
+    if (!requestForAction || isProcessingAction) return;
+    
+    setIsProcessingAction(true);
+    try {
+      await updateSellRequest(requestForAction.id, {
         status: 'approved',
         processedAt: Date.now(),
         processedBy: 'Admin',
       } as any);
       
       // Credit user wallet using centralized method
-      const userId = request.userId;
-      const accountType = request.paymentWallet === 'wallet' ? 'live' : request.paymentWallet;
+      const userId = requestForAction.userId;
+      const accountType = requestForAction.paymentWallet === 'wallet' ? 'live' : requestForAction.paymentWallet;
       
-      await addFundsToAccount(userId, request.totalAmount, accountType, 'balance');
+      await addFundsToAccount(userId, requestForAction.totalAmount, accountType, 'balance');
       
       // Reduce user's investment units
-      const userInv = userInvestments.find(i => i.id === request.investmentId);
+      const userInv = userInvestments.find(i => i.id === requestForAction.investmentId);
       if (userInv) {
-        const remainingUnits = userInv.units - request.units;
+        const remainingUnits = userInv.units - requestForAction.units;
         if (remainingUnits <= 0) {
           // If all units sold, mark as completed or delete
           await updateUserInvestment(userInv.id, { 
@@ -231,20 +246,46 @@ export default function AdminInvestmentsPage() {
         }
       }
       
-      showSuccessToast('Sell request approved. User wallet credited with $' + formatCurrency(request.totalAmount));
+      showSuccessToast('Sell request approved. User wallet credited with $' + formatCurrency(requestForAction.totalAmount));
+      setShowApproveSellModal(false);
+      setRequestForAction(null);
+    } catch (error) {
+      console.error('Error approving sell request:', error);
+      showErrorToast('Failed to approve sell request');
+    } finally {
+      setIsProcessingAction(false);
     }
   };
 
-  const handleRejectSellRequest = async (request: any) => {
-    const reason = prompt('Enter rejection reason:');
-    if (reason) {
-      await updateSellRequest(request.id, {
+  const handleRejectSellRequest = (request: any) => {
+    setRequestForAction(request);
+    setRejectionReason('');
+    setShowRejectSellModal(true);
+  };
+
+  const confirmRejectSellRequest = async () => {
+    if (!requestForAction || !rejectionReason.trim() || isProcessingAction) {
+      if (!rejectionReason.trim()) showErrorToast('Please enter a rejection reason');
+      return;
+    }
+
+    setIsProcessingAction(true);
+    try {
+      await updateSellRequest(requestForAction.id, {
         status: 'rejected',
         processedAt: Date.now(),
         processedBy: 'Admin',
-        rejectionReason: reason,
+        rejectionReason: rejectionReason,
       } as any);
       showSuccessToast('Sell request rejected');
+      setShowRejectSellModal(false);
+      setRequestForAction(null);
+      setRejectionReason('');
+    } catch (error) {
+      console.error('Error rejecting sell request:', error);
+      showErrorToast('Failed to reject sell request');
+    } finally {
+      setIsProcessingAction(false);
     }
   };
 
@@ -887,6 +928,112 @@ export default function AdminInvestmentsPage() {
           onClose={() => { setShowEditInvestmentModal(false); setEditingInvestment(null); }}
           onSave={handleUpdateInvestment}
         />
+      )}
+      {/* Approve Sell Request Modal */}
+      {showApproveSellModal && requestForAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-6 text-white">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <Clock className="w-6 h-6" /> Confirm Approval
+              </h3>
+              <p className="text-green-50/80 text-sm mt-1">
+                This will credit funds to the user's account and reduce their investment.
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-gray-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-2 border border-gray-100 dark:border-slate-700">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Offer</span>
+                  <span className="font-semibold">{requestForAction.offerName}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Units</span>
+                  <span className="font-semibold">{requestForAction.units}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Total Payout</span>
+                  <span className="font-bold text-green-600 dark:text-green-400">
+                    ${formatCurrency(requestForAction.totalAmount)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Destination</span>
+                  <span className="capitalize font-semibold">{requestForAction.paymentWallet} Balance</span>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button 
+                  onClick={confirmApproveSellRequest} 
+                  className="flex-1 bg-green-500 hover:bg-green-600 text-white"
+                  disabled={isProcessingAction}
+                >
+                  {isProcessingAction ? 'Processing...' : 'Confirm Approval'}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setShowApproveSellModal(false);
+                    setRequestForAction(null);
+                  }} 
+                  className="flex-1"
+                  disabled={isProcessingAction}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Sell Request Modal */}
+      {showRejectSellModal && requestForAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="bg-gradient-to-r from-red-500 to-rose-600 p-6 text-white">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <X className="w-6 h-6" /> Reject Request
+              </h3>
+              <p className="text-rose-50/80 text-sm mt-1">
+                Please provide a reason for rejecting this sell request.
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="space-y-2">
+                <Label>Rejection Reason</Label>
+                <textarea
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  placeholder="Enter reason for rejection (e.g. Account needs verification, Insufficient units...)"
+                  className="w-full min-h-[100px] px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm focus:ring-2 focus:ring-red-500 outline-none transition-all"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button 
+                  onClick={confirmRejectSellRequest} 
+                  className="flex-1 bg-red-500 hover:bg-red-600 text-white"
+                  disabled={isProcessingAction}
+                >
+                  {isProcessingAction ? 'Rejecting...' : 'Confirm Rejection'}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setShowRejectSellModal(false);
+                    setRequestForAction(null);
+                  }} 
+                  className="flex-1"
+                  disabled={isProcessingAction}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

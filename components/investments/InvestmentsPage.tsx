@@ -200,7 +200,7 @@ export default function InvestmentsPage() {
 
       // Deduct payment from the selected wallet
       const targetAccount = paymentWallet === 'wallet' ? 'live' : paymentWallet;
-      addFundsToAccount(currentUser.id, totalCost * -1, targetAccount, 'balance');
+      await addFundsToAccount(currentUser.id, totalCost * -1, targetAccount, 'balance');
 
       // Calculate dates
       const startDate = Date.now();
@@ -225,8 +225,6 @@ export default function InvestmentsPage() {
         showValueAndDate: selectedOffer.type === 'IPO' ? false : true,
       });
 
-      console.log('Investment created with ID:', investmentId);
-
       setBuyModalOpen(false);
       setBuyUnits('');
       setIsBuying(false);
@@ -248,24 +246,32 @@ export default function InvestmentsPage() {
       return;
     }
 
-    const currentPrice = selectedInvestment.currentValue / selectedInvestment.units;
-    const totalAmount = currentPrice * units;
+    setIsSelling(true);
+    try {
+      const currentPrice = selectedInvestment.currentValue / selectedInvestment.units;
+      const totalAmount = currentPrice * units;
 
-    await createSellRequest({
-      userId: currentUser.id,
-      investment_id: selectedInvestment.id,
-      offerName: selectedInvestment.offerName,
-      offerLogo: selectedInvestment.offerLogo,
-      offerType: selectedInvestment.offerType,
-      units,
-      currentPrice,
-      totalAmount,
-      paymentWallet: sellWallet,
-    } as any);
+      await createSellRequest({
+        userId: currentUser.id,
+        investment_id: selectedInvestment.id,
+        offerName: selectedInvestment.offerName,
+        offerLogo: selectedInvestment.offerLogo,
+        offerType: selectedInvestment.offerType,
+        units,
+        currentPrice,
+        totalAmount,
+        paymentWallet: sellWallet,
+      } as any);
 
-    setSellModalOpen(false);
-    setSellUnits('');
-    showSuccessToast('Sell request submitted successfully!');
+      setSellModalOpen(false);
+      setSellUnits('');
+      setIsSelling(false);
+      showSuccessToast('Sell request submitted successfully!');
+    } catch (error) {
+      console.error('Error in handleSellRequest:', error);
+      showErrorToast('Failed to submit sell request. Please try again.');
+      setIsSelling(false);
+    }
   };
 
   // Get user data
@@ -914,8 +920,12 @@ export default function InvestmentsPage() {
                   </div>
                 )}
                 <div className="flex gap-3">
-                  <Button onClick={handleSellRequest} className="flex-1">
-                    Sell Now
+                  <Button 
+                    onClick={handleSellRequest} 
+                    className="flex-1" 
+                    disabled={isSelling}
+                  >
+                    {isSelling ? 'Processing...' : 'Sell Now'}
                   </Button>
                   <Button variant="outline" onClick={() => setSellModalOpen(false)} className="flex-1">
                     Cancel
