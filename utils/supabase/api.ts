@@ -569,3 +569,103 @@ export const api = {
     delete: (id: string) => fetch(`${serverUrl}/email-templates/${id}`, { method: 'DELETE', headers }).then(r => r.json()),
   }
 };
+
+// Seed default payment and withdrawal methods if empty
+if (typeof window !== 'undefined') {
+  try {
+    const existingPM = JSON.parse(localStorage.getItem('gross_payment_methods') || '[]');
+    if (existingPM.length === 0) {
+      const defaultPMs = [
+          // DEPOSIT METHODS
+          {
+              id: 'pm_crypto_btc_dep',
+              type: 'crypto',
+              name: 'Bitcoin',
+              is_active: true,
+              details: {
+                  cryptoType: 'BTC',
+                  network: 'Bitcoin',
+                  walletAddress: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
+                  isWithdrawal: false
+              }
+          },
+          {
+              id: 'pm_crypto_eth_dep',
+              type: 'crypto',
+              name: 'Ethereum',
+              is_active: true,
+              details: {
+                  cryptoType: 'ETH',
+                  network: 'ERC20',
+                  walletAddress: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+                  isWithdrawal: false
+              }
+          },
+          {
+              id: 'pm_crypto_usdt_dep',
+              type: 'crypto',
+              name: 'USDT (TRC20)',
+              is_active: true,
+              details: {
+                  cryptoType: 'USDT',
+                  network: 'TRC20',
+                  walletAddress: 'TXLAQ63Xg1ZWV8TfMw1KXYi4H1sX5e43Lp',
+                  isWithdrawal: false
+              }
+          },
+          {
+              id: 'pm_bank_dep',
+              type: 'bank',
+              name: 'Platform Bank Account',
+              is_active: true,
+              details: {
+                  bankName: 'JP Morgan Chase',
+                  accountHolderName: 'LPL Holdings LLC',
+                  accountNumber: '1234567890',
+                  routingNumber: '021000021',
+                  isWithdrawal: false
+              }
+          },
+          // WITHDRAWAL METHODS (Global config for users to choose from)
+          {
+              id: 'pm_wd_crypto',
+              type: 'crypto',
+              name: 'Crypto Withdrawal',
+              is_active: true,
+              min_amount: 50,
+              max_amount: 100000,
+              fee_percentage: 1.5,
+              processing_time: '1-6 hours',
+              details: {
+                  isWithdrawal: true,
+                  instructionNote: 'Please ensure you use the correct network for your withdrawal.',
+                  cryptoAssets: [
+                      { assetType: 'BTC', network: 'Bitcoin', enabled: true },
+                      { assetType: 'ETH', network: 'ERC20', enabled: true },
+                      { assetType: 'USDT', network: 'TRC20', enabled: true },
+                      { assetType: 'USDT', network: 'ERC20', enabled: true }
+                  ]
+              }
+          },
+          {
+              id: 'pm_wd_bank',
+              type: 'bank',
+              name: 'Bank Transfer Withdrawal',
+              is_active: true,
+              min_amount: 500,
+              max_amount: 500000,
+              fee_percentage: 0,
+              processing_time: '1-3 business days',
+              details: {
+                  isWithdrawal: true,
+                  fixedFee: 25,
+                  instructionNote: 'International wires may incur additional intermediary bank fees.'
+              }
+          }
+      ];
+      localStorage.setItem('gross_payment_methods', JSON.stringify(defaultPMs));
+    }
+  } catch (error) {
+    console.error('Failed to seed default payment methods:', error);
+  }
+}
