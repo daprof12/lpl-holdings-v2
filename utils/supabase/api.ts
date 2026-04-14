@@ -224,6 +224,11 @@ export const api = {
       if (error) return [];
       return data;
     },
+    create: async (data: any) => {
+      const { data: res, error } = await supabase.from('trade_history').insert(data).select().single();
+      if (error) throw error;
+      return res;
+    },
   },
 
   // Transactions

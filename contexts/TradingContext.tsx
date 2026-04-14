@@ -366,7 +366,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       });
 
       if (res && res.id) {
-        loadTradingData();
+        await loadTradingData();
         toast.success('Position opened');
       }
     } catch (err) {
@@ -380,9 +380,14 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       const position = positions.find(p => p.id === positionId);
       if (!position) return;
 
+      // Optimistic UI update: Remove immediately from screen
+      setPositions(prev => prev.filter(p => p.id !== positionId));
+
       const res = await api.positions.close(positionId, position.currentPrice);
       if (res) {
-        loadTradingData();
+        // The DB trigger handles history entry. 
+        // We await the refresh to ensure local state is perfectly synced.
+        await loadTradingData();
         toast.success('Position closed');
       }
     } catch (err) {
@@ -420,7 +425,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
 
     try {
-      await api.pendingOrders.create({
+      const res = await api.pendingOrders.create({
         user_id: userId,
         symbol: order.symbol,
         type: order.side,
@@ -432,8 +437,10 @@ export function TradingProvider({ children }: { children: ReactNode }) {
         leverage: order.leverage,
         status: 'pending'
       });
-      loadTradingData();
-      toast.success('Order placed');
+      if (res) {
+        await loadTradingData();
+        toast.success('Order placed');
+      }
     } catch (err) {
       console.error('Failed to add order:', err);
     }
@@ -472,7 +479,24 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   const addHistory = async (item: HistoryItem) => {
     const userId = auth.currentUser?.id;
     if (!userId) return;
-    setHistory(prev => [{ ...item, userId }, ...prev]);
+    try {
+      const dbData = {
+        user_id: userId,
+        symbol: item.symbol,
+        type: item.side,
+        amount: item.units,
+        price: item.price,
+        entry_price: item.entryPrice,
+        profit: item.pnl,
+        status: item.status,
+        created_at: item.entryTimestamp || item.timestamp,
+        closed_at: item.timestamp
+      };
+      await api.tradeHistory.create(dbData);
+      // History list will refresh via Realtime
+    } catch (err) {
+      console.error('Failed to add history:', err);
+    }
   };
 
   const updateAccount = (updates: Partial<Account>) => {
