@@ -905,7 +905,6 @@ export default function InvestmentsPage() {
                     <option value="portfolio">Portfolio Balance</option>
                     <option value="ipo">IPO Balance</option>
                     <option value="ecn">ECN Balance</option>
-                    <option value="wallet">Wallet Balance</option>
                   </select>
                 </div>
                 {sellUnits && parseInt(sellUnits) > 0 && (

@@ -338,8 +338,9 @@ export default function UserManagement() {
       const targetType = addFundData.balanceType;
       await addFundsToAccount(selectedUserId, amount, targetType);
 
-      const balanceLabel = targetType === 'live'
-        ? addFundData.type.charAt(0).toUpperCase() + addFundData.type.slice(1)
+      const balanceLabel = targetType === 'live' ? 'Live Balance'
+        : targetType === 'credit' ? 'Credit Balance'
+        : targetType === 'bonus' ? 'Bonus Balance'
         : (targetType.toUpperCase() + ' Balance');
 
       await addNotification(selectedUserId, {
@@ -351,10 +352,10 @@ export default function UserManagement() {
       toast.success(`$${formatCurrency(amount)} added to ${balanceLabel} successfully`);
       setShowAddFundDialog(false);
       setAddFundData({ amount: '', balanceType: 'live' });
-      await refreshData(); // Force state sync
+      await refreshData();
     } catch (err) {
       console.error('Failed to add funds:', err);
-      toast.error('Failed to add funds');
+      toast.error('Failed to add funds: ' + ((err as any)?.message || 'Unknown error'));
     }
   };
 

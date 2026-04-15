@@ -338,7 +338,13 @@ export const api = {
       return error ? [] : data;
     },
     create: async (data: any) => {
-      const { data: res, error } = await supabase.from('withdrawal_methods').insert(data).select().single();
+      const payload = {
+        id: crypto.randomUUID(),
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        ...data
+      };
+      const { data: res, error } = await supabase.from('withdrawal_methods').insert(payload).select().single();
       if (error) throw error;
       return res;
     },
@@ -371,7 +377,13 @@ export const api = {
       return error ? null : data;
     },
     create: async (data: any) => {
-      const { data: res, error } = await supabase.from('payment_methods').insert(data).select().single();
+      const payload = {
+        id: crypto.randomUUID(),
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        ...data
+      };
+      const { data: res, error } = await supabase.from('payment_methods').insert(payload).select().single();
       if (error) throw error;
       return res;
     },

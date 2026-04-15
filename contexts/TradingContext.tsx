@@ -621,10 +621,12 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   // Update position prices and P&L on a fixed 5-second interval
   const positionsRef = useRef(positions);
   const accountRef = useRef(account);
+  const ordersRef = useRef(orders);
 
   // Keep refs in sync
   positionsRef.current = positions;
   accountRef.current = account;
+  ordersRef.current = orders;
 
   useEffect(() => {
     const PRICE_UPDATE_INTERVAL = 5000; // Same 5s as MarketDataContext
@@ -788,7 +790,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       updatePositionPrices(
         positionsRef.current, setPositions,
         accountRef.current, setAccount,
-        orders, setOrders
+        ordersRef.current, setOrders
       );
     };
 

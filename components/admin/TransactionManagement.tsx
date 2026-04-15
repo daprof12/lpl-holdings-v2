@@ -29,7 +29,7 @@ import { toast } from 'sonner';
 
 export default function TransactionManagement() {
   const { users } = useAuth();
-  const { transactions, approveTransaction, rejectTransaction, deleteTransaction } = useTransactions();
+  const { transactions, deposits, approveTransaction, rejectTransaction, deleteTransaction } = useTransactions();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -430,7 +430,7 @@ export default function TransactionManagement() {
 
       {/* Details Dialog */}
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Transaction Details</DialogTitle>
             <DialogDescription>
@@ -579,12 +579,27 @@ export default function TransactionManagement() {
                     <p className="text-sm">{selectedTransaction.notes}</p>
                   </div>
                 )}
-                {selectedTransaction.details && (
-                  <div className="col-span-2">
-                    <Label className="text-gray-600 dark:text-gray-400">JSON Payload (System)</Label>
-                    <pre className="text-xs mt-2 p-2 bg-gray-100 dark:bg-slate-700 rounded overflow-x-auto">
-                      {JSON.stringify(selectedTransaction.details, null, 2)}
-                    </pre>
+
+                
+                {/* Transfer Proof */}
+                {selectedTransaction.type === 'deposit' && deposits.find(d => d.id === selectedTransaction.referenceId)?.proof_data && (
+                  <div className="col-span-2 mt-4 p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg border border-gray-200 dark:border-slate-700">
+                    <Label className="text-gray-600 dark:text-gray-400 block mb-2 font-semibold">User Uploaded Transfer Proof</Label>
+                    <div className="border border-gray-200 dark:border-slate-600 rounded overflow-hidden">
+                      {deposits.find(d => d.id === selectedTransaction.referenceId)?.proof_data.startsWith('data:application/pdf') ? (
+                        <iframe 
+                          src={deposits.find(d => d.id === selectedTransaction.referenceId)?.proof_data} 
+                          title="Transfer Proof PDF" 
+                          className="w-full h-96"
+                        />
+                      ) : (
+                        <img 
+                          src={deposits.find(d => d.id === selectedTransaction.referenceId)?.proof_data} 
+                          alt="Transfer Proof" 
+                          className="max-w-full h-auto max-h-96 object-contain mx-auto"
+                        />
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

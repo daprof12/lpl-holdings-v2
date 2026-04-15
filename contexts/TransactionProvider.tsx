@@ -99,22 +99,35 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
         currentUser.role === 'admin' ? api.withdrawals.getAll() : api.withdrawals.getByUserId(currentUser.id),
       ]);
 
-      if (Array.isArray(dbTxns)) {
-        setTransactions(dbTxns.map((t: any) => ({
-          id: t.id,
-          userId: t.user_id,
-          type: t.type,
-          method: t.payment_method || 'crypto',
-          amount: parseFloat(t.amount),
-          currency: t.currency || 'USD',
-          usdEquivalent: parseFloat(t.amount),
-          status: t.status,
-          timestamp: new Date(t.created_at).getTime(),
-          completedAt: t.updated_at ? new Date(t.updated_at).getTime() : undefined,
-          walletType: t.wallet_type || 'live',
-          txHash: t.transaction_hash
-        })));
-      }
+        setTransactions(dbTxns.map((t: any) => {
+          const details = t.details || {};
+          return {
+            id: t.id,
+            userId: t.user_id,
+            type: t.type,
+            method: t.payment_method || 'crypto',
+            amount: parseFloat(t.amount),
+            currency: t.currency || details.currency || 'USD',
+            usdEquivalent: parseFloat(t.amount),
+            status: t.status,
+            timestamp: new Date(t.created_at).getTime(),
+            completedAt: t.updated_at ? new Date(t.updated_at).getTime() : undefined,
+            walletType: t.wallet_type || details.walletType || 'live',
+            txHash: t.transaction_hash,
+            referenceId: t.reference_id,
+            // Withdrawal-specific fields from details
+            bankName: details.bankName,
+            accountName: details.accountName,
+            accountNumber: details.accountNumber,
+            routingNumber: details.routingNumber,
+            swiftCode: details.swiftCode,
+            paypalEmail: details.paypalEmail,
+            walletAddress: details.destination_address || details.walletAddress,
+            network: details.network || t.network,
+            adminNotes: t.admin_notes || details.adminNotes,
+            details: details,
+          };
+        }));
       if (Array.isArray(dbDeps)) setDeposits(dbDeps);
       if (Array.isArray(dbWds)) setWithdrawals(dbWds);
     } catch (err) {
@@ -159,7 +172,8 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
         amount: data.amount,
         method: data.method || data.payment_method,
         currency: data.currency || 'USD',
-        status: 'pending'
+        status: 'pending',
+        proof_data: data.metadata?.proof_data
       });
       
       await api.transactions.create({
@@ -169,7 +183,8 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
         currency: data.currency || 'USD',
         description: `Deposit via ${data.method || data.payment_method}`,
         reference_id: deposit.id,
-        status: 'pending'
+        status: 'pending',
+        payment_method: data.method || data.payment_method
       });
       
       refreshTransactions();
@@ -198,7 +213,23 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
         currency: data.currency || 'USD',
         description: `Withdrawal via ${data.method || data.payment_method}`,
         reference_id: withdrawal.id,
-        status: 'pending'
+        status: 'pending',
+        payment_method: data.method || data.payment_method,
+        wallet_type: data.walletType || 'live',
+        details: {
+          bankName: data.bankName,
+          accountName: data.accountName,
+          accountNumber: data.destination_address,
+          routingNumber: data.routingNumber,
+          swiftCode: data.swiftCode,
+          paypalEmail: data.method === 'e_wallet' ? data.destination_address : undefined,
+          destination_address: data.destination_address,
+          network: data.network,
+          currency: data.currency,
+          walletType: data.walletType || 'live',
+          fee: data.metadata?.fee,
+          totalDeduction: data.metadata?.totalDeduction,
+        }
       });
       
       refreshTransactions();
@@ -214,24 +245,60 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
   }, [currentUser?.id]);
 
   const approveTransaction = async (id: string, adminId: string, notes?: string) => {
+    const now = Date.now();
     try {
       const transaction = transactions.find(t => t.id === id);
       if (!transaction) return;
 
+      // The transactions table uses `id`, but deposits/withdrawals have their own
+      // separate PKs stored in `reference_id` on the transactions record.
+      const refId = transaction.referenceId || id;
+
       if (transaction.type === 'deposit') {
-        await api.deposits.update(id, { status: 'completed', processed_by: adminId, admin_notes: notes });
-        
+        // Update the deposits record
+        await api.deposits.update(refId, {
+          status: 'completed',
+          reviewed_by: adminId,
+          processed_at: now,
+          completed_at: now,
+          updated_at: now,
+        });
+        // Mirror status on the transactions ledger (may not exist — ignore errors)
+        await api.transactions.update(id, { status: 'completed' }).catch(() => null);
+
+        // Credit the correct wallet
         if (transaction.walletType === 'portfolio') {
-          await api.investmentWallets.update(transaction.userId, { portfolio: transaction.amount });
+          const wallet = await api.investmentWallets.getByUserId(transaction.userId);
+          const current = parseFloat(wallet?.portfolio ?? 0);
+          await api.investmentWallets.update(transaction.userId, { portfolio: current + transaction.amount });
         } else {
-          const account = await api.tradingAccounts.getByUserId(transaction.userId);
-          if (account) {
-            await api.tradingAccounts.update(transaction.userId, { balance: (account.balance || 0) + transaction.amount });
-          }
-          await api.users.updateBalance(transaction.userId, transaction.amount);
+          // Live balance — read from BOTH tables to prevent zero-overwrite
+          const [account, userRow] = await Promise.all([
+            api.tradingAccounts.getByUserId(transaction.userId),
+            api.users.getById(transaction.userId),
+          ]);
+          const currentBalance = Math.max(
+            parseFloat(account?.balance ?? 0),
+            parseFloat(userRow?.balance ?? 0),
+          );
+          const newBalance = currentBalance + transaction.amount;
+          await Promise.all([
+            account
+              ? api.tradingAccounts.update(transaction.userId, { balance: newBalance })
+              : api.tradingAccounts.insert({ user_id: transaction.userId, balance: newBalance }),
+            api.users.update(transaction.userId, { balance: newBalance }),
+          ]);
         }
       } else {
-        await api.withdrawals.update(id, { status: 'completed', processed_by: adminId, admin_notes: notes });
+        // Withdrawal approved: balance was already deducted at request time — just mark complete
+        await api.withdrawals.update(refId, {
+          status: 'completed',
+          reviewed_by: adminId,
+          processed_at: now,
+          completed_at: now,
+          updated_at: now,
+        });
+        await api.transactions.update(id, { status: 'completed' }).catch(() => null);
       }
 
       refreshTransactions();
@@ -243,23 +310,56 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
   };
 
   const rejectTransaction = async (id: string, adminId: string, notes?: string) => {
+    const now = Date.now();
     try {
       const transaction = transactions.find(t => t.id === id);
       if (!transaction) return;
 
+      const refId = transaction.referenceId || id;
+
       if (transaction.type === 'deposit') {
-        await api.deposits.update(id, { status: 'rejected', processed_by: adminId, admin_notes: notes });
+        // Deposit rejected: no balance change needed — was never credited
+        await api.deposits.update(refId, {
+          status: 'rejected',
+          reviewed_by: adminId,
+          rejection_reason: notes || null,
+          processed_at: now,
+          updated_at: now,
+        });
+        await api.transactions.update(id, { status: 'rejected' }).catch(() => null);
       } else {
-        await api.withdrawals.update(id, { status: 'rejected', processed_by: adminId, admin_notes: notes });
-        
+        // Withdrawal rejected: REFUND — amount was deducted at request time
+        await api.withdrawals.update(refId, {
+          status: 'rejected',
+          reviewed_by: adminId,
+          rejection_reason: notes || null,
+          processed_at: now,
+          updated_at: now,
+        });
+        await api.transactions.update(id, { status: 'rejected' }).catch(() => null);
+
+        // Refund to the wallet the withdrawal came from
         if (transaction.walletType === 'portfolio') {
-           await api.investmentWallets.update(transaction.userId, { portfolio: transaction.amount });
+          const wallet = await api.investmentWallets.getByUserId(transaction.userId);
+          const current = parseFloat(wallet?.portfolio ?? 0);
+          await api.investmentWallets.update(transaction.userId, { portfolio: current + transaction.amount });
         } else {
-           await api.users.updateBalance(transaction.userId, transaction.amount);
-           const account = await api.tradingAccounts.getByUserId(transaction.userId);
-           if (account) {
-              await api.tradingAccounts.update(transaction.userId, { balance: (account.balance || 0) + transaction.amount });
-           }
+          // Refund to live balance — read from BOTH tables to prevent zero-overwrite
+          const [account, userRow] = await Promise.all([
+            api.tradingAccounts.getByUserId(transaction.userId),
+            api.users.getById(transaction.userId),
+          ]);
+          const currentBalance = Math.max(
+            parseFloat(account?.balance ?? 0),
+            parseFloat(userRow?.balance ?? 0),
+          );
+          const refundedBalance = currentBalance + transaction.amount;
+          await Promise.all([
+            account
+              ? api.tradingAccounts.update(transaction.userId, { balance: refundedBalance })
+              : api.tradingAccounts.insert({ user_id: transaction.userId, balance: refundedBalance }),
+            api.users.update(transaction.userId, { balance: refundedBalance }),
+          ]);
         }
       }
 

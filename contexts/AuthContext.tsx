@@ -159,6 +159,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       if (dbUsers && Array.isArray(dbUsers)) {
         console.log('Processed DB Users:', dbUsers.length);
+        const safeFloat = (val: any) => {
+          if (val === null || val === undefined || val === '') return 0;
+          const parsed = parseFloat(val);
+          return isNaN(parsed) ? 0 : parsed;
+        };
+
         const processedUsers: UserProfile[] = dbUsers.map((u: any) => {
           // Manually join with account and wallet data
           const ta = dbAccounts?.find((acc: any) => acc.user_id === u.id) || {};
@@ -174,10 +180,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             phone: u.phone || '',
             kycStatus: u.kyc_status === 'approved' ? 'verified' : u.kyc_status === 'rejected' ? 'rejected' : 'not_started',
             accountType: u.account_type || 'standard',
-            balance: parseFloat(ta.balance || u.balance || 0),
-            liveBalance: parseFloat(ta.balance || u.balance || 0),
-            credit: parseFloat(ta.credit ?? u.credit ?? 0),
-            bonus: parseFloat(ta.bonus ?? u.bonus ?? 0),
+            balance: Math.max(safeFloat(ta.balance), safeFloat(u.balance)),
+            liveBalance: Math.max(safeFloat(ta.balance), safeFloat(u.balance)),
+            credit: Math.max(safeFloat(ta.credit), safeFloat(u.credit)),
+            bonus: Math.max(safeFloat(ta.bonus), safeFloat(u.bonus)),
             isVerified: u.email_verified || false,
             createdAt: new Date(u.created_at || Date.now()),
             enabledDepositMethods: u.enabled_deposit_methods || [],
@@ -187,9 +193,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             hasAutoTradeAccess: u.has_auto_trade_access ?? false,
             hasSignalAccess: u.has_signal_access ?? false,
             investmentBalances: {
-              ipo: parseFloat(iw.ipo ?? u.ipo_balance ?? u.investment_balances?.ipo ?? 0),
-              ecn: parseFloat(iw.ecn ?? u.ecn_balance ?? u.investment_balances?.ecn ?? 0),
-              portfolio: parseFloat(iw.portfolio ?? u.portfolio_balance ?? u.investment_balances?.portfolio ?? 0),
+              ipo: Math.max(safeFloat(iw.ipo), safeFloat(u.ipo_balance), safeFloat(u.investment_balances?.ipo)),
+              ecn: Math.max(safeFloat(iw.ecn), safeFloat(u.ecn_balance), safeFloat(u.investment_balances?.ecn)),
+              portfolio: Math.max(safeFloat(iw.portfolio), safeFloat(u.portfolio_balance), safeFloat(u.investment_balances?.portfolio)),
             }
           };
         });
@@ -304,9 +310,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 hasAutoTradeAccess: u.has_auto_trade_access ?? false,
                 hasSignalAccess: u.has_signal_access ?? false,
                 investmentBalances: {
-                  ipo: parseFloat((iw as any)?.ipo ?? u.ipo_balance ?? u.investment_balances?.ipo ?? 0),
-                  ecn: parseFloat((iw as any)?.ecn ?? u.ecn_balance ?? u.investment_balances?.ecn ?? 0),
-                  portfolio: parseFloat((iw as any)?.portfolio ?? u.portfolio_balance ?? u.investment_balances?.portfolio ?? 0),
+                  ipo: Math.max(safeFloat((iw as any)?.ipo), safeFloat(u.ipo_balance), safeFloat(u.investment_balances?.ipo)),
+                  ecn: Math.max(safeFloat((iw as any)?.ecn), safeFloat(u.ecn_balance), safeFloat(u.investment_balances?.ecn)),
+                  portfolio: Math.max(safeFloat((iw as any)?.portfolio), safeFloat(u.portfolio_balance), safeFloat(u.investment_balances?.portfolio)),
                 }
               };
               setCurrentUser(latestUser);
@@ -834,96 +840,107 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const addFundsToAccount = async (userId: string, amount: number, accountType: string) => {
     try {
-      // 1. Determine which DB table and column to target
       const isTradingAccount = ['live', 'credit', 'bonus'].includes(accountType);
-      
+
       if (isTradingAccount) {
-        // Fetch current trading account state
-        const account = await api.tradingAccounts.getByUserId(userId);
         const targetField = accountType === 'live' ? 'balance' : accountType;
-        
-        // Calculate new total (Current + Amount)
-        const currentVal = parseFloat(account?.[targetField] || 0);
+
+        // Fetch current value from BOTH sources and use the highest (most up-to-date)
+        const [account, userRow] = await Promise.all([
+          api.tradingAccounts.getByUserId(userId),
+          api.users.getById(userId),
+        ]);
+
+        const fromTradingAcc = parseFloat(account?.[targetField] ?? 0);
+        const fromUserRow = parseFloat(userRow?.[targetField] ?? 0);
+        // Use whichever is more up-to-date (they should match, pick the higher to be safe)
+        const currentVal = Math.max(fromTradingAcc, fromUserRow);
         const newVal = currentVal + amount;
-        
-        const tradingUpdates = { [targetField]: newVal };
-        const userUpdates = { [targetField]: newVal }; // Column names match in our new users schema
-        
+
+        // Update both tables to keep them in sync
         await Promise.all([
-          api.tradingAccounts.update(userId, tradingUpdates),
-          api.users.update(userId, userUpdates)
+          account
+            ? api.tradingAccounts.update(userId, { [targetField]: newVal })
+            : api.tradingAccounts.insert({ user_id: userId, [targetField]: newVal }),
+          api.users.update(userId, { [targetField]: newVal }),
         ]);
       } else {
-        // Handle Investment Wallets
-        const wallet = await api.investmentWallets.getByUserId(userId);
-        const currentVal = parseFloat(wallet?.[accountType] || 0);
+        // Investment wallets: portfolio / ipo / ecn
+        const [wallet, userRow] = await Promise.all([
+          api.investmentWallets.getByUserId(userId),
+          api.users.getById(userId),
+        ]);
+
+        // Users table may use _balance suffix columns
+        const userColMap: Record<string, string> = { ipo: 'ipo_balance', ecn: 'ecn_balance', portfolio: 'portfolio_balance' };
+        const userCol = userColMap[accountType] || accountType;
+
+        const fromWallet = parseFloat(wallet?.[accountType] ?? 0);
+        const fromUserRow = parseFloat(userRow?.[userCol] ?? 0);
+        const currentVal = Math.max(fromWallet, fromUserRow);
         const newVal = currentVal + amount;
-        
-        const walletUpdates = { [accountType]: newVal };
-        const userUpdates: any = {};
-        // Map to the summary columns in the users table
-        if (accountType === 'ipo') userUpdates.ipo_balance = newVal;
-        else if (accountType === 'ecn') userUpdates.ecn_balance = newVal;
-        else if (accountType === 'portfolio') userUpdates.portfolio_balance = newVal;
 
         await Promise.all([
-          api.investmentWallets.update(userId, walletUpdates),
-          api.users.update(userId, userUpdates)
+          wallet
+            ? api.investmentWallets.update(userId, { [accountType]: newVal })
+            : api.investmentWallets.insert({ user_id: userId, [accountType]: newVal }),
+          api.users.update(userId, { [userCol]: newVal }),
         ]);
       }
-      
+
       await loadInitialData();
-      toast.success('Funds updated successfully');
     } catch (err) {
       console.error('Failed to add funds:', err);
-      toast.error('Sync failed');
+      throw err; // Re-throw so caller can display the error
     }
   };
 
   const deductFromAccount = async (userId: string, amount: number, accountType: 'live' | 'paper' | 'ipo' | 'ecn' | 'portfolio' | 'credit' | 'bonus'): Promise<boolean> => {
     try {
       if (accountType === 'live' || accountType === 'credit' || accountType === 'bonus') {
-        const account = await api.tradingAccounts.getByUserId(userId);
-        if (!account) return false;
-
         const fundField = accountType === 'live' ? 'balance' : accountType;
-        const currentVal = parseFloat(account[fundField] || 0);
-        if (currentVal < amount) return false;
 
-        const updates: any = {};
-        const userUpdates: any = {};
+        // Read from BOTH sources to get the true current value
+        const [account, userRow] = await Promise.all([
+          api.tradingAccounts.getByUserId(userId),
+          api.users.getById(userId),
+        ]);
+
+        const fromTradingAcc = parseFloat(account?.[fundField] ?? 0);
+        const fromUserRow = parseFloat(userRow?.[fundField] ?? 0);
+        const currentVal = Math.max(fromTradingAcc, fromUserRow);
+
+        if (currentVal < amount) return false;
         const newVal = currentVal - amount;
 
-        if (accountType === 'live') {
-          updates.balance = newVal;
-          userUpdates.balance = newVal;
-        } else if (accountType === 'credit') {
-          updates.credit = newVal;
-          userUpdates.credit = newVal;
-        } else if (accountType === 'bonus') {
-          updates.bonus = newVal;
-          userUpdates.bonus = newVal;
-        }
-
         await Promise.all([
-          api.tradingAccounts.update(userId, updates),
-          api.users.update(userId, userUpdates)
+          account
+            ? api.tradingAccounts.update(userId, { [fundField]: newVal })
+            : api.tradingAccounts.insert({ user_id: userId, [fundField]: newVal }),
+          api.users.update(userId, { [fundField]: newVal }),
         ]);
       } else {
-        const wallet = await api.investmentWallets.getByUserId(userId);
-        const currentVal = parseFloat(wallet?.[accountType] || 0);
-        if (currentVal < amount) return false;
+        // Investment wallets: ipo / ecn / portfolio
+        const userColMap: Record<string, string> = { ipo: 'ipo_balance', ecn: 'ecn_balance', portfolio: 'portfolio_balance' };
+        const userCol = userColMap[accountType] || accountType;
 
+        const [wallet, userRow] = await Promise.all([
+          api.investmentWallets.getByUserId(userId),
+          api.users.getById(userId),
+        ]);
+
+        const fromWallet = parseFloat(wallet?.[accountType] ?? 0);
+        const fromUserRow = parseFloat(userRow?.[userCol] ?? 0);
+        const currentVal = Math.max(fromWallet, fromUserRow);
+
+        if (currentVal < amount) return false;
         const newVal = currentVal - amount;
-        const walletUpdates = { [accountType]: newVal };
-        const userUpdates: any = {};
-        if (accountType === 'ipo') userUpdates.ipo_balance = newVal;
-        else if (accountType === 'ecn') userUpdates.ecn_balance = newVal;
-        else if (accountType === 'portfolio') userUpdates.portfolio_balance = newVal;
 
         await Promise.all([
-          api.investmentWallets.update(userId, walletUpdates),
-          api.users.update(userId, userUpdates)
+          wallet
+            ? api.investmentWallets.update(userId, { [accountType]: newVal })
+            : api.investmentWallets.insert({ user_id: userId, [accountType]: newVal }),
+          api.users.update(userId, { [userCol]: newVal }),
         ]);
       }
 

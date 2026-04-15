@@ -21,8 +21,8 @@ interface WithdrawTabProps {
 }
 
 export default function WithdrawTab({ availableBalance, walletType = 'live', onWalletTypeChange, portfolioBalance = 0, liveBalance = 0 }: WithdrawTabProps) {
-  const { currentUser } = useAuth();
-  const { addTransaction, getUserTransactions } = useTransactions();
+  const { currentUser, updateProfile, deductFromAccount } = useAuth();
+  const { addTransaction, getUserTransactions, createWithdrawal } = useTransactions();
   const marketData = useMarketData();
 
   const [selectedMethod, setSelectedMethod] = useState<'crypto' | 'e_wallet' | 'bank' | null>(null);
@@ -37,6 +37,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
   const [customWithdrawalAddress, setCustomWithdrawalAddress] = useState<string>('');
   const [useCustomAddress, setUseCustomAddress] = useState<boolean>(false);
   const [adminCryptoMethods, setAdminCryptoMethods] = useState<DepositMethod[]>([]);
+  const [adminAllMethods, setAdminAllMethods] = useState<any[]>([]);
 
   // PayPal/E-wallet state
   const [paypalEmail, setPaypalEmail] = useState('');
@@ -66,7 +67,9 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
           network: m.details?.network,
           ...(m.details || {})
         })) : [];
-        const cryptoMethods = allMethods.filter((m: any) => m.type === 'crypto' && m.enabled);
+        const cryptoMethods = allMethods.filter((m: any) => m.type === 'crypto' && m.enabled && m.isWithdrawal);
+        const withdrawalConfigs = allMethods.filter((m: any) => m.isWithdrawal);
+        setAdminAllMethods(withdrawalConfigs);
         setAdminCryptoMethods(cryptoMethods);
         
         if (currentUser) {
@@ -83,18 +86,28 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
 
   // Subscribe to crypto symbols for real-time pricing
   useEffect(() => {
-    adminCryptoMethods.forEach(method => {
-      if (method.cryptoType) {
-        const symbol = `${method.cryptoType}USD`;
-        marketData.subscribeToSymbol(symbol);
+    adminCryptoMethods.forEach((method: any) => {
+      if (method.cryptoAssets && Array.isArray(method.cryptoAssets)) {
+        method.cryptoAssets.forEach((asset: any) => {
+          if (asset.enabled && asset.assetType) {
+            marketData.subscribeToSymbol(`${asset.assetType}USD`);
+          }
+        });
+      } else if (method.cryptoType) {
+        marketData.subscribeToSymbol(`${method.cryptoType}USD`);
       }
     });
 
     return () => {
-      adminCryptoMethods.forEach(method => {
-        if (method.cryptoType) {
-          const symbol = `${method.cryptoType}USD`;
-          marketData.unsubscribeFromSymbol(symbol);
+      adminCryptoMethods.forEach((method: any) => {
+        if (method.cryptoAssets && Array.isArray(method.cryptoAssets)) {
+          method.cryptoAssets.forEach((asset: any) => {
+            if (asset.enabled && asset.assetType) {
+              marketData.unsubscribeFromSymbol(`${asset.assetType}USD`);
+            }
+          });
+        } else if (method.cryptoType) {
+          marketData.unsubscribeFromSymbol(`${method.cryptoType}USD`);
         }
       });
     };
@@ -175,22 +188,40 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
     price: number;
   }>();
 
-  adminCryptoMethods.forEach(method => {
-    if (method.cryptoType && method.network) {
-      const existing = cryptoOptionsMap.get(method.cryptoType);
-      const realPrice = getCryptoPrice(method.cryptoType);
-
-      if (existing) {
-        if (!existing.networks.includes(method.network)) {
-          existing.networks.push(method.network);
+  adminCryptoMethods.forEach((method: any) => {
+    if (method.cryptoAssets && Array.isArray(method.cryptoAssets)) {
+      method.cryptoAssets.forEach((asset: any) => {
+        if (asset.enabled && asset.assetType && asset.network) {
+          const existing = cryptoOptionsMap.get(asset.assetType);
+          const realPrice = getCryptoPrice(asset.assetType);
+          if (existing) {
+             if (!existing.networks.includes(asset.network)) {
+               existing.networks.push(asset.network);
+             }
+          } else {
+             cryptoOptionsMap.set(asset.assetType, {
+               symbol: asset.assetType,
+               networks: [asset.network],
+               price: realPrice,
+             });
+          }
         }
-      } else {
-        cryptoOptionsMap.set(method.cryptoType, {
-          symbol: method.cryptoType,
-          networks: [method.network],
-          price: realPrice,
-        });
-      }
+      });
+    } else if (method.cryptoType && method.network) {
+       // Legacy support
+       const existing = cryptoOptionsMap.get(method.cryptoType);
+       const realPrice = getCryptoPrice(method.cryptoType);
+       if (existing) {
+         if (!existing.networks.includes(method.network)) {
+           existing.networks.push(method.network);
+         }
+       } else {
+         cryptoOptionsMap.set(method.cryptoType, {
+           symbol: method.cryptoType,
+           networks: [method.network],
+           price: realPrice,
+         });
+       }
     }
   });
 
@@ -228,25 +259,23 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
       id: 'e_wallet' as const,
       name: 'E-Wallet',
       icon: DollarSign,
-      description: `${withdrawalMethods.filter(m => (m.type as string) === 'paypal' || (m.type as string) === 'e_wallet').length} e-wallet${withdrawalMethods.filter(m => (m.type as string) === 'paypal' || (m.type as string) === 'e_wallet').length > 1 ? 's' : ''} available`,
+      description: 'PayPal or E-Wallet transfer',
       fee: '2%',
       processingTime: '1-2 business days',
       minWithdraw: 25,
       color: 'from-blue-500 to-blue-600',
-      isAvailable: (hasUserSpecificConfig ? userEnabledMethods.includes('e_wallet') : true) &&
-        withdrawalMethods.filter(m => ((m.type as string) === 'paypal' || (m.type as string) === 'e_wallet') && m.enabled).length > 0
+      isAvailable: adminAllMethods.some(m => m.type === 'paypal' && m.enabled)
     },
     {
       id: 'bank' as const,
       name: 'Bank Transfer',
       icon: Building2,
-      description: `${withdrawalMethods.filter(m => m.type === 'bank').length} bank account${withdrawalMethods.filter(m => m.type === 'bank').length > 1 ? 's' : ''} available`,
+      description: 'Direct wire to your bank',
       fee: '$25',
       processingTime: '2-5 business days',
       minWithdraw: 500,
       color: 'from-green-500 to-green-600',
-      isAvailable: (hasUserSpecificConfig ? userEnabledMethods.includes('bank_transfer') : true) &&
-        withdrawalMethods.filter(m => m.type === 'bank' && m.enabled).length > 0
+      isAvailable: adminAllMethods.some(m => m.type === 'bank' && m.enabled)
     },
   ];
 
@@ -427,30 +456,15 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
         throw new Error(result.error || 'Failed to submit withdrawal');
       }
 
-      // 2. Deduct from user's balance in relational DB (Delta Update)
-      if (walletType === 'portfolio') {
-        await api.investmentWallets.update(currentUser.id, { 
-          portfolio: -totalDeduction 
-        });
-        
-        // Update local session via AuthContext
-        const currentPortfolio = currentUser.investmentBalances?.portfolio || 0;
-        updateUser(currentUser.id, { 
-          investmentBalances: {
-            ...currentUser.investmentBalances,
-            portfolio: Math.max(0, currentPortfolio - totalDeduction)
-          } as any
-        });
-      } else {
-        await api.users.updateBalance(currentUser.id, -totalDeduction);
-        
-        // Update local session via AuthContext
-        const currentLive = currentUser.liveBalance || 0;
-        const newLive = Math.max(0, currentLive - totalDeduction);
-        updateUser(currentUser.id, { 
-          balance: newLive, 
-          liveBalance: newLive 
-        });
+      // 2. Deduct from user's balance safely using central handler
+      const success = await deductFromAccount(
+        currentUser.id, 
+        totalDeduction, 
+        walletType === 'portfolio' ? 'portfolio' : 'live'
+      );
+
+      if (!success) {
+        throw new Error("Could not deduct funds. Please verify your balance.");
       }
 
       showSuccessToast(`Withdrawal request submitted!`);
@@ -596,12 +610,11 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
               <div className="grid md:grid-cols-3 gap-4">
                 {withdrawMethodTypes.map((method) => {
                   const isCrypto = method.id === 'crypto';
-                  const userMethodsCount = isCrypto
-                    ? cryptoOptions.length
-                    : withdrawalMethods.filter(m => {
-                      if (method.id === 'e_wallet') return (m.type as string) === 'e_wallet' || (m.type as string) === 'paypal';
-                      return (m.type as string) === method.id;
-                    }).length;
+                  const isEWallet = method.id === 'e_wallet';
+                  const isBank = method.id === 'bank';
+                  // Just show whether it is enabled globally for these types without showing user saved methods count, 
+                  // since users don't need saved methods anymore.
+                  const userMethodsCount = method.isAvailable ? 1 : 0;
 
                   return (
                     <button
@@ -1027,7 +1040,11 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
           disabled={
             selectedMethod === 'crypto'
               ? (!selectedCryptoType || !selectedCryptoNetwork || !customWithdrawalAddress || !amount || parseFloat(amount) <= 0 || !validateCryptoAddress(customWithdrawalAddress, selectedCryptoType, selectedCryptoNetwork).valid)
-              : (!selectedWithdrawalMethod || !amount || parseFloat(amount) <= 0)
+              : selectedMethod === 'e_wallet'
+                ? (!paypalEmail || !amount || parseFloat(amount) <= 0)
+                : selectedMethod === 'bank'
+                  ? (!bankName || !accountName || !accountNumber || !amount || parseFloat(amount) <= 0)
+                  : true
           }
         >
           Request Withdrawal

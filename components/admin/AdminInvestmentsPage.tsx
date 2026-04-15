@@ -220,9 +220,11 @@ export default function AdminInvestmentsPage() {
       
       // Credit user wallet using centralized method
       const userId = requestForAction.userId;
+      // Map paymentWallet to the accountType used by addFundsToAccount
+      // 'wallet' → 'live' (trading account), others pass through as investment wallets
       const accountType = requestForAction.paymentWallet === 'wallet' ? 'live' : requestForAction.paymentWallet;
       
-      await addFundsToAccount(userId, requestForAction.totalAmount, accountType, 'balance');
+      await addFundsToAccount(userId, requestForAction.totalAmount, accountType);
       
       // Reduce user's investment units
       const userInv = userInvestments.find(i => i.id === requestForAction.investmentId);

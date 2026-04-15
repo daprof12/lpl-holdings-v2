@@ -92,8 +92,8 @@ export default function DepositMethodsManagement() {
         name: method.type === 'crypto' ? method.cryptoType : (method.type === 'bank' ? method.bankName : method.processorName),
         currency: method.cryptoType || 'USD',
         is_active: method.enabled,
-        min_amount: method.minDeposit,
-        fee_percentage: method.processingFee,
+        min_amount: method.minDeposit || 0,
+        fee_percentage: method.processingFee || 0,
         processing_time: method.notes || '',
         details: {
            walletAddress: method.walletAddress,

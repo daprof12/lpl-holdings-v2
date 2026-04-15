@@ -375,42 +375,117 @@ export default function TradeManagement() {
     const newCurrentPrice = parseFloat(formData.currentPrice);
     const newQuantity = parseFloat(formData.quantity);
     const newLeverage = parseFloat(formData.leverage);
-    const newStopLoss = formData.stopLoss ? parseFloat(formData.stopLoss) : undefined;
-    const newTakeProfit = formData.takeProfit ? parseFloat(formData.takeProfit) : undefined;
+    const newMargin = parseFloat(formData.margin) || (newQuantity * newEntryPrice) / newLeverage;
+    const newStopLoss = formData.stopLoss ? parseFloat(formData.stopLoss) : null;
+    const newTakeProfit = formData.takeProfit ? parseFloat(formData.takeProfit) : null;
 
     if (!newEntryPrice || !newCurrentPrice || !newQuantity || !newLeverage) {
       toast.error('Please fill in all required fields');
       return;
     }
 
-    try {
-      const updates = {
-        symbol: formData.asset,
-        asset_name: formData.assetName,
-        asset_category: formData.category,
-        side: formData.side,
-        order_type: formData.orderType,
-        entry_price: newEntryPrice,
-        current_price: newCurrentPrice,
-        units: newQuantity,
-        leverage: newLeverage,
-        stop_loss: newStopLoss,
-        take_profit: newTakeProfit,
-        status: formData.status === 'closed' ? 'closed' : 'open'
-      };
+    // Calculate P&L based on trade direction
+    const priceDiff = selectedTrade.type === 'long' 
+      ? newCurrentPrice - newEntryPrice 
+      : newEntryPrice - newCurrentPrice;
+    const calculatedPnl = priceDiff * newQuantity * newLeverage;
 
+    const now = Date.now();
+
+    try {
       if (selectedTrade.status === 'open') {
-        await api.positions.update(selectedTrade.id, updates);
-        
-        if (formData.status === 'closed') {
-          await api.positions.close(selectedTrade.id, newCurrentPrice);
+        // ── UPDATE OPEN POSITION ──
+        const updates: any = {
+          symbol: formData.asset,
+          asset_name: formData.assetName || formData.asset,
+          asset_category: formData.category,
+          side: formData.side,
+          order_type: formData.orderType,
+          entry_price: newEntryPrice,
+          current_price: newCurrentPrice,
+          units: newQuantity,
+          leverage: newLeverage,
+          margin: newMargin,
+          stop_loss: newStopLoss,
+          take_profit: newTakeProfit,
+          profit: calculatedPnl,
+          updated_at: now,
+        };
+
+        // If admin changed the opened date
+        if (formData.openedAt) {
+          updates.opened_at = new Date(formData.openedAt).getTime();
+          updates.created_at = new Date(formData.openedAt).getTime();
         }
-      } else {
-        // Update history item
-        await supabase
+
+        if (formData.status === 'closed') {
+          // Admin is closing the position — use the close API which triggers the DB trigger
+          // First update the fields, then close
+          updates.exit_price = newCurrentPrice;
+          updates.profit = calculatedPnl;
+          await api.positions.update(selectedTrade.id, updates);
+          await api.positions.close(selectedTrade.id, newCurrentPrice);
+        } else {
+          await api.positions.update(selectedTrade.id, updates);
+        }
+
+      } else if (selectedTrade.status === 'order') {
+        // ── UPDATE PENDING ORDER ──
+        const updates: any = {
+          symbol: formData.asset,
+          asset_name: formData.assetName || formData.asset,
+          asset_category: formData.category,
+          side: formData.side,
+          order_type: formData.orderType,
+          price: newEntryPrice,
+          amount: newQuantity,
+          leverage: newLeverage,
+          stop_loss: newStopLoss,
+          take_profit: newTakeProfit,
+          updated_at: now,
+        };
+
+        const { error } = await supabase
+          .from('pending_orders')
+          .update(updates)
+          .eq('id', selectedTrade.id);
+
+        if (error) throw error;
+
+      } else if (selectedTrade.status === 'closed') {
+        // ── UPDATE CLOSED TRADE (trade_history) ──
+        const updates: any = {
+          symbol: formData.asset,
+          asset_name: formData.assetName || formData.asset,
+          asset_category: formData.category,
+          side: formData.side,
+          order_type: formData.orderType,
+          entry_price: newEntryPrice,
+          exit_price: newCurrentPrice,
+          volume: newQuantity,
+          profit: calculatedPnl,
+          profit_percentage: newEntryPrice > 0 && newQuantity > 0
+            ? (calculatedPnl / (newEntryPrice * newQuantity)) * 100
+            : 0,
+        };
+
+        // Update dates if changed
+        if (formData.openedAt) {
+          updates.opened_at = new Date(formData.openedAt).getTime();
+        }
+        if (formData.closedAt) {
+          updates.closed_at = new Date(formData.closedAt).getTime();
+        }
+        if (formData.openedAt && formData.closedAt) {
+          updates.duration = new Date(formData.closedAt).getTime() - new Date(formData.openedAt).getTime();
+        }
+
+        const { error } = await supabase
           .from('trade_history')
           .update(updates)
           .eq('id', selectedTrade.id);
+
+        if (error) throw error;
       }
 
       toast.success('Trade updated successfully!');
@@ -418,7 +493,7 @@ export default function TradeManagement() {
       // Realtime will refresh lists
     } catch (err) {
       console.error('Update failed:', err);
-      toast.error('Failed to update trade');
+      toast.error('Failed to update trade: ' + ((err as any)?.message || 'Unknown error'));
     }
   };
 

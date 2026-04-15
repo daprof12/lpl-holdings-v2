@@ -39,6 +39,8 @@ export default function BankDeposit({ walletType = 'live', methods }: { walletTy
   const [amount, setAmount] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [proofData, setProofData] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
 
   const { currentUser: user } = useAuth();
   const { createDeposit, getRecentDeposits } = useTransactions();
@@ -81,6 +83,27 @@ export default function BankDeposit({ walletType = 'live', methods }: { walletTy
     </button>
   );
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check file size (max 5MB to avoid exploding database column capacity)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size must be under 5MB');
+      return;
+    }
+
+    setFileName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setProofData(event.target.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handlePaymentConfirmation = async () => {
     if (!amount || parseFloat(amount) <= 0) {
       toast.error('Please enter a valid deposit amount');
@@ -112,7 +135,8 @@ export default function BankDeposit({ walletType = 'live', methods }: { walletTy
         accountNumber: 'accountNumber' in methodData ? (methodData as any).accountNumber : (methodData as any).iban,
         walletType,
         metadata: {
-          methodId: selectedMethodId
+          methodId: selectedMethodId,
+          proof_data: proofData
         }
       });
 
@@ -122,6 +146,8 @@ export default function BankDeposit({ walletType = 'live', methods }: { walletTy
 
       toast.success(`Bank transfer deposit submitted successfully!`);
       setAmount('');
+      setProofData(null);
+      setFileName(null);
     } catch (error) {
       console.error('Bank deposit error:', error);
       toast.error((error as Error).message);
@@ -141,11 +167,10 @@ export default function BankDeposit({ walletType = 'live', methods }: { walletTy
               <button
                 key={method.id}
                 onClick={() => setSelectedMethodId(method.id)}
-                className={`p-4 rounded-lg border-2 text-left transition-all ${
-                  selectedMethodId === method.id
+                className={`p-4 rounded-lg border-2 text-left transition-all ${selectedMethodId === method.id
                     ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
                     : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
-                }`}
+                  }`}
               >
                 <div className="font-semibold mb-1">{method.bankName}</div>
                 <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">{method.accountName}</div>
@@ -317,23 +342,39 @@ export default function BankDeposit({ walletType = 'live', methods }: { walletTy
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
               Upload your bank transfer receipt to speed up processing
             </p>
-            
-            <div className="border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-lg p-8 text-center hover:border-blue-500 transition-colors cursor-pointer">
+
+            <label className="border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-lg p-8 text-center hover:border-blue-500 transition-colors cursor-pointer block relative">
               <FileText className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                Click to upload or drag and drop
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                PDF, PNG, JPG up to 10MB
-              </p>
-              <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg" />
-            </div>
+              {fileName ? (
+                <>
+                  <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 mb-2">
+                    {fileName}
+                  </p>
+                  <p className="text-xs text-green-600 dark:text-green-400">Ready to submit ✓ (Click to change)</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                    Click to upload or drag and drop
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    PDF, PNG, JPG up to 5MB
+                  </p>
+                </>
+              )}
+              <input
+                type="file"
+                className="hidden absolute inset-0 w-full h-full cursor-pointer"
+                accept=".pdf,.png,.jpg,.jpeg"
+                onChange={handleFileUpload}
+              />
+            </label>
           </div>
 
           {/* Notify Button */}
-          <Button 
-            size="lg" 
-            className="w-full mb-6" 
+          <Button
+            size="lg"
+            className="w-full mb-6"
             onClick={handlePaymentConfirmation}
             disabled={!amount || parseFloat(amount) <= 0}
           >
@@ -346,7 +387,7 @@ export default function BankDeposit({ walletType = 'live', methods }: { walletTy
       {/* Recent Transfers */}
       <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
         <h3 className="text-lg font-semibold mb-4">Recent Bank Deposits</h3>
-        
+
         {recentDeposits.length > 0 ? (
           <div className="space-y-3">
             {recentDeposits.map((deposit) => {

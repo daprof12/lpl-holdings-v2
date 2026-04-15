@@ -38,6 +38,7 @@ export interface ExtendedWithdrawalMethod {
   instructionNote?: string;
   applyToAllUsers?: boolean;
   enabled: boolean;
+  feeType?: 'percentage' | 'fixed';
   
   // Bank fields
   bankName?: string;
@@ -172,6 +173,8 @@ export default function WithdrawalMethodsManagement() {
           minWithdrawal: m.min_amount,
           maxWithdrawal: m.max_amount,
           feePercentage: m.fee_percentage,
+          feeType: m.details?.feeType || (m.details?.fixedFee > 0 ? 'fixed' : 'percentage'),
+          fixedFee: m.details?.fixedFee || 0,
           processingTime: m.processing_time,
           applyToAllUsers: true,
           ...(m.details || {})
@@ -194,24 +197,19 @@ export default function WithdrawalMethodsManagement() {
       if (method.applyToAllUsers || method.userId === 'all-users') {
         const payload = {
           type: method.type,
-          name: method.type === 'bank' ? method.bankName : (method.type === 'crypto' ? 'Crypto' : 'PayPal'),
+          name: method.type === 'bank' ? (method.bankName || 'Bank Transfer') : (method.type === 'crypto' ? 'Crypto Tracker' : 'PayPal Vault'),
           is_active: method.enabled,
           min_amount: method.minWithdrawal,
           max_amount: method.maxWithdrawal,
-          fee_percentage: method.feePercentage,
+          fee_percentage: method.feeType === 'percentage' ? (method.feePercentage || 0) : 0,
           processing_time: method.processingTime,
           details: {
             isWithdrawal: true,
-            fixedFee: method.fixedFee,
+            feeType: method.feeType || 'percentage',
+            fixedFee: method.feeType === 'fixed' ? (method.fixedFee || 0) : 0,
             instructionNote: method.instructionNote,
             cryptoAssets: method.cryptoAssets,
             bankName: method.bankName,
-            accountHolderName: method.accountHolderName,
-            accountNumber: method.accountNumber,
-            routingNumber: method.routingNumber,
-            iban: method.iban,
-            swiftCode: method.swiftCode,
-            paypalEmail: method.paypalEmail,
           }
         };
 
@@ -228,21 +226,16 @@ export default function WithdrawalMethodsManagement() {
           bank_name: method.bankName,
           account_holder_name: method.accountHolderName,
           account_number: method.accountNumber,
-          routing_number: method.routingNumber,
-          iban: method.iban,
-          swift_code: method.swiftCode,
-          paypal_email: method.paypalEmail,
-          crypto_address: method.walletAddress,
-          crypto_network: method.network,
           details: {
-             minWithdrawal: method.minWithdrawal,
-             maxWithdrawal: method.maxWithdrawal,
-             feePercentage: method.feePercentage,
-             fixedFee: method.fixedFee,
-             processingTime: method.processingTime,
-             instructionNote: method.instructionNote,
-             cryptoAssets: method.cryptoAssets
-          }
+              feeType: method.feeType || 'percentage',
+              minWithdrawal: method.minWithdrawal,
+              maxWithdrawal: method.maxWithdrawal,
+              feePercentage: method.feeType === 'percentage' ? (method.feePercentage || 0) : 0,
+              fixedFee: method.feeType === 'fixed' ? (method.fixedFee || 0) : 0,
+              processingTime: method.processingTime,
+              instructionNote: method.instructionNote,
+              cryptoAssets: method.cryptoAssets
+           }
         };
 
         if (isUpdate && method.id) {
@@ -539,31 +532,27 @@ export default function WithdrawalMethodsManagement() {
                   </td>
                   <td className="px-6 py-4">
                     {method.type === 'bank' && (
-                      <div className="text-sm">
-                        <div className="font-semibold">{method.bankName}</div>
-                        <div className="text-gray-500">••••{method.accountNumber?.slice(-4) || method.iban?.slice(-4)}</div>
+                      <div className="text-sm text-gray-500">
+                        Method Template
                       </div>
                     )}
                     {method.type === 'paypal' && (
-                      <div className="text-sm">
-                        <div>{method.paypalEmail}</div>
+                      <div className="text-sm text-gray-500">
+                        Method Template
                       </div>
                     )}
                     {method.type === 'crypto' && (
                       <div className="text-sm">
                         {method.cryptoAssets && method.cryptoAssets.length > 0 ? (
                           <div>
-                            <div className="font-semibold">{method.cryptoAssets.length} crypto asset(s)</div>
+                            <div className="font-semibold">{method.cryptoAssets.length} asset(s) enabled</div>
                             <div className="text-xs text-gray-500">
                               {method.cryptoAssets.map(a => a.assetType).join(', ')}
                             </div>
                           </div>
                         ) : (
-                          <div>
-                            <div className="font-semibold">{method.cryptoType}</div>
-                            <div className="font-mono text-xs text-gray-500">
-                              {method.walletAddress?.slice(0, 12)}...{method.walletAddress?.slice(-8)}
-                            </div>
+                          <div className="text-sm text-gray-500">
+                            Method Template
                           </div>
                         )}
                       </div>
@@ -575,7 +564,7 @@ export default function WithdrawalMethodsManagement() {
                         Min: ${method.minWithdrawal || 0} / Max: ${method.maxWithdrawal || 0}
                       </div>
                       <div className="text-gray-600 dark:text-gray-400">
-                        Fee: {method.feePercentage || 0}% + ${method.fixedFee || 0}
+                        Fee: {method.feeType === 'fixed' || method.fixedFee ? `$${method.fixedFee || 0}` : `${method.feePercentage || 0}%`}
                       </div>
                       {method.processingTime && (
                         <div className="text-gray-600 dark:text-gray-400">
@@ -734,25 +723,39 @@ export default function WithdrawalMethodsManagement() {
                 />
               </div>
               <div>
-                <Label>Fee Percentage (%)</Label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  value={formData.feePercentage || ''}
-                  onChange={(e) => setFormData({ ...formData, feePercentage: parseFloat(e.target.value) || 0 })}
-                  placeholder="2.5"
-                />
+                <Label>Fee Type</Label>
+                <select
+                  value={formData.feeType || 'percentage'}
+                  onChange={(e) => setFormData({ ...formData, feeType: e.target.value as 'percentage' | 'fixed' })}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                >
+                  <option value="percentage">Percentage</option>
+                  <option value="fixed">Fixed Amount</option>
+                </select>
               </div>
-              <div>
-                <Label>Fixed Fee (USD)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.fixedFee || ''}
-                  onChange={(e) => setFormData({ ...formData, fixedFee: parseFloat(e.target.value) || 0 })}
-                  placeholder="5.00"
-                />
-              </div>
+              {formData.feeType === 'fixed' ? (
+                <div>
+                  <Label>Fixed Fee (USD)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.fixedFee || ''}
+                    onChange={(e) => setFormData({ ...formData, fixedFee: parseFloat(e.target.value) || 0 })}
+                    placeholder="5.00"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <Label>Fee Percentage (%)</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={formData.feePercentage || ''}
+                    onChange={(e) => setFormData({ ...formData, feePercentage: parseFloat(e.target.value) || 0 })}
+                    placeholder="2.5"
+                  />
+                </div>
+              )}
               <div className="md:col-span-2">
                 <Label>Processing Time</Label>
                 <Input
@@ -772,58 +775,8 @@ export default function WithdrawalMethodsManagement() {
               </div>
             </div>
 
-            {/* Bank-specific fields */}
-            {formData.type === 'bank' && (
-              <div className="space-y-4 border-t pt-4">
-                <h4 className="font-semibold text-sm">Default Bank Details (Optional Template)</h4>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <Label>Bank Name</Label>
-                    <Input
-                      value={formData.bankName || ''}
-                      onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>Account Holder Name</Label>
-                    <Input
-                      value={formData.accountHolderName || ''}
-                      onChange={(e) => setFormData({ ...formData, accountHolderName: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>Account Number</Label>
-                    <Input
-                      value={formData.accountNumber || ''}
-                      onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>Routing Number</Label>
-                    <Input
-                      value={formData.routingNumber || ''}
-                      onChange={(e) => setFormData({ ...formData, routingNumber: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* PayPal-specific fields */}
-            {formData.type === 'paypal' && (
-              <div className="space-y-4 border-t pt-4">
-                <h4 className="font-semibold text-sm">Default PayPal Email (Optional Template)</h4>
-                <div>
-                  <Label>PayPal Email</Label>
-                  <Input
-                    type="email"
-                    value={formData.paypalEmail || ''}
-                    onChange={(e) => setFormData({ ...formData, paypalEmail: e.target.value })}
-                  />
-                </div>
-              </div>
-            )}
-
+            {/* Bank and PayPal fields removed as admin just sets limits/fees */}
+            
             {/* Crypto-specific fields */}
             {formData.type === 'crypto' && (
               <div className="space-y-4">
@@ -832,7 +785,7 @@ export default function WithdrawalMethodsManagement() {
                     <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
                     <div className="text-sm text-blue-600 dark:text-blue-400">
                       <p className="font-semibold mb-1">Configure Crypto Assets</p>
-                      <p>Enable the crypto assets you want to support, select their networks, and provide wallet addresses. Users will be able to choose from the enabled assets.</p>
+                      <p>Enable the crypto assets you want to support and select their networks. Users will provide their own wallet addresses when withdrawing.</p>
                     </div>
                   </div>
                 </div>
@@ -872,16 +825,6 @@ export default function WithdrawalMethodsManagement() {
                                         <option key={network} value={network}>{network}</option>
                                       ))}
                                     </select>
-                                  </div>
-                                  
-                                  <div className="ml-3">
-                                    <Label className="text-xs">Wallet Address</Label>
-                                    <Input
-                                      value={asset.walletAddress}
-                                      onChange={(e) => handleCryptoAssetChange(index, 'walletAddress', e.target.value)}
-                                      placeholder={`Enter ${asset.assetType} wallet address`}
-                                      className="text-sm font-mono"
-                                    />
                                   </div>
                                 </div>
                               )}
@@ -939,25 +882,39 @@ export default function WithdrawalMethodsManagement() {
                 />
               </div>
               <div>
-                <Label>Fee Percentage (%)</Label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  value={formData.feePercentage || ''}
-                  onChange={(e) => setFormData({ ...formData, feePercentage: parseFloat(e.target.value) || 0 })}
-                  placeholder="2.5"
-                />
+                <Label>Fee Type</Label>
+                <select
+                  value={formData.feeType || 'percentage'}
+                  onChange={(e) => setFormData({ ...formData, feeType: e.target.value as 'percentage' | 'fixed' })}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                >
+                  <option value="percentage">Percentage</option>
+                  <option value="fixed">Fixed Amount</option>
+                </select>
               </div>
-              <div>
-                <Label>Fixed Fee (USD)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.fixedFee || ''}
-                  onChange={(e) => setFormData({ ...formData, fixedFee: parseFloat(e.target.value) || 0 })}
-                  placeholder="5.00"
-                />
-              </div>
+              {formData.feeType === 'fixed' ? (
+                <div>
+                  <Label>Fixed Fee (USD)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.fixedFee || ''}
+                    onChange={(e) => setFormData({ ...formData, fixedFee: parseFloat(e.target.value) || 0 })}
+                    placeholder="5.00"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <Label>Fee Percentage (%)</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={formData.feePercentage || ''}
+                    onChange={(e) => setFormData({ ...formData, feePercentage: parseFloat(e.target.value) || 0 })}
+                    placeholder="2.5"
+                  />
+                </div>
+              )}
               <div className="md:col-span-2">
                 <Label>Processing Time</Label>
                 <Input
@@ -977,54 +934,8 @@ export default function WithdrawalMethodsManagement() {
               </div>
             </div>
 
-            {/* Bank-specific fields */}
-            {formData.type === 'bank' && (
-              <>
-                <div>
-                  <Label>Bank Name</Label>
-                  <Input
-                    value={formData.bankName || ''}
-                    onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>Account Holder Name</Label>
-                  <Input
-                    value={formData.accountHolderName || ''}
-                    onChange={(e) => setFormData({ ...formData, accountHolderName: e.target.value })}
-                  />
-                </div>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <Label>Account Number</Label>
-                    <Input
-                      value={formData.accountNumber || ''}
-                      onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>Routing Number</Label>
-                    <Input
-                      value={formData.routingNumber || ''}
-                      onChange={(e) => setFormData({ ...formData, routingNumber: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* PayPal-specific fields */}
-            {formData.type === 'paypal' && (
-              <div>
-                <Label>PayPal Email</Label>
-                <Input
-                  type="email"
-                  value={formData.paypalEmail || ''}
-                  onChange={(e) => setFormData({ ...formData, paypalEmail: e.target.value })}
-                />
-              </div>
-            )}
-
+            {/* Edit modal Bank and Paypal forms removed - Admin sets Limits/Fees */}
+            
             {/* Crypto-specific fields */}
             {formData.type === 'crypto' && selectedCryptoAssets.length > 0 && (
               <div className="space-y-4">
@@ -1033,7 +944,7 @@ export default function WithdrawalMethodsManagement() {
                     <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
                     <div className="text-sm text-blue-600 dark:text-blue-400">
                       <p className="font-semibold mb-1">Configure Crypto Assets</p>
-                      <p>Enable the crypto assets you want to support, select their networks, and provide wallet addresses.</p>
+                      <p>Enable the crypto assets you want to support and select their networks. Users will provide their own wallet addresses.</p>
                     </div>
                   </div>
                 </div>
@@ -1073,16 +984,6 @@ export default function WithdrawalMethodsManagement() {
                                         <option key={network} value={network}>{network}</option>
                                       ))}
                                     </select>
-                                  </div>
-                                  
-                                  <div className="ml-3">
-                                    <Label className="text-xs">Wallet Address</Label>
-                                    <Input
-                                      value={asset.walletAddress}
-                                      onChange={(e) => handleCryptoAssetChange(index, 'walletAddress', e.target.value)}
-                                      placeholder={`Enter ${asset.assetType} wallet address`}
-                                      className="text-sm font-mono"
-                                    />
                                   </div>
                                 </div>
                               )}
