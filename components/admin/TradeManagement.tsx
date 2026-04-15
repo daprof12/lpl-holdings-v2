@@ -46,6 +46,9 @@ interface Trade {
   takeProfit?: number;
   mode: 'live';
   userId: string;
+  assetName?: string;
+  side: 'buy' | 'sell';
+  orderType: string;
 }
 
 // Helper function to determine asset category
@@ -129,9 +132,9 @@ export default function TradeManagement() {
             .map((pos: any) => ({
               id: pos.id,
               user: getUserEmail(pos.user_id),
-              asset: pos.symbol,
-              category: getAssetCategory(pos.symbol),
-              type: pos.type === 'buy' ? 'long' : 'short',
+              asset: pos.asset_name || pos.symbol,
+              category: pos.asset_category || getAssetCategory(pos.symbol),
+              type: (pos.side === 'buy' || pos.type === 'buy') ? 'long' : 'short',
               entryPrice: parseFloat(pos.entry_price),
               currentPrice: parseFloat(pos.current_price || pos.entry_price),
               quantity: parseFloat(pos.amount),
@@ -142,6 +145,9 @@ export default function TradeManagement() {
               openedAt: new Date(pos.created_at).toISOString().replace('T', ' ').substring(0, 19),
               mode: 'live',
               userId: pos.user_id,
+              assetName: pos.asset_name,
+              side: pos.side || (pos.type === 'buy' || pos.type === 'sell' ? pos.type : 'buy'),
+              orderType: pos.order_type || (pos.type === 'market' || pos.type === 'limit' ? pos.type : 'market'),
             })));
         }
 
@@ -149,9 +155,9 @@ export default function TradeManagement() {
           setDbClosedTrades(closedHistory.map((h: any) => ({
             id: h.id,
             user: getUserEmail(h.user_id),
-            asset: h.symbol,
-            category: getAssetCategory(h.symbol),
-            type: h.type === 'buy' ? 'long' : 'short',
+            asset: h.asset_name || h.symbol,
+            category: h.asset_category || getAssetCategory(h.symbol),
+            type: (h.side === 'buy' || h.type === 'buy') ? 'long' : 'short',
             entryPrice: parseFloat(h.entry_price),
             currentPrice: parseFloat(h.exit_price || h.entry_price),
             quantity: parseFloat(h.amount),
@@ -163,6 +169,9 @@ export default function TradeManagement() {
             closedAt: new Date(h.closed_at || h.created_at).toISOString().replace('T', ' ').substring(0, 19),
             mode: 'live',
             userId: h.user_id,
+            assetName: h.asset_name,
+            side: h.side || (h.type === 'buy' || h.type === 'sell' ? h.type : 'buy'),
+            orderType: h.order_type || (h.type === 'market' || h.type === 'limit' ? h.type : 'market'),
           })));
         }
 
@@ -170,9 +179,9 @@ export default function TradeManagement() {
           setDbPendingOrders(pendingOrders.map((o: any) => ({
             id: o.id,
             user: getUserEmail(o.user_id),
-            asset: o.symbol,
-            category: getAssetCategory(o.symbol),
-            type: o.type === 'buy' ? 'long' : 'short',
+            asset: o.asset_name || o.symbol,
+            category: o.asset_category || getAssetCategory(o.symbol),
+            type: (o.side === 'buy' || o.type === 'buy') ? 'long' : 'short',
             entryPrice: parseFloat(o.price), // In orders, price is the target entry
             currentPrice: parseFloat(o.price),
             quantity: parseFloat(o.amount),
@@ -183,6 +192,9 @@ export default function TradeManagement() {
             openedAt: new Date(o.created_at).toISOString().replace('T', ' ').substring(0, 19),
             mode: 'live',
             userId: o.user_id,
+            assetName: o.asset_name,
+            side: o.side || (o.type === 'buy' || o.type === 'sell' ? o.type : 'buy'),
+            orderType: o.order_type || (o.type === 'market' || o.type === 'limit' ? o.type : 'limit'),
           })));
         }
       } catch (err) { 
@@ -242,6 +254,9 @@ export default function TradeManagement() {
     category: '',
     openedAt: '',
     closedAt: '',
+    assetName: '',
+    side: 'buy',
+    orderType: 'market',
   });
 
   const filteredTrades = trades.filter(trade => {
@@ -303,6 +318,9 @@ export default function TradeManagement() {
       category: trade.category,
       openedAt: trade.openedAt.substring(0, 16), // Format for datetime-local input
       closedAt: trade.closedAt ? trade.closedAt.substring(0, 16) : '',
+      assetName: trade.assetName || '',
+      side: trade.side || 'buy',
+      orderType: trade.orderType || 'market',
     });
     setShowDialog(true);
   };
@@ -368,9 +386,13 @@ export default function TradeManagement() {
     try {
       const updates = {
         symbol: formData.asset,
+        asset_name: formData.assetName,
+        asset_category: formData.category,
+        side: formData.side,
+        order_type: formData.orderType,
         entry_price: newEntryPrice,
         current_price: newCurrentPrice,
-        amount: newQuantity,
+        units: newQuantity,
         leverage: newLeverage,
         stop_loss: newStopLoss,
         take_profit: newTakeProfit,
@@ -665,6 +687,18 @@ export default function TradeManagement() {
                 </div>
 
                 <div>
+                  <label className="block text-sm font-semibold mb-2">Asset Name</label>
+                  <Input
+                    type="text"
+                    value={formData.assetName}
+                    onChange={(e) => setFormData({ ...formData, assetName: e.target.value })}
+                    placeholder="e.g., Bitcoin"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
                   <label className="block text-sm font-semibold mb-2">Market Category</label>
                   <select
                     value={formData.category}
@@ -679,6 +713,32 @@ export default function TradeManagement() {
                     <option value="Funds">Funds</option>
                     <option value="Futures">Futures</option>
                     <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Side</label>
+                  <select
+                    value={formData.side}
+                    onChange={(e) => setFormData({ ...formData, side: e.target.value as any })}
+                    className="w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                  >
+                    <option value="buy">Buy (Long)</option>
+                    <option value="sell">Sell (Short)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Order Type</label>
+                  <select
+                    value={formData.orderType}
+                    onChange={(e) => setFormData({ ...formData, orderType: e.target.value })}
+                    className="w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                  >
+                    <option value="market">Market</option>
+                    <option value="limit">Limit</option>
+                    <option value="stop">Stop</option>
+                    <option value="stop_limit">Stop Limit</option>
                   </select>
                 </div>
               </div>

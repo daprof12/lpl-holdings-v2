@@ -22,7 +22,10 @@ export interface Position {
   id: string;
   userId: string; // Required for global mapping
   symbol: string;
+  assetName?: string;
+  assetCategory?: string;
   side: 'buy' | 'sell';
+  type: 'market' | 'limit';
   units: number;
   entryPrice: number;
   currentPrice: number;
@@ -39,10 +42,13 @@ export interface Order {
   id: string;
   userId: string;
   symbol: string;
+  assetName?: string;
+  assetCategory?: string;
   side: 'buy' | 'sell';
-  type: 'limit' | 'stop';
+  type: 'limit' | 'stop' | 'market';
   units: number;
-  price: number;
+  price: number;           // entry / limit price
+  currentPrice?: number;   // live market price for comparison
   stopLoss?: number;
   takeProfit?: number;
   leverage: number;
@@ -54,6 +60,8 @@ export interface HistoryItem {
   id: string;
   userId: string;
   symbol: string;
+  assetName?: string;
+  assetCategory?: string;
   side: 'buy' | 'sell';
   type: 'market' | 'limit' | 'stop';
   units: number;
@@ -108,7 +116,7 @@ interface TradingContextType {
   addHistory: (item: HistoryItem) => void;
   updateAccount: (updates: Partial<Account>) => void;
   addPortfolioSnapshot: () => void;
-  
+
   // Balance management
   depositToTradingAccount: (amount: number) => void;
   withdrawFromTradingAccount: (amount: number) => boolean;
@@ -162,15 +170,18 @@ export function TradingProvider({ children }: { children: ReactNode }) {
           id: dbPos.id,
           userId: dbPos.user_id,
           symbol: dbPos.symbol,
-          side: dbPos.type,
-          units: parseFloat(dbPos.amount),
+          assetName: dbPos.asset_name || dbPos.symbol,
+          assetCategory: dbPos.asset_category || 'Forex',
+          side: dbPos.side || 'buy',
+          type: dbPos.order_type || 'market',
+          units: parseFloat(dbPos.units || 0),
           entryPrice: parseFloat(dbPos.entry_price),
           currentPrice: parseFloat(dbPos.current_price || dbPos.entry_price),
           stopLoss: dbPos.stop_loss ? parseFloat(dbPos.stop_loss) : undefined,
           takeProfit: dbPos.take_profit ? parseFloat(dbPos.take_profit) : undefined,
           leverage: dbPos.leverage || 1,
           pnl: parseFloat(dbPos.profit || 0),
-          margin: (parseFloat(dbPos.amount) * parseFloat(dbPos.entry_price)) / (dbPos.leverage || 1),
+          margin: (parseFloat(dbPos.units) * parseFloat(dbPos.entry_price)) / (dbPos.leverage || 1),
           timestamp: new Date(dbPos.created_at),
           status: dbPos.status
         })));
@@ -178,13 +189,19 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
       // Transform and set history
       if (Array.isArray(dbHistory)) {
-        setHistory(dbHistory.map((dbItem: any) => ({
+        const actualClosed = dbHistory.filter((dbItem: any) =>
+          dbItem.status === 'closed' || dbItem.exit_price !== null || dbItem.closed_at !== null
+        );
+
+        setHistory(actualClosed.map((dbItem: any) => ({
           id: dbItem.id,
           userId: dbItem.user_id,
           symbol: dbItem.symbol,
-          side: dbItem.type === 'buy' ? 'buy' : 'sell',
-          type: 'market',
-          units: parseFloat(dbItem.volume || dbItem.amount || 0),
+          assetName: dbItem.asset_name || dbItem.symbol,
+          assetCategory: dbItem.asset_category || 'Forex',
+          side: dbItem.side || 'buy',
+          type: dbItem.order_type || 'market',
+          units: parseFloat(dbItem.volume || 0),
           price: parseFloat(dbItem.exit_price || dbItem.entry_price || 0),
           entryPrice: parseFloat(dbItem.entry_price || 0),
           entryTimestamp: new Date(dbItem.opened_at || dbItem.created_at || now),
@@ -200,10 +217,13 @@ export function TradingProvider({ children }: { children: ReactNode }) {
           id: dbOrder.id,
           userId: dbOrder.user_id,
           symbol: dbOrder.symbol,
-          side: dbOrder.type === 'buy' ? 'buy' : 'sell',
-          type: dbOrder.order_type || 'limit',
-          units: parseFloat(dbOrder.amount || 0),
-          price: parseFloat(dbOrder.price || 0),
+          assetName: dbOrder.asset_name || dbOrder.symbol,
+          assetCategory: dbOrder.asset_category || 'Forex',
+          side: dbOrder.side || 'buy',
+          type: dbOrder.order_type || dbOrder.type || 'limit',
+          units: parseFloat(dbOrder.units || dbOrder.amount || 0),
+          price: parseFloat(dbOrder.entry_price || dbOrder.price || 0),
+          currentPrice: parseFloat(dbOrder.current_price || dbOrder.entry_price || dbOrder.price || 0),
           stopLoss: dbOrder.stop_loss ? parseFloat(dbOrder.stop_loss) : undefined,
           takeProfit: dbOrder.take_profit ? parseFloat(dbOrder.take_profit) : undefined,
           leverage: dbOrder.leverage || 1,
@@ -269,7 +289,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       skipNextSyncRef.current = false;
       return;
     }
-    
+
     const timeout = setTimeout(async () => {
       try {
         await api.tradingAccounts.update(userId, {
@@ -355,17 +375,16 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       const currentMarketPrice = priceData?.price || position.entryPrice;
       const asset = initialAssets.find(a => a.symbol === position.symbol);
       const now = Date.now();
-      
+
       const res = await api.positions.create({
         // Removed manual ID so Supabase uses gen_random_uuid()
         user_id: userId,
         symbol: position.symbol,
-        asset_name: asset?.name || position.symbol,
-        asset_category: asset?.category || 'Forex',
-        type: position.side,
-        amount: position.units, // legacy column support
-        volume: position.units, // schema column
-        units: position.units,  // schema column
+        asset_name: position.assetName || asset?.name || position.symbol,
+        asset_category: position.assetCategory || asset?.category || 'Forex',
+        side: position.side,
+        order_type: position.type || 'market',
+        units: position.units,
         entry_price: position.entryPrice,
         current_price: currentMarketPrice,
         leverage: position.leverage,
@@ -413,11 +432,14 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     try {
       // Optmistic UI update
       setPositions(prev => prev.map(p => p.id === positionId ? { ...p, ...updates } : p));
-      
+
       // Map camelCase to snake_case for DB
       const dbUpdates: any = {};
       if (updates.symbol !== undefined) dbUpdates.symbol = updates.symbol;
-      if (updates.side !== undefined) dbUpdates.type = updates.side;
+      if (updates.assetName !== undefined) dbUpdates.asset_name = updates.assetName;
+      if (updates.assetCategory !== undefined) dbUpdates.asset_category = updates.assetCategory;
+      if (updates.side !== undefined) dbUpdates.side = updates.side;
+      if (updates.type !== undefined) dbUpdates.type = updates.type;
       if (updates.units !== undefined) dbUpdates.amount = updates.units;
       if (updates.entryPrice !== undefined) dbUpdates.entry_price = updates.entryPrice;
       if (updates.currentPrice !== undefined) dbUpdates.current_price = updates.currentPrice;
@@ -441,14 +463,20 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       const res = await api.pendingOrders.create({
         user_id: userId,
         symbol: order.symbol,
-        type: order.side,
+        asset_name: order.assetName || order.symbol,
+        asset_category: order.assetCategory || 'Forex',
+        side: order.side,
         order_type: order.type,
-        amount: order.units,
-        price: order.price,
+        type: order.type,           // satisfy NOT NULL constraint on legacy column
+        units: order.units,
+        entry_price: order.price,       // canonical
+        current_price: order.price,     // will update as market moves
+        price: order.price,             // legacy compat
         stop_loss: order.stopLoss,
         take_profit: order.takeProfit,
         leverage: order.leverage,
-        status: 'pending'
+        status: 'pending',
+        created_at: Date.now()
       });
       if (res) {
         await loadTradingData();
@@ -474,8 +502,10 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       // Map camelCase to snake_case for DB
       const dbUpdates: any = {};
       if (updates.symbol !== undefined) dbUpdates.symbol = updates.symbol;
-      if (updates.side !== undefined) dbUpdates.type = updates.side;
-      if (updates.type !== undefined) dbUpdates.order_type = updates.type;
+      if (updates.assetName !== undefined) dbUpdates.asset_name = updates.assetName;
+      if (updates.assetCategory !== undefined) dbUpdates.asset_category = updates.assetCategory;
+      if (updates.side !== undefined) dbUpdates.side = updates.side;
+      if (updates.type !== undefined) dbUpdates.type = updates.type;
       if (updates.units !== undefined) dbUpdates.amount = updates.units;
       if (updates.price !== undefined) dbUpdates.price = updates.price;
       if (updates.stopLoss !== undefined) dbUpdates.stop_loss = updates.stopLoss;
@@ -497,9 +527,10 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       const dbData = {
         user_id: userId,
         symbol: item.symbol,
-        asset_name: asset?.name || item.symbol,
-        asset_category: asset?.category || 'Forex',
-        type: item.side,
+        asset_name: item.assetName || asset?.name || item.symbol,
+        asset_category: item.assetCategory || asset?.category || 'Forex',
+        side: item.side,
+        type: item.type || 'market',
         volume: item.units,
         price: item.price,
         entry_price: item.entryPrice || item.price,
@@ -539,7 +570,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
     const newBalance = account.balance + amount;
     setAccount(prev => ({ ...prev, balance: newBalance }));
-    
+
     try {
       await api.tradingAccounts.update(userId, { balance: newBalance });
       auth.updateUser(userId, { balance: newBalance, liveBalance: newBalance });
@@ -553,10 +584,10 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     if (!userId) return false;
 
     if (account.balance < amount) return false;
-    
+
     const newBalance = account.balance - amount;
     setAccount(prev => ({ ...prev, balance: newBalance }));
-    
+
     try {
       await api.tradingAccounts.update(userId, { balance: newBalance });
       auth.updateUser(userId, { balance: newBalance, liveBalance: newBalance });
@@ -569,48 +600,52 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
   // Subscribe to market data for all positions and update prices in real-time
   const subscribedSymbolsKeyRef = useRef('');
-  
+
   useEffect(() => {
-    const allPositions = positions;
-    const uniqueSymbols = new Set(allPositions.map(p => p.symbol));
+    const uniqueSymbols = new Set([
+      ...positions.map(p => p.symbol),
+      ...orders.map(o => o.symbol)
+    ]);
     const symbolsKey = Array.from(uniqueSymbols).sort().join(',');
-    
+
     // Only re-subscribe if the set of symbols has actually changed
     if (symbolsKey === subscribedSymbolsKeyRef.current) return;
     subscribedSymbolsKeyRef.current = symbolsKey;
-    
+
     // Subscribe to all symbols
     uniqueSymbols.forEach(symbol => {
       marketData.subscribeToSymbol(symbol);
     });
-  }, [positions]);
+  }, [positions, orders]);
 
   // Update position prices and P&L on a fixed 5-second interval
   const positionsRef = useRef(positions);
   const accountRef = useRef(account);
-  
+
   // Keep refs in sync
   positionsRef.current = positions;
   accountRef.current = account;
 
   useEffect(() => {
     const PRICE_UPDATE_INTERVAL = 5000; // Same 5s as MarketDataContext
-    
+
     const updateAllPositionPrices = () => {
-    const updatePositionPrices = (
+      const updatePositionPrices = (
         currentPositions: Position[],
         setPositionsState: (pos: Position[]) => void,
         currentAccount: Account,
         setAccountState: (acc: Account) => void,
-        currentOrders: Order[]
+        currentOrders: Order[],
+        setOrdersState: (orders: Order[]) => void
       ) => {
-        // --- 1. HANDLE ORDER FILLING ---
-        currentOrders.forEach(async (order) => {
-          if (order.status !== 'pending') return;
-          
+        // --- 1. HANDLE ORDER FILLING & PRICE UPDATES ---
+        let ordersChanged = false;
+        const updatedOrders = currentOrders.map((order) => {
+          if (order.status !== 'pending') return order;
+
           const priceData = marketData.getPrice(order.symbol);
           if (!priceData || !priceData.price) return;
-          
+
           const currentPrice = priceData.price;
           let shouldFill = false;
 
@@ -628,36 +663,60 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
           if (shouldFill) {
             console.log(`🎯 Order filled! Converting Order ${order.id} to Position`);
-            // Convert to position
             const asset = initialAssets.find(a => a.symbol === order.symbol);
             const now = Date.now();
 
-            await api.positions.create({
-              user_id: order.userId,
-              symbol: order.symbol,
-              asset_name: asset?.name || order.symbol,
-              asset_category: asset?.category || 'Forex',
-              type: order.side,
-              amount: order.units,
-              volume: order.units,
-              units: order.units,
-              entry_price: currentPrice,
-              current_price: currentMarketPrice,
-              leverage: order.leverage,
-              margin: (order.units * currentPrice) / order.leverage,
-              status: 'open',
-              opened_at: now,
-              created_at: now,
-              updated_at: now,
-              source: 'manual',
-              stop_loss: order.stopLoss,
-              take_profit: order.takeProfit
-            });
-            // Remove the order
-            await api.pendingOrders.delete(order.id);
-            // Realtime will handle the list refreshes
+            // 1. Mark as filled in DB first (so user sees the state)
+            api.pendingOrders.update(order.id, { status: 'filled', current_price: currentPrice })
+              .then(() => {
+                // 2. Create the position with correct fields
+                return api.positions.create({
+                  user_id: order.userId,
+                  symbol: order.symbol,
+                  asset_name: order.assetName || asset?.name || order.symbol,
+                  asset_category: order.assetCategory || asset?.category || 'Forex',
+                  side: order.side,
+                  order_type: order.type,
+                  units: order.units,
+                  entry_price: order.price,      // use the limit price as entry
+                  current_price: currentPrice,   // current market price
+                  leverage: order.leverage,
+                  margin: (order.units * order.price) / order.leverage,
+                  status: 'open',
+                  opened_at: now,
+                  created_at: now,
+                  updated_at: now,
+                  source: 'order',
+                  stop_loss: order.stopLoss,
+                  take_profit: order.takeProfit
+                });
+              })
+              .then(() => {
+                // 3. Delete the pending order after a short delay so user sees "Filled"
+                setTimeout(() => {
+                  api.pendingOrders.delete(order.id);
+                }, 2000);
+              })
+              .catch(err => console.error("Failed to process order fill:", err));
+
+            toast.success(`✅ Order filled: ${order.side.toUpperCase()} ${order.units} ${order.symbol} @ $${order.price.toFixed(2)}`);
+            
+            ordersChanged = true;
+            // Return updated local state so it doesn't get filled twice before DB triggers
+            return { ...order, status: 'filled', currentPrice };
           }
+          
+          if (currentPrice !== order.currentPrice) {
+            ordersChanged = true;
+            return { ...order, currentPrice };
+          }
+          
+          return order;
         });
+
+        if (ordersChanged) {
+          setOrdersState(updatedOrders);
+        }
 
         // --- 2. HANDLE POSITION PRICE UPDATES ---
         if (currentPositions.length === 0) {
@@ -673,11 +732,11 @@ export function TradingProvider({ children }: { children: ReactNode }) {
           }
           return;
         }
-        
+
         let totalUnrealizedPnL = 0;
         let totalMargin = 0;
         let hasUpdates = false;
-        
+
         const updatedPositions = currentPositions.map(position => {
           const priceData = marketData.getPrice(position.symbol);
           if (!priceData || !priceData.price) {
@@ -687,14 +746,14 @@ export function TradingProvider({ children }: { children: ReactNode }) {
           }
 
           const currentPrice = priceData.price;
-          
-          const priceDiff = position.side === 'buy' 
-            ? currentPrice - position.entryPrice 
+
+          const priceDiff = position.side === 'buy'
+            ? currentPrice - position.entryPrice
             : position.entryPrice - currentPrice;
-          
+
           const pnl = priceDiff * position.units;
           const margin = (position.units * position.entryPrice) / position.leverage;
-          
+
           totalUnrealizedPnL += pnl;
           totalMargin += margin;
 
@@ -729,14 +788,14 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       updatePositionPrices(
         positionsRef.current, setPositions,
         accountRef.current, setAccount,
-        orders
+        orders, setOrders
       );
     };
 
     // Run once immediately, then on interval
     updateAllPositionPrices();
     const interval = setInterval(updateAllPositionPrices, PRICE_UPDATE_INTERVAL);
-    
+
     return () => clearInterval(interval);
   }, []); // Empty deps — uses refs internally, runs on a fixed interval
 

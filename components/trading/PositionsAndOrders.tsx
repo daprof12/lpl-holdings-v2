@@ -253,10 +253,13 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                       }`}>
                         {position.side.toUpperCase()}
                       </span>
-                      <span className={`px-2 py-0.5 rounded text-xs ${categoryColors[getCategory(position.symbol)] ?? categoryColors.Other}`}>
-                        {getCategory(position.symbol)}
+                      <span className="px-2 py-0.5 rounded text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                        {position.type.toUpperCase()}
                       </span>
-                      <span className="text-sm">{position.symbol}</span>
+                      <span className={`px-2 py-0.5 rounded text-xs ${categoryColors[position.assetCategory || getCategory(position.symbol)] ?? categoryColors.Other}`}>
+                        {position.assetCategory || getCategory(position.symbol)}
+                      </span>
+                      <span className="text-sm">{position.assetName || position.symbol}</span>
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -347,80 +350,108 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
             </div>
           ) : (
             <div className="space-y-3">
-              {orders.map((order) => (
-                <div
-                  key={order.id}
-                  className="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg border border-gray-200 dark:border-slate-600"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded text-xs ${
-                        order.side === 'buy'
-                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                          : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                      }`}>
-                        {order.side.toUpperCase()}
-                      </span>
-                      <span className="px-2 py-0.5 rounded text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
-                        {order.type.toUpperCase()}
-                      </span>
-                      <span className="text-sm">{order.symbol}</span>
+              {orders.map((order) => {
+                const isFilled = order.status === 'filled';
+                return (
+                  <div
+                    key={order.id}
+                    className={`p-3 rounded-lg border transition-colors ${
+                      isFilled
+                        ? 'bg-green-50 dark:bg-green-900/10 border-green-300 dark:border-green-700'
+                        : 'bg-gray-50 dark:bg-slate-700/50 border-gray-200 dark:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          order.side === 'buy'
+                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                            : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                        }`}>
+                          {order.side.toUpperCase()}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                          {order.type.toUpperCase()}
+                        </span>
+                        {/* Filled / Pending badge */}
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                          isFilled
+                            ? 'bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200'
+                            : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
+                        }`}>
+                          {isFilled ? '✓ Filled' : 'Pending'}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded text-xs ${categoryColors[order.assetCategory || getCategory(order.symbol)] ?? categoryColors.Other}`}>
+                          {order.assetCategory || getCategory(order.symbol)}
+                        </span>
+                        <span className="text-sm font-medium">{order.assetName || order.symbol}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        {!isFilled && (
+                          <button
+                            onClick={() => handleCancelOrder(order)}
+                            className="px-2 py-1 hover:bg-gray-200 dark:hover:bg-slate-600 rounded"
+                          >
+                            <span className="text-xs text-gray-600 dark:text-gray-400">Cancel</span>
+                          </button>
+                        )}
+                        {onEditOrder && !isFilled && (
+                          <button
+                            onClick={() => onEditOrder(order)}
+                            className="px-2 py-1 hover:bg-gray-200 dark:hover:bg-slate-600 rounded"
+                          >
+                            <Edit className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleCancelOrder(order)}
-                        className="px-2 py-1 hover:bg-gray-200 dark:hover:bg-slate-600 rounded"
-                      >
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Cancel</span>
-                      </button>
-                      {onEditOrder && (
-                        <button
-                          onClick={() => onEditOrder(order)}
-                          className="px-2 py-1 hover:bg-gray-200 dark:hover:bg-slate-600 rounded"
-                        >
-                          <Edit className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-2 text-sm mb-2">
-                    <div>
-                      <div className="text-gray-500 dark:text-gray-400">Units</div>
-                      <div>{order.units}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-500 dark:text-gray-400">Price</div>
-                      <div>${order.price.toFixed(2)}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-500 dark:text-gray-400">Status</div>
-                      <div className="text-yellow-600 dark:text-yellow-400">{order.status}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-500 dark:text-gray-400">Leverage</div>
-                      <div>{order.leverage}x</div>
-                    </div>
-                  </div>
-                  
-                  {(order.stopLoss || order.takeProfit) && (
-                    <div className="pt-2 border-t border-gray-200 dark:border-slate-600 flex gap-3 text-sm">
-                      {order.stopLoss && (
-                        <div>
-                          <span className="text-gray-500 dark:text-gray-400">SL: </span>
-                          <span className="text-red-600 dark:text-red-400">${order.stopLoss.toFixed(2)}</span>
+
+                    <div className="grid grid-cols-2 gap-2 text-sm mb-2">
+                      <div>
+                        <div className="text-gray-500 dark:text-gray-400">Units</div>
+                        <div>{order.units}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-500 dark:text-gray-400">Entry Price</div>
+                        <div className="font-medium">${order.price.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-500 dark:text-gray-400">Current Price</div>
+                        <div className={`font-medium ${
+                          (order.currentPrice || order.price) > order.price
+                            ? 'text-green-600 dark:text-green-400'
+                            : (order.currentPrice || order.price) < order.price
+                              ? 'text-red-600 dark:text-red-400'
+                              : ''
+                        }`}>
+                          ${(order.currentPrice || order.price).toFixed(2)}
                         </div>
-                      )}
-                      {order.takeProfit && (
-                        <div>
-                          <span className="text-gray-500 dark:text-gray-400">TP: </span>
-                          <span className="text-green-600 dark:text-green-400">${order.takeProfit.toFixed(2)}</span>
-                        </div>
-                      )}
+                      </div>
+                      <div>
+                        <div className="text-gray-500 dark:text-gray-400">Leverage</div>
+                        <div>{order.leverage}x</div>
+                      </div>
                     </div>
-                  )}
-                </div>
-              ))}
+
+                    {(order.stopLoss || order.takeProfit) && (
+                      <div className="pt-2 border-t border-gray-200 dark:border-slate-600 flex gap-3 text-sm">
+                        {order.stopLoss && (
+                          <div>
+                            <span className="text-gray-500 dark:text-gray-400">SL: </span>
+                            <span className="text-red-600 dark:text-red-400">${order.stopLoss.toFixed(2)}</span>
+                          </div>
+                        )}
+                        {order.takeProfit && (
+                          <div>
+                            <span className="text-gray-500 dark:text-gray-400">TP: </span>
+                            <span className="text-green-600 dark:text-green-400">${order.takeProfit.toFixed(2)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}       </div>
       )}
@@ -448,8 +479,11 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                       }`}>
                         {item.side.toUpperCase()}
                       </span>
-                      <span className={`px-2 py-0.5 rounded text-xs ${categoryColors[getCategory(item.symbol)] ?? categoryColors.Other}`}>
-                        {getCategory(item.symbol)}
+                      <span className="px-2 py-0.5 rounded text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                        {item.type.toUpperCase()}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-xs ${categoryColors[item.assetCategory || getCategory(item.symbol)] ?? categoryColors.Other}`}>
+                        {item.assetCategory || getCategory(item.symbol)}
                       </span>
                       <span className={`px-2 py-0.5 rounded text-xs ${
                         item.status === 'closed' 
@@ -458,7 +492,7 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                       }`}>
                         {item.status.toUpperCase()}
                       </span>
-                      <span className="text-sm">{item.symbol}</span>
+                      <span className="text-sm">{item.assetName || item.symbol}</span>
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">
                       {new Date(item.timestamp).toLocaleString()}

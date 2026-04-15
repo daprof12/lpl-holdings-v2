@@ -184,12 +184,14 @@ export default function AdminDashboard() {
           .forEach((trade: any) => {
             const timestamp = new Date(trade.createdAt);
             const userName = users.find((u: any) => u.id === trade.userId)?.email || 'User';
+            const tradeSide = trade.side || (trade.type === 'buy' || trade.type === 'sell' ? trade.type : 'buy');
+            const tradeOrderType = trade.order_type || (trade.type === 'market' || trade.type === 'limit' ? trade.type : 'market');
             activities.push({
               type: 'trade',
-              message: `${trade.type.toUpperCase()} trade: ${trade.symbol} $${formatCurrency(parseFloat(trade.amount || 0))} - ${userName}`,
+              message: `${tradeOrderType.toUpperCase()} ${tradeSide.toUpperCase()} trade: ${trade.symbol} $${formatCurrency(parseFloat(trade.amount || trade.volume || 0))} - ${userName}`,
               time: getRelativeTime(timestamp),
               timestamp,
-              color: trade.type === 'buy' ? 'green' : 'red',
+              color: tradeSide === 'buy' ? 'green' : 'red',
               icon: TrendingUp
             });
           });

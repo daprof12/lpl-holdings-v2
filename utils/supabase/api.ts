@@ -179,7 +179,8 @@ export const api = {
       if (fetchErr) throw fetchErr;
 
       // 2. Calculate profit
-      const priceDiff = pos.type === 'buy' ? exitPrice - pos.entry_price : pos.entry_price - exitPrice;
+      const posSide = pos.side || (pos.type === 'buy' || pos.type === 'sell' ? pos.type : 'buy');
+      const priceDiff = posSide === 'buy' ? exitPrice - pos.entry_price : pos.entry_price - exitPrice;
       const profit = priceDiff * pos.units;
       const now = Date.now();
 

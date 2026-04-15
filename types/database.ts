@@ -109,7 +109,8 @@ export interface Position {
   assetCategory: 'Crypto' | 'Forex' | 'Stocks' | 'Indices' | 'Commodities' | 'Funds' | 'Futures' | 'Bonds' | 'Economy' | 'Options';
   
   // Position Details
-  type: 'buy' | 'sell';
+  side: 'buy' | 'sell';
+  type: 'market' | 'limit';
   status: 'open' | 'closed' | 'pending';
   
   // Pricing
@@ -161,7 +162,10 @@ export interface TradeHistory {
   
   // Trade Details
   symbol: string;
-  type: 'buy' | 'sell';
+  assetName?: string;
+  assetCategory?: string;
+  side: 'buy' | 'sell';
+  type: 'market' | 'limit';
   action: 'open' | 'close' | 'modify' | 'cancel';
   
   // Prices
@@ -739,8 +743,10 @@ export interface PendingOrder {
   id: string;
   userId: string;
   symbol: string;
+  assetName?: string;
+  assetCategory?: string;
   side: 'buy' | 'sell';
-  type: 'limit' | 'stop' | 'stop_limit';
+  type: 'limit' | 'stop' | 'stop_limit' | 'market';
   price: number;
   units: number;
   leverage?: number;

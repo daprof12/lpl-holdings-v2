@@ -169,19 +169,6 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
       
       addPosition(newPosition);
       
-      const historyItem: HistoryItem = {
-        id,
-        symbol,
-        side: orderSide,
-        type: orderType,
-        units: unitsNum,
-        price: execPrice,
-        timestamp: new Date(),
-        status: 'filled',
-        mode: tradingMode
-      };
-      addHistory(historyItem);
-      
       updateAccount({
         margin: account.margin + requiredMargin,
         availableFunds: account.availableFunds - requiredMargin
