@@ -176,11 +176,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             type: n.type,
             title: n.title,
             message: n.message,
-            timestamp: new Date(n.timestamp || n.created_at),
-            read: n.read_status || false,
+            timestamp: new Date(Number(n.created_at)),
+            read: n.is_read || false,
             userId: n.user_id,
             channels: n.channels || ['in-app'],
-            isVisibleToUser: n.is_visible_to_user ?? true,
+            isVisibleToUser: n.is_visible ?? true,
             relatedId: n.related_id,
             metadata: n.metadata
           })));
@@ -252,19 +252,19 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
        try {
          const dbNotifs = await api.notifications.getAll();
          if (Array.isArray(dbNotifs)) {
-            setNotifications(dbNotifs.map((n: any) => ({
-              id: n.id,
-              type: n.type,
-              title: n.title,
-              message: n.message,
-              timestamp: new Date(n.timestamp || n.created_at),
-              read: n.read_status || false,
-              userId: n.user_id,
-              channels: n.channels || ['in-app'],
-              isVisibleToUser: n.is_visible_to_user ?? true,
-              relatedId: n.related_id,
-              metadata: n.metadata
-            })));
+             setNotifications(dbNotifs.map((n: any) => ({
+               id: n.id,
+               type: n.type,
+               title: n.title,
+               message: n.message,
+               timestamp: new Date(Number(n.created_at)),
+               read: n.is_read || false,
+               userId: n.user_id,
+               channels: n.channels || ['in-app'],
+               isVisibleToUser: n.is_visible ?? true,
+               relatedId: n.related_id,
+               metadata: n.metadata
+             })));
          }
        } finally {
          setLoading(false);
@@ -289,7 +289,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           message: notification.message,
           user_id: notification.userId,
           channels: notification.channels,
-          is_visible_to_user: notification.isVisibleToUser ?? true,
+          is_visible: notification.isVisibleToUser ?? true,
           related_id: notification.relatedId,
           metadata: notification.metadata
         });
@@ -312,7 +312,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const markAsRead = useCallback(async (notificationId: string) => {
     try {
-      await api.notifications.update(notificationId, { read_status: true });
+      await api.notifications.update(notificationId, { is_read: true, read_at: Date.now() });
       setNotifications(prev =>
         prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
       );

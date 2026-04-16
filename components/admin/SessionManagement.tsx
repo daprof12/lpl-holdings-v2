@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../utils/supabase/client';
-import { Search, Trash2, Eye, Monitor, Smartphone, Globe, Clock, LogIn, LogOut, X, Filter, Calendar } from 'lucide-react';
+import { api } from '../../utils/supabase/api';
+import { Search, Trash2, Eye, Monitor, Smartphone, Globe, Clock, LogIn, LogOut, X, RefreshCw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -14,13 +15,12 @@ import {
   DialogDescription,
 } from '../ui/dialog';
 
-interface SessionActivity {
+interface SessionRecord {
   id: string;
   userId: string;
   type: 'login' | 'logout';
-  action: string;
-  timestamp: number;
-  details?: {
+  timestamp: Date;
+  details: {
     device?: string;
     browser?: string;
     ip?: string;
@@ -29,105 +29,134 @@ interface SessionActivity {
   };
 }
 
+function mapLogToSession(log: any): SessionRecord {
+  const meta = log.metadata || {};
+  return {
+    id: log.id,
+    userId: log.actor_id || '',
+    type: (log.action === 'logout' ? 'logout' : 'login') as 'login' | 'logout',
+    timestamp: new Date(Number(log.created_at) || Date.now()),
+    details: {
+      device: meta.device,
+      browser: meta.browser,
+      ip: meta.ip,
+      location: meta.location,
+      userAgent: meta.userAgent,
+    },
+  };
+}
+
 export default function SessionManagement() {
-  const { users, userActivities } = useAuth();
+  const { users } = useAuth();
+  const [sessions, setSessions] = useState<SessionRecord[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'login' | 'logout'>('all');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
-  const [selectedSession, setSelectedSession] = useState<SessionActivity | null>(null);
+  const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(null);
   const [dateRange, setDateRange] = useState<'all' | 'today' | 'week' | 'month'>('all');
 
-  // Get all login/logout activities
+  const fetchSessions = async () => {
+    setLoading(true);
+    try {
+      const logs = await api.loginHistory.getAll(1000);
+      setSessions((logs || []).map(mapLogToSession));
+    } catch (err) {
+      console.error('[SessionManagement] Failed to fetch sessions:', err);
+      toast.error('Failed to load session history');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSessions();
+
+    // Real-time: reflect new login / logout rows immediately
+    const channel = supabase
+      .channel('admin-session-logs')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'activity_logs' },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            const log = payload.new as any;
+            if (log.action === 'login' || log.action === 'logout') {
+              setSessions(prev => [mapLogToSession(log), ...prev]);
+            }
+          } else if (payload.eventType === 'DELETE') {
+            setSessions(prev => prev.filter(s => s.id !== (payload.old as any).id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  // Filtered view
   const sessionActivities = useMemo(() => {
-    let activities = userActivities.filter(
-      (a): a is SessionActivity => a.type === 'login' || a.type === 'logout'
-    );
+    let list = [...sessions];
 
-    // Apply type filter
-    if (filterType !== 'all') {
-      activities = activities.filter(a => a.type === filterType);
-    }
+    if (filterType !== 'all') list = list.filter(s => s.type === filterType);
+    if (selectedUserId) list = list.filter(s => s.userId === selectedUserId);
 
-    // Apply user filter
-    if (selectedUserId) {
-      activities = activities.filter(a => a.userId === selectedUserId);
-    }
-
-    // Apply date range filter
     if (dateRange !== 'all') {
-      const now = Date.now();
-      const ranges = {
-        today: 24 * 60 * 60 * 1000,
-        week: 7 * 24 * 60 * 60 * 1000,
-        month: 30 * 24 * 60 * 60 * 1000,
-      };
-      const range = ranges[dateRange];
-      activities = activities.filter(a => now - (a.timestamp instanceof Date ? a.timestamp.getTime() : typeof a.timestamp === 'number' ? a.timestamp : new Date(a.timestamp).getTime()) < range);
+      const rangeMs = { today: 86400000, week: 604800000, month: 2592000000 }[dateRange];
+      const cutoff = Date.now() - (rangeMs || 0);
+      list = list.filter(s => s.timestamp.getTime() >= cutoff);
     }
 
-    // Apply search query
     if (searchQuery) {
-      activities = activities.filter(a => {
-        const user = users.find(u => u.id === a.userId);
-        const userName = user ? `${user.firstName} ${user.lastName}`.toLowerCase() : '';
-        const email = user?.email.toLowerCase() || '';
-        const query = searchQuery.toLowerCase();
-        
+      const q = searchQuery.toLowerCase();
+      list = list.filter(s => {
+        const user = users.find(u => u.id === s.userId);
+        const name = user ? `${user.firstName} ${user.lastName}`.toLowerCase() : '';
         return (
-          userName.includes(query) ||
-          email.includes(query) ||
-          a.details?.device?.toLowerCase().includes(query) ||
-          a.details?.ip?.toLowerCase().includes(query) ||
-          a.details?.location?.toLowerCase().includes(query)
+          name.includes(q) ||
+          (user?.email || '').toLowerCase().includes(q) ||
+          (s.details.device || '').toLowerCase().includes(q) ||
+          (s.details.ip || '').toLowerCase().includes(q) ||
+          (s.details.location || '').toLowerCase().includes(q)
         );
       });
     }
 
-    return activities.sort((a, b) => {
-      const timeA = a.timestamp instanceof Date ? a.timestamp.getTime() : typeof a.timestamp === 'number' ? a.timestamp : new Date(a.timestamp).getTime();
-      const timeB = b.timestamp instanceof Date ? b.timestamp.getTime() : typeof b.timestamp === 'number' ? b.timestamp : new Date(b.timestamp).getTime();
-      return timeB - timeA;
-    });
-  }, [userActivities, filterType, selectedUserId, dateRange, searchQuery, users]);
+    return list.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  }, [sessions, filterType, selectedUserId, dateRange, searchQuery, users]);
 
   const handleDeleteSession = async (sessionId: string) => {
-    if (confirm('Are you sure you want to delete this session record? This cannot be undone.')) {
-      try {
-        const { error } = await supabase
-          .from('activity_logs')
-          .delete()
-          .eq('id', sessionId);
-        
-        if (error) throw error;
-        toast.success('Session record deleted successfully');
-      } catch (error) {
-        console.error('Failed to delete session:', error);
-        toast.error('Failed to delete session record');
+    if (!confirm('Delete this session record? This cannot be undone.')) return;
+    try {
+      const res = await api.loginHistory.deleteById(sessionId);
+      if (res.success) {
+        setSessions(prev => prev.filter(s => s.id !== sessionId));
+        toast.success('Session record deleted');
+        setShowDetailsDialog(false);
+      } else {
+        throw res.error;
       }
+    } catch (err) {
+      console.error('Failed to delete session:', err);
+      toast.error('Failed to delete session record');
     }
   };
 
   const handleDeleteAllSessions = async () => {
-    if (confirm('Are you sure you want to delete ALL session records? This will permanently remove all login/logout history.')) {
-      try {
-        const { error } = await supabase
-          .from('activity_logs')
-          .delete()
-          .in('action', ['login', 'logout']);
-        
-        if (error) throw error;
-        toast.success('All session records deleted successfully');
-      } catch (error) {
-        console.error('Failed to delete sessions:', error);
-        toast.error('Failed to delete session records');
+    if (!confirm('Delete ALL session records? This will permanently remove all login/logout history.')) return;
+    try {
+      const res = await api.loginHistory.deleteAll();
+      if (res.success) {
+        setSessions([]);
+        toast.success('All session records deleted');
+      } else {
+        throw res.error;
       }
+    } catch (err) {
+      console.error('Failed to delete all sessions:', err);
+      toast.error('Failed to delete session records');
     }
-  };
-
-  const handleViewDetails = (session: SessionActivity) => {
-    setSelectedSession(session);
-    setShowDetailsDialog(true);
   };
 
   const getUserName = (userId: string) => {
@@ -143,11 +172,15 @@ export default function SessionManagement() {
   const getDeviceIcon = (device?: string) => {
     if (!device) return <Monitor className="w-4 h-4" />;
     const d = device.toLowerCase();
-    if (d.includes('mobile') || d.includes('iphone') || d.includes('android')) {
-      return <Smartphone className="w-4 h-4" />;
-    }
-    return <Monitor className="w-4 h-4" />;
+    return d.includes('mobile') || d.includes('iphone') || d.includes('android')
+      ? <Smartphone className="w-4 h-4" />
+      : <Monitor className="w-4 h-4" />;
   };
+
+  const totalLogins = sessions.filter(s => s.type === 'login').length;
+  const totalLogouts = sessions.filter(s => s.type === 'logout').length;
+  const activeUsers = users.filter(u => u.isOnline).length;
+  const todaySessions = sessions.filter(s => Date.now() - s.timestamp.getTime() < 86400000).length;
 
   return (
     <div className="space-y-6">
@@ -155,18 +188,27 @@ export default function SessionManagement() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl mb-2">Session & Login History</h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Manage all user login and logout sessions
-          </p>
+          <p className="text-gray-600 dark:text-gray-400">Manage all user login and logout sessions</p>
         </div>
-        <Button
-          onClick={handleDeleteAllSessions}
-          variant="outline"
-          className="flex items-center gap-2 text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
-        >
-          <Trash2 className="w-4 h-4" />
-          Delete All Sessions
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={fetchSessions}
+            className="flex items-center gap-2"
+            disabled={loading}
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Button
+            onClick={handleDeleteAllSessions}
+            variant="outline"
+            className="flex items-center gap-2 text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete All Sessions
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -178,9 +220,7 @@ export default function SessionManagement() {
             </div>
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Total Logins</p>
-              <p className="text-2xl font-bold">
-                {userActivities.filter(a => a.type === 'login').length}
-              </p>
+              <p className="text-2xl font-bold">{totalLogins}</p>
             </div>
           </div>
         </div>
@@ -191,9 +231,7 @@ export default function SessionManagement() {
             </div>
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Total Logouts</p>
-              <p className="text-2xl font-bold">
-                {userActivities.filter(a => a.type === 'logout').length}
-              </p>
+              <p className="text-2xl font-bold">{totalLogouts}</p>
             </div>
           </div>
         </div>
@@ -204,9 +242,7 @@ export default function SessionManagement() {
             </div>
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Active Users</p>
-              <p className="text-2xl font-bold">
-                {users.filter(u => u.isOnline).length}
-              </p>
+              <p className="text-2xl font-bold">{activeUsers}</p>
             </div>
           </div>
         </div>
@@ -217,12 +253,7 @@ export default function SessionManagement() {
             </div>
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Today's Sessions</p>
-              <p className="text-2xl font-bold">
-                {userActivities.filter(a => 
-                  (a.type === 'login' || a.type === 'logout') && 
-                  Date.now() - a.timestamp < 24 * 60 * 60 * 1000
-                ).length}
-              </p>
+              <p className="text-2xl font-bold">{todaySessions}</p>
             </div>
           </div>
         </div>
@@ -309,98 +340,103 @@ export default function SessionManagement() {
 
       {/* Sessions Table */}
       <div className="bg-white dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-slate-700 sticky top-0 z-10">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">User</th>
-                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Type</th>
-                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Device</th>
-                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">IP Address</th>
-                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Location</th>
-                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Timestamp</th>
-                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-              {sessionActivities.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-16 text-gray-500">
+            <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+            Loading session history...
+          </div>
+        ) : (
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-slate-700 sticky top-0 z-10">
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
-                    No session records found
-                  </td>
+                  <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">User</th>
+                  <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Type</th>
+                  <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Device</th>
+                  <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">IP Address</th>
+                  <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Location</th>
+                  <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Timestamp</th>
+                  <th className="px-6 py-3 text-left text-xs uppercase tracking-wider">Actions</th>
                 </tr>
-              ) : (
-                sessionActivities.map((session) => (
-                  <tr key={session.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                    <td className="px-6 py-4">
-                      <div>
-                        <div className="font-medium">{getUserName(session.userId)}</div>
-                        <div className="text-sm text-gray-500">{getUserEmail(session.userId)}</div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                        session.type === 'login'
-                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                          : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                      }`}>
-                        {session.type === 'login' ? <LogIn className="w-3 h-3" /> : <LogOut className="w-3 h-3" />}
-                        {session.type === 'login' ? 'Login' : 'Logout'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        {getDeviceIcon(session.details?.device)}
-                        <span className="text-sm">{session.details?.device || 'Unknown'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <code className="text-sm bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded">
-                        {session.details?.ip || 'N/A'}
-                      </code>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-1.5 text-sm">
-                        <Globe className="w-3.5 h-3.5 text-gray-400" />
-                        {session.details?.location || 'Unknown'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm">
-                        <div>{new Date(session.timestamp).toLocaleDateString()}</div>
-                        <div className="text-xs text-gray-500">
-                          {new Date(session.timestamp).toLocaleTimeString()}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleViewDetails(session)}
-                          className="flex items-center gap-1.5"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          View
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDeleteSession(session.id)}
-                          className="flex items-center gap-1.5 text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Delete
-                        </Button>
-                      </div>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                {sessionActivities.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                      No session records found
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  sessionActivities.map((session) => (
+                    <tr key={session.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                      <td className="px-6 py-4">
+                        <div>
+                          <div className="font-medium">{getUserName(session.userId)}</div>
+                          <div className="text-sm text-gray-500">{getUserEmail(session.userId)}</div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                          session.type === 'login'
+                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                            : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                        }`}>
+                          {session.type === 'login' ? <LogIn className="w-3 h-3" /> : <LogOut className="w-3 h-3" />}
+                          {session.type === 'login' ? 'Login' : 'Logout'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          {getDeviceIcon(session.details.device)}
+                          <span className="text-sm">{session.details.device || 'Unknown'}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <code className="text-sm bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded">
+                          {session.details.ip || 'N/A'}
+                        </code>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1.5 text-sm">
+                          <Globe className="w-3.5 h-3.5 text-gray-400" />
+                          {session.details.location || 'Unknown'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm">
+                          <div>{session.timestamp.toLocaleDateString()}</div>
+                          <div className="text-xs text-gray-500">{session.timestamp.toLocaleTimeString()}</div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { setSelectedSession(session); setShowDetailsDialog(true); }}
+                            className="flex items-center gap-1.5"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            View
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteSession(session.id)}
+                            className="flex items-center gap-1.5 text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Delete
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Session Details Dialog */}
@@ -408,9 +444,7 @@ export default function SessionManagement() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Session Details</DialogTitle>
-            <DialogDescription>
-              Detailed information about this session
-            </DialogDescription>
+            <DialogDescription>Detailed information about this session</DialogDescription>
           </DialogHeader>
           {selectedSession && (
             <div className="space-y-4">
@@ -436,37 +470,37 @@ export default function SessionManagement() {
                 <div>
                   <Label>Device</Label>
                   <div className="flex items-center gap-2 mt-1">
-                    {getDeviceIcon(selectedSession.details?.device)}
-                    <span>{selectedSession.details?.device || 'Unknown Device'}</span>
+                    {getDeviceIcon(selectedSession.details.device)}
+                    <span>{selectedSession.details.device || 'Unknown Device'}</span>
                   </div>
                 </div>
                 <div>
                   <Label>Browser</Label>
-                  <p className="mt-1">{selectedSession.details?.browser || 'N/A'}</p>
+                  <p className="mt-1">{selectedSession.details.browser || 'N/A'}</p>
                 </div>
                 <div>
                   <Label>IP Address</Label>
                   <code className="block mt-1 text-sm bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded">
-                    {selectedSession.details?.ip || 'N/A'}
+                    {selectedSession.details.ip || 'N/A'}
                   </code>
                 </div>
                 <div>
                   <Label>Location</Label>
                   <div className="flex items-center gap-2 mt-1">
                     <Globe className="w-4 h-4 text-gray-400" />
-                    <span>{selectedSession.details?.location || 'Unknown'}</span>
+                    <span>{selectedSession.details.location || 'Unknown'}</span>
                   </div>
                 </div>
                 <div>
                   <Label>Date</Label>
-                  <p className="mt-1">{new Date(selectedSession.timestamp).toLocaleDateString()}</p>
+                  <p className="mt-1">{selectedSession.timestamp.toLocaleDateString()}</p>
                 </div>
                 <div>
                   <Label>Time</Label>
-                  <p className="mt-1">{new Date(selectedSession.timestamp).toLocaleTimeString()}</p>
+                  <p className="mt-1">{selectedSession.timestamp.toLocaleTimeString()}</p>
                 </div>
               </div>
-              {selectedSession.details?.userAgent && (
+              {selectedSession.details.userAgent && (
                 <div>
                   <Label>User Agent</Label>
                   <code className="block mt-1 text-xs bg-gray-100 dark:bg-slate-700 px-3 py-2 rounded break-all">
@@ -483,21 +517,12 @@ export default function SessionManagement() {
             </div>
           )}
           <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-slate-700">
-            <Button
-              variant="outline"
-              onClick={() => setShowDetailsDialog(false)}
-              className="flex-1"
-            >
+            <Button variant="outline" onClick={() => setShowDetailsDialog(false)} className="flex-1">
               Close
             </Button>
             <Button
               variant="outline"
-              onClick={() => {
-                if (selectedSession) {
-                  handleDeleteSession(selectedSession.id);
-                  setShowDetailsDialog(false);
-                }
-              }}
+              onClick={() => selectedSession && handleDeleteSession(selectedSession.id)}
               className="flex-1 text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
             >
               <Trash2 className="w-4 h-4 mr-2" />

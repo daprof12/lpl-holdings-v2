@@ -14,7 +14,7 @@ import {
 import { toast } from 'sonner';
 import { useTrading, Position, Order, HistoryItem } from '../../contexts/TradingContext';
 import { useSubscription } from '../../contexts/SubscriptionContext';
-import { initialAssets, getMaxLeverageForPlan } from '../../data/assets';
+import { getMaxLeverageForPlan } from '../../data/assets';
 import { formatCurrency } from '../../utils/formatNumber';
 
 interface OrderPanelProps {
@@ -53,7 +53,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
   const { plan } = useSubscription();
 
   // Get leverage limit for current asset based on subscription plan
-  const asset = initialAssets.find(a => a.symbol === symbol);
+  const asset = marketData.assets.find(a => a.symbol === symbol);
   const maxLeverage = getMaxLeverageForPlan(asset, plan);
 
   const [orderType, setOrderType] = useState<'market' | 'limit'>('market');

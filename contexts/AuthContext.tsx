@@ -151,10 +151,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.log('🔄 Loading initial auth data from relational database...');
       
       // 1. Fetch all datasets from relational tables
-      const [dbUsers, dbAccounts, dbWallets] = await Promise.all([
+      const [dbUsers, dbAccounts, dbWallets, dbSubscribers] = await Promise.all([
         api.users.getAll(),
         api.tradingAccounts.getAll(),
-        api.investmentWallets.getAll()
+        api.investmentWallets.getAll(),
+        api.subscribers.getAll()
       ]);
       
       if (dbUsers && Array.isArray(dbUsers)) {
@@ -169,6 +170,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           // Manually join with account and wallet data
           const ta = dbAccounts?.find((acc: any) => acc.user_id === u.id) || {};
           const iw = dbWallets?.find((w: any) => w.user_id === u.id) || {};
+          const sub = dbSubscribers?.find((s: any) => s.user_id === u.id && s.status === 'active') || {};
           
           return {
             id: u.id,
@@ -180,6 +182,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             phone: u.phone || '',
             kycStatus: u.kyc_status === 'approved' ? 'verified' : u.kyc_status === 'rejected' ? 'rejected' : 'not_started',
             accountType: u.account_type || 'standard',
+            subscriptionPlan: sub.plan || u.subscription_plan || '',
             balance: Math.max(safeFloat(ta.balance), safeFloat(u.balance)),
             liveBalance: Math.max(safeFloat(ta.balance), safeFloat(u.balance)),
             credit: Math.max(safeFloat(ta.credit), safeFloat(u.credit)),
@@ -202,6 +205,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         
         setUsers(processedUsers);
         localStorage.setItem('gross_users', JSON.stringify(processedUsers));
+        
+        setCurrentUser(prevUser => {
+          if (!prevUser) return null;
+          const freshUser = processedUsers.find(u => u.id === prevUser.id);
+          if (freshUser) {
+            if (sessionStorage.getItem('gross_current_user')) {
+              sessionStorage.setItem('gross_current_user', JSON.stringify(freshUser));
+            } else {
+              localStorage.setItem('gross_current_user', JSON.stringify(freshUser));
+            }
+            return freshUser;
+          }
+          return prevUser;
+        });
       }
 
       // 2. Fetch User Activities (Audit Logs)
@@ -211,14 +228,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         .order('created_at', { ascending: false })
         .limit(500);
 
-      if (!logsError && logs) {
+      if (logsError) {
+        console.error('Failed fetching activity_logs:', logsError.message);
+        toast.error(`Database Error: ${logsError.message}`);
+      } else if (logs) {
         const processedActivities: UserActivity[] = logs.map(log => ({
           id: log.id,
-          userId: log.actor_id,
+          userId: log.actor_id || log.admin_id,
           type: log.action as any,
           action: log.description || log.action,
           details: log.metadata || {},
-          timestamp: new Date(log.created_at)
+          timestamp: new Date(log.created_at || Date.now())
         }));
         setUserActivities(processedActivities);
       }
@@ -557,22 +577,48 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setCurrentUser(processedUser);
         sessionStorage.setItem('gross_current_user', JSON.stringify(processedUser));
 
-        // 3. Create session & Log activity
+        // Fetch IP and Location data (fail silently on error)
+        let ipInfo = { ip: 'Unknown', location: 'Unknown' };
+        try {
+          const res = await fetch('https://ipapi.co/json/');
+          if (res.ok) {
+            const data = await res.json();
+            ipInfo = {
+              ip: data.ip || 'Unknown',
+              location: data.city && data.country_name ? `${data.city}, ${data.country_name}` : 'Unknown'
+            };
+          }
+        } catch (e) {
+          console.warn('Could not fetch IP info');
+        }
+
+        // Parse a friendly browser/device name from User Agent
         const ua = navigator.userAgent;
-        const sessionId = `sess-${Date.now()}`;
-        
+        const browserMatch = ua.match(/(firefox|msie|chrome|safari|trident|edge|opera)/i);
+        const browser = browserMatch ? browserMatch[1] : 'Unknown Browser';
+        const deviceMatch = ua.match(/(iphone|ipod|ipad|android|windows phone|macintosh|windows|linux)/i);
+        const deviceType = deviceMatch ? deviceMatch[1] : 'Unknown Device';
+
         await api.sessions.create({
           userId: user.id,
-          device: ua,
+          device: deviceType,
           isActive: true
         });
 
-        await api.loginHistory.log({
+        const logRes = await api.loginHistory.log({
           userId: user.id,
           action: 'login',
           success: true,
-          device: ua
+          device: deviceType,
+          browser: browser,
+          ip: ipInfo.ip,
+          location: ipInfo.location,
+          userAgent: ua
         });
+        
+        if (!logRes.success) {
+          toast.error("Warning: DB Session log failed (Check console)");
+        }
 
         return true;
       }
@@ -595,11 +641,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('gross_notifications');
     
     if (lastUser) {
-      api.loginHistory.log({
-        userId: lastUser.id,
-        action: 'logout',
-        success: true
-      }).catch(console.error);
+      // Async wrapper to fetch IP before logging
+      (async () => {
+        const ua = navigator.userAgent;
+        let ipInfo = { ip: 'Unknown', location: 'Unknown' };
+        try {
+          const res = await fetch('https://ipapi.co/json/');
+          if (res.ok) {
+            const data = await res.json();
+            ipInfo = {
+              ip: data.ip || 'Unknown',
+              location: data.city && data.country_name ? `${data.city}, ${data.country_name}` : 'Unknown'
+            };
+          }
+        } catch (e) {}
+
+        const browserMatch = ua.match(/(firefox|msie|chrome|safari|trident|edge|opera)/i);
+        const deviceMatch = ua.match(/(iphone|ipod|ipad|android|windows phone|macintosh|windows|linux)/i);
+
+        api.loginHistory.log({
+          userId: lastUser.id,
+          action: 'logout',
+          success: true,
+          device: deviceMatch ? deviceMatch[1] : 'Unknown Device',
+          browser: browserMatch ? browserMatch[1] : 'Unknown Browser',
+          ip: ipInfo.ip,
+          location: ipInfo.location,
+          userAgent: ua
+        }).catch(console.error);
+      })();
     }
   };
 
@@ -701,7 +771,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                                updates.kycStatus === 'rejected' ? 'rejected' : 'pending';
       }
       if (updates.isVerified !== undefined) dbUpdates.email_verified = updates.isVerified;
-      if (updates.subscriptionPlan !== undefined) dbUpdates.subscription_plan = updates.subscriptionPlan;
+      // We removed subscription_plan to avoid adblocker rules; relies entirely on member_packages now.
       if (updates.hasInvestmentAccess !== undefined) dbUpdates.has_investment_access = updates.hasInvestmentAccess;
       if (updates.hasAutoTradeAccess !== undefined) dbUpdates.has_auto_trade_access = updates.hasAutoTradeAccess;
       if (updates.hasSignalAccess !== undefined) dbUpdates.has_signal_access = updates.hasSignalAccess;
@@ -774,11 +844,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!currentUser) return;
 
     try {
-      await api.userActivities.create({
-        user_id: currentUser.id,
-        type: activity.type,
-        action: activity.action,
-        details: activity.details
+      await supabase.from('activity_logs').insert({
+        actor_id: currentUser.id,
+        actor_type: 'user',
+        action: activity.type,
+        description: activity.action,
+        metadata: activity.details || {},
+        resource: activity.type,
+        resource_type: activity.type,
+        created_at: Date.now()
       });
     } catch (err) {
       console.error('Failed to log activity:', err);
@@ -825,11 +899,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       
       // Log activity
-      await api.userActivities.create({
-        user_id: userId,
-        type: 'deposit',
-        action: type === 'credit' ? 'Credit added' : type === 'bonus' ? 'Bonus added' : 'Balance added',
-        details: { amount, type }
+      await supabase.from('activity_logs').insert({
+        actor_id: userId,
+        actor_type: 'user',
+        action: 'deposit',
+        description: type === 'credit' ? 'Credit added' : type === 'bonus' ? 'Bonus added' : 'Balance added',
+        metadata: { amount, type },
+        resource: 'wallet',
+        resource_type: 'wallet',
+        created_at: Date.now()
       });
 
       loadInitialData(); // Refresh local state
@@ -958,11 +1036,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         user_id: userId,
         type: notification.type,
         title: notification.title,
-        message: notification.message
+        message: notification.message,
+        is_visible: notification.isVisibleToUser ?? true,
+        channels: notification.channels || ['in-app'],
+        related_id: notification.relatedId,
+        metadata: (notification as any).metadata || {}
       });
       
-      // Notifications are typically loaded fresh or via subscription in UI
-      // but we can trigger a refresh if needed
+      // Refresh local notifications if needed
+      window.dispatchEvent(new Event('usersUpdated'));
     } catch (err) {
       console.error('Failed to add notification:', err);
     }

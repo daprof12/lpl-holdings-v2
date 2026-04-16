@@ -297,13 +297,42 @@ export default function UserManagement() {
       // Update password if changed via special dialog or if needed
       // (Password updates should ideally go through a dedicated reset password flow)
 
-      // Notify user when subscription plan changes
+      // Notify user when subscription plan changes and update subscribers table
       if (formData.subscriptionPlan && formData.subscriptionPlan !== prevPlan) {
-        await addNotification(selectedUserId, {
-          type: 'success',
-          title: 'Subscription Updated',
-          message: `Your subscription plan has been updated to ${formData.subscriptionPlan}.`,
-        });
+        try {
+           const existingSubs = await api.subscribers.getByUserId(selectedUserId);
+           const planObj = SUBSCRIPTION_PLANS.find(p => p.label.toLowerCase() === formData.subscriptionPlan?.toLowerCase());
+           const amount = planObj?.minDeposit || 0;
+           
+           if (existingSubs && existingSubs.length > 0) {
+             await api.subscribers.update(existingSubs[0].id, {
+               plan: formData.subscriptionPlan,
+               amount: amount,
+               updated_at: new Date().toISOString()
+             });
+           } else {
+             await api.subscribers.create({
+               user_id: selectedUserId,
+               plan: formData.subscriptionPlan,
+               amount: amount,
+               status: 'active',
+               created_at: new Date().toISOString(),
+               updated_at: new Date().toISOString()
+             });
+           }
+        } catch (e) {
+           console.error("Failed to update subscribers table:", e);
+        }
+
+        try {
+          await addNotification(selectedUserId, {
+            type: 'success',
+            title: 'Subscription Updated',
+            message: `Your subscription plan has been updated to ${formData.subscriptionPlan}.`,
+          });
+        } catch (e) {
+          console.error("Notification failed", e);
+        }
       }
 
       toast.success('User updated successfully');

@@ -65,8 +65,8 @@ export default function NotificationManagement() {
           type: n.type,
           title: n.title,
           message: n.message,
-          timestamp: new Date(n.created_at).getTime(),
-          read: n.read_status === 'read',
+          timestamp: new Date(Number(n.created_at)).getTime(),
+          read: n.is_read,
           isVisibleToUser: n.is_visible,
           channels: n.channels,
           relatedId: n.related_id
@@ -180,6 +180,7 @@ export default function NotificationManagement() {
       });
       fetchNotifications();
     } catch (error) {
+      console.error('Failed to create notification:', error);
       toast.error('Failed to create notification');
     }
   };
@@ -210,7 +211,7 @@ export default function NotificationManagement() {
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {
-      await api.notifications.update(notificationId, { read_status: 'read' });
+      await api.notifications.update(notificationId, { is_read: true, read_at: Date.now() });
       toast.success('Marked as read');
       fetchNotifications();
     } catch (error) {
@@ -220,7 +221,7 @@ export default function NotificationManagement() {
 
   const handleMarkAsUnread = async (notificationId: string) => {
     try {
-      await api.notifications.update(notificationId, { read_status: 'unread' });
+      await api.notifications.update(notificationId, { is_read: false, read_at: null });
       toast.success('Marked as unread');
       fetchNotifications();
     } catch (error) {

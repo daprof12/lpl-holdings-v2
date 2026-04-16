@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Search, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { 
+  Plus, Edit, Trash2, Search, TrendingUp, TrendingDown, 
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+  ArrowLeftRight, Check, X, Shield, Settings, Edit2 
+} from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { supabase } from '../../utils/supabase/client';
@@ -11,6 +15,7 @@ import {
   DialogDescription,
 } from '../ui/dialog';
 import { initialAssets, deriveFullLeverage } from '../../data/assets';
+import { CATALOGUE } from '../../utils/assetCatalogue';
 import type { AssetData } from '../../data/assets';
 import { formatCurrency } from '../../utils/formatNumber';
 import { toast } from 'sonner';
@@ -50,6 +55,8 @@ function toAdminAsset(asset: any): AdminAsset {
 
 const PAGE_SIZE_KEY = 'gross_admin_assets_page_size';
 
+
+
 export default function AssetManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -58,6 +65,7 @@ export default function AssetManagement() {
   const [selectedAsset, setSelectedAsset] = useState<AdminAsset | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSeeding, setIsSeeding] = useState(false);
   const [rowsPerPage, setRowsPerPage] = useState(() => {
     try {
       const stored = localStorage.getItem(PAGE_SIZE_KEY);
@@ -82,22 +90,65 @@ export default function AssetManagement() {
         setAssets(data.map(toAdminAsset));
       } else {
         // Seed if empty
-        const seeded = initialAssets.map(toAdminAsset);
-        await supabase.from('market_assets').insert(initialAssets.map(a => ({
+        await handleResetSeed();
+      }
+    } catch (err) {
+      console.error('Failed to fetch assets:', err);
+      toast.error('Failed to load assets from database. Ensure the table exists.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetSeed = async () => {
+    setIsLoading(true);
+    try {
+      const now = Date.now();
+      
+      // Merge initialAssets (rich data) with CATALOGUE (symbol list)
+      const allSymbols = new Set(initialAssets.map(a => a.symbol));
+      const catalogueToAdd = CATALOGUE.filter(c => !allSymbols.has(c.symbol));
+      
+      const assetsToInsert = [
+        ...initialAssets.map(a => ({
+          id: `asset_${a.symbol}_${now}`,
           symbol: a.symbol,
           name: a.name,
           category: a.category,
           exchange: a.exchange || '',
           price: a.price,
-          status: 'active',
-          leverage: JSON.stringify(deriveFullLeverage(a.leverage))
-        })));
-        setAssets(seeded);
-        toast.info('Seeded default assets to database');
+          enabled: true,
+          leverage: deriveFullLeverage(a.leverage),
+          created_at: now,
+          updated_at: now
+        })),
+        ...catalogueToAdd.map(c => ({
+          id: `asset_${c.symbol}_${now}`,
+          symbol: c.symbol,
+          name: c.name,
+          category: c.category,
+          exchange: c.exchange || '',
+          price: 0,
+          enabled: true,
+          leverage: { basic: 10, standard: 20, silver: 35, gold: 50, platinum: 75 },
+          created_at: now,
+          updated_at: now
+        }))
+      ];
+
+      // Handle in batches for Supabase
+      const batchSize = 50;
+      for (let i = 0; i < assetsToInsert.length; i += batchSize) {
+        const batch = assetsToInsert.slice(i, i + batchSize);
+        const { error } = await supabase.from('market_assets').upsert(batch, { onConflict: 'symbol' });
+        if (error) throw error;
       }
+      
+      toast.success(`Synchronized ${assetsToInsert.length} assets to database`);
+      await fetchAssets();
     } catch (err) {
-      console.error('Failed to fetch assets:', err);
-      toast.error('Failed to load assets from database');
+      console.error('Failed to seed assets:', err);
+      toast.error('Failed to seed assets. Ensure the table "market_assets" has been created in Supabase.');
     } finally {
       setIsLoading(false);
     }
@@ -207,7 +258,7 @@ export default function AssetManagement() {
     try {
       const { error } = await supabase
         .from('market_assets')
-        .update({ status: asset.enabled ? 'inactive' : 'active' })
+        .update({ enabled: !asset.enabled, updated_at: Date.now() })
         .eq('symbol', asset.symbol);
       if (error) throw error;
     } catch (err) {
@@ -217,24 +268,31 @@ export default function AssetManagement() {
 
   const handleSubmit = async () => {
     try {
-      const payload = {
+      const now = Date.now();
+      const basePayload = {
         symbol: formData.symbol.toUpperCase(),
         name: formData.name,
         category: formData.category,
         exchange: formData.exchange,
         price: parseFloat(formData.price),
-        leverage: JSON.stringify(formData.leverage),
-        status: 'active'
+        leverage: formData.leverage, // leveraging jsonb serialization
+        enabled: true,
+        updated_at: now
       };
 
       if (dialogMode === 'create') {
+        const payload = {
+          ...basePayload,
+          id: `asset_${formData.symbol.toUpperCase()}_${now}`,
+          created_at: now
+        };
         const { error } = await supabase.from('market_assets').insert([payload]);
         if (error) throw error;
         toast.success('Asset created successfully');
       } else if (dialogMode === 'edit' && selectedAsset) {
         const { error } = await supabase
           .from('market_assets')
-          .update(payload)
+          .update(basePayload)
           .eq('symbol', selectedAsset.symbol);
         if (error) throw error;
         toast.success('Asset updated successfully');
@@ -262,10 +320,21 @@ export default function AssetManagement() {
             Manage {assets.length} trading assets across {Object.keys(categoryCounts).length} categories
           </p>
         </div>
-        <Button onClick={handleCreate} className="gap-2">
-          <Plus className="w-4 h-4" />
-          Add Asset
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={handleResetSeed} 
+            disabled={isLoading}
+            className="gap-2 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400"
+          >
+            <ArrowLeftRight className="w-4 h-4" />
+            Sync Catalogue
+          </Button>
+          <Button onClick={handleCreate} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Add Asset
+          </Button>
+        </div>
       </div>
 
       {/* Search & Filters */}

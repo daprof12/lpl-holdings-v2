@@ -7,7 +7,7 @@ import { Switch } from '../ui/switch';
 import { useInvestments, InvestmentOffer, PROFITABILITY_TIER_LABELS, PROFITABILITY_TIER_COLORS, ProfitabilityTier } from '../../contexts/InvestmentContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { showSuccessToast, showErrorToast } from '../common/ToastNotifications';
-import { initialAssets, AssetData } from '../../data/assets';
+// AssetData removed
 import EnhancedOfferModal from './EnhancedOfferModal';
 import { formatPercentage, formatCurrency } from '../../utils/formatNumber';
 

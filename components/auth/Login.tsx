@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
+import { api } from '../../utils/supabase/api';
 const imgDefaultLogo = "/logo.png";
 
 interface PasswordResetRequest {
@@ -116,40 +117,27 @@ export default function Login() {
       return;
     }
 
-    // Check if user exists
-    const users = JSON.parse(localStorage.getItem('gross_users') || '[]');
-    const userExists = users.find((u: any) => u.email === resetEmail);
+    // Check if user exists via DB
+    const user = await api.users.getByEmail(resetEmail);
 
-    if (!userExists) {
+    if (!user) {
       setModalError('No account found with this email address');
       return;
     }
 
     setModalLoading(true);
 
-    // Create password reset request
-    const resetRequests = JSON.parse(localStorage.getItem('gross_password_reset_requests') || '[]');
-    const newRequest: PasswordResetRequest = {
-      id: `reset_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      email: resetEmail,
-      timestamp: Date.now(),
-      status: 'pending'
-    };
+    try {
+      // Create password reset request in DB
+      await api.passwordResets.create(resetEmail);
 
-    resetRequests.push(newRequest);
-    localStorage.setItem('gross_password_reset_requests', JSON.stringify(resetRequests));
-
-    // Dispatch storage event for cross-tab sync
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: 'gross_password_reset_requests',
-      newValue: JSON.stringify(resetRequests)
-    }));
-
-    setTimeout(() => {
       setModalLoading(false);
       toast.success('Password reset request submitted. Please wait for approval.');
       setForgotPasswordStep('code');
-    }, 1000);
+    } catch (err) {
+      setModalLoading(false);
+      setModalError('Failed to submit request. Please try again.');
+    }
   };
 
   const handleVerifyCode = async () => {
@@ -163,16 +151,13 @@ export default function Login() {
 
     setModalLoading(true);
 
-    // Check if recovery code is valid
-    const resetRequests = JSON.parse(localStorage.getItem('gross_password_reset_requests') || '[]');
-    const request = resetRequests.find(
-      (r: PasswordResetRequest) =>
-        r.email === resetEmail &&
-        r.recoveryCode === recoveryCode &&
-        r.status === 'code_sent'
-    );
+    // Check if recovery code is valid via DB
+    try {
+      const requests = await api.passwordResets.getByEmail(resetEmail);
+      const request = requests.find(
+        (r: any) => r.recovery_code === recoveryCode && r.status === 'code_sent'
+      );
 
-    setTimeout(() => {
       setModalLoading(false);
 
       if (request) {
@@ -181,7 +166,10 @@ export default function Login() {
       } else {
         setModalError('Invalid or expired recovery code. Please request a new one.');
       }
-    }, 1000);
+    } catch (err) {
+      setModalLoading(false);
+      setModalError('Failed to verify code. Please try again.');
+    }
   };
 
   const handleSetNewPassword = async () => {
@@ -221,32 +209,20 @@ export default function Login() {
 
     setModalLoading(true);
 
-    // Update user password
-    const users = JSON.parse(localStorage.getItem('gross_users') || '[]');
-    const userIndex = users.findIndex((u: any) => u.email === resetEmail);
+    // Update user password and mark request as completed
+    try {
+      const user = await api.users.getByEmail(resetEmail);
 
-    if (userIndex !== -1) {
-      users[userIndex].password = newPassword;
-      localStorage.setItem('gross_users', JSON.stringify(users));
+      if (user) {
+        await api.users.update(user.id, { password: newPassword });
 
-      // Mark reset request as completed
-      const resetRequests = JSON.parse(localStorage.getItem('gross_password_reset_requests') || '[]');
-      const requestIndex = resetRequests.findIndex(
-        (r: PasswordResetRequest) => r.email === resetEmail && r.status === 'code_sent'
-      );
+        const requests = await api.passwordResets.getByEmail(resetEmail);
+        const activeRequest = requests.find((r: any) => r.status === 'code_sent');
+        
+        if (activeRequest) {
+          await api.passwordResets.update(activeRequest.id, { status: 'completed' });
+        }
 
-      if (requestIndex !== -1) {
-        resetRequests[requestIndex].status = 'completed';
-        localStorage.setItem('gross_password_reset_requests', JSON.stringify(resetRequests));
-      }
-
-      // Dispatch storage event for cross-tab sync
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: 'gross_users',
-        newValue: JSON.stringify(users)
-      }));
-
-      setTimeout(() => {
         setModalLoading(false);
         setShowForgotPasswordModal(false);
         toast.success('Password reset successfully! You can now log in with your new password.');
@@ -254,10 +230,13 @@ export default function Login() {
         setRecoveryCode('');
         setNewPassword('');
         setConfirmPassword('');
-      }, 1000);
-    } else {
+      } else {
+        setModalLoading(false);
+        setModalError('User not found. Please try again.');
+      }
+    } catch (err) {
       setModalLoading(false);
-      setModalError('User not found. Please try again.');
+      setModalError('Failed to reset password. Please try again.');
     }
   };
 

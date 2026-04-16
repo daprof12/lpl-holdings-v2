@@ -71,31 +71,85 @@ export const api = {
 
   // Sessions & History
   sessions: {
-    getByUserId: (userId: string) => fetch(`${serverUrl}/sessions/${userId}`, { headers }).then(r => r.json()),
-    create: (data: any) => fetch(`${serverUrl}/sessions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    }).then(r => r.json()),
-    revoke: (id: string) => fetch(`${serverUrl}/sessions/${id}`, { method: 'DELETE', headers }).then(r => r.json()),
-    revokeAll: (userId: string, exemptId: string) => fetch(`${serverUrl}/sessions/user/${userId}/all-except/${exemptId}`, {
-      method: 'DELETE',
-      headers
-    }).then(r => r.json()),
+    getByUserId: async (userId: string) => {
+      const { data, error } = await supabase.from('activity_logs').select('*').eq('actor_id', userId).in('action', ['login', 'logout']).order('created_at', { ascending: false });
+      return error ? [] : data;
+    },
+    create: async (_data: any) => {
+      // Session records come from login actions logged via loginHistory.log
+      return { success: true };
+    },
+    revoke: async (id: string) => {
+      const { error } = await supabase.from('activity_logs').delete().eq('id', id);
+      return { success: !error };
+    },
+    revokeAll: async (userId: string, exemptId: string) => {
+      const { error } = await supabase.from('activity_logs').delete().eq('actor_id', userId).neq('id', exemptId);
+      return { success: !error };
+    },
   },
 
   loginHistory: {
-    getByUserId: (userId: string, limit = 20) => fetch(`${serverUrl}/login-history/${userId}?limit=${limit}`, { headers }).then(r => r.json()),
-    log: (data: any) => fetch(`${serverUrl}/login-history`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    }).then(r => r.json()),
+    getAll: async (limit = 500) => {
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .in('action', ['login', 'logout'])
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (error) {
+        console.error('[API] loginHistory.getAll error:', error);
+        return [];
+      }
+      return data;
+    },
+    getByUserId: async (userId: string, limit = 20) => {
+      const { data, error } = await supabase.from('activity_logs')
+        .select('*')
+        .eq('actor_id', userId)
+        .in('action', ['login', 'logout'])
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      return error ? [] : data;
+    },
+    log: async (data: any) => {
+      const { data: res, error } = await supabase.from('activity_logs').insert({
+        actor_id: data.userId,
+        actor_type: 'user',
+        action: data.action, // 'login' or 'logout'
+        description: `User ${data.action}`,
+        metadata: {
+           device: data.device || 'Unknown',
+           success: data.success,
+           browser: data.browser,
+           ip: data.ip,
+           location: data.location,
+           userAgent: data.userAgent || data.device
+        },
+        resource: 'session',
+        resource_type: 'session',
+        created_at: Date.now()
+      }).select().single();
+      
+      if (error) {
+        console.error('[API] loginHistory.log error:', error);
+        return { success: false, error };
+      }
+      return { success: true, data: res };
+    },
+    deleteById: async (id: string) => {
+      const { error } = await supabase.from('activity_logs').delete().eq('id', id);
+      return { success: !error, error };
+    },
+    deleteAll: async () => {
+      const { error } = await supabase.from('activity_logs').delete().in('action', ['login', 'logout']);
+      return { success: !error, error };
+    },
   },
 
   // Preferences
   preferences: {
-    get: (userId: string) => fetch(`${serverUrl}/users/${userId}/preferences`, { headers }).then(r => r.json()),
+    get: (userId: string) => fetch(`${serverUrl}/users/${userId}/preferences`, { headers }).then(r => r.json()).catch(() => ({})),
     update: (userId: string, updates: any) => fetch(`${serverUrl}/users/${userId}/preferences`, {
       method: 'POST',
       headers,
@@ -341,7 +395,7 @@ export const api = {
       const payload = {
         id: crypto.randomUUID(),
         created_at: Date.now(),
-        updated_at: Date.now(),
+        updated_at: new Date().toISOString(),
         ...data
       };
       const { data: res, error } = await supabase.from('withdrawal_methods').insert(payload).select().single();
@@ -380,7 +434,7 @@ export const api = {
       const payload = {
         id: crypto.randomUUID(),
         created_at: Date.now(),
-        updated_at: Date.now(),
+        updated_at: new Date().toISOString(),
         ...data
       };
       const { data: res, error } = await supabase.from('payment_methods').insert(payload).select().single();
@@ -539,21 +593,72 @@ export const api = {
 
   // Notifications
   notifications: {
-    getByUserId: (userId: string) => fetch(`${serverUrl}/notifications/user/${userId}`, { headers }).then(r => r.json()),
-    getAll: () => fetch(`${serverUrl}/notifications`, { headers }).then(r => r.json()),
-    create: (data: any) => fetch(`${serverUrl}/notifications`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    }).then(r => r.json()),
-    update: (id: string, updates: any) => fetch(`${serverUrl}/notifications/${id}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(updates)
-    }).then(r => r.json()),
-    delete: (id: string) => fetch(`${serverUrl}/notifications/${id}`, { method: 'DELETE', headers }).then(r => r.json()),
-    deleteAllByUserId: (userId: string) => fetch(`${serverUrl}/notifications/user/${userId}`, { method: 'DELETE', headers }).then(r => r.json()),
-    deleteAll: () => fetch(`${serverUrl}/notifications/all`, { method: 'DELETE', headers }).then(r => r.json()),
+    getByUserId: async (userId: string) => {
+      const { data, error } = await supabase
+        .from('system_memos')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      return error ? [] : data;
+    },
+    getAll: async () => {
+      const { data, error } = await supabase
+        .from('system_memos')
+        .select('*')
+        .order('created_at', { ascending: false });
+      return error ? [] : data;
+    },
+    create: async (data: any) => {
+      const payload = {
+        created_at: data.created_at || Date.now(),
+        updated_at: new Date().toISOString(),
+        ...data
+      };
+      // Remove id from payload if it exists but is empty/invalid to let DB handle it
+      if (!payload.id) delete payload.id;
+      
+      const { data: res, error } = await supabase.from('system_memos').insert(payload).select().single();
+      if (error) {
+        console.error('[API] Error creating notification:', error);
+        throw error;
+      }
+      return res;
+    },
+    update: async (id: string, updates: any) => {
+      const { data, error } = await supabase
+        .from('system_memos')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    markAsRead: async (id: string) => {
+      const { data, error } = await supabase
+        .from('system_memos')
+        .update({ is_read: true, read_at: Date.now(), updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase.from('system_memos').delete().eq('id', id);
+      if (error) throw error;
+      return true;
+    },
+    deleteAllByUserId: async (userId: string) => {
+      const { error } = await supabase.from('system_memos').delete().eq('user_id', userId);
+      if (error) throw error;
+      return true;
+    },
+    deleteAll: async () => {
+      const { error } = await supabase.from('system_memos').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error) throw error;
+      return true;
+    },
   },
 
   // CRM Messaging
@@ -599,7 +704,7 @@ export const api = {
         blocks: data.blocks,
         footer_text: data.footerText || data.footer,
         accent_color: data.accentColor,
-        updated_at: Date.now(),
+        updated_at: new Date().toISOString(),
         created_at: Date.now()
       };
       // Only attach id if it is a valid UUID, else let Supabase generate it
@@ -612,7 +717,7 @@ export const api = {
       return res;
     },
     update: async (id: string, updates: any) => {
-      const dbUpdates: any = { updated_at: Date.now() };
+      const dbUpdates: any = { updated_at: new Date().toISOString() };
       if (updates.name !== undefined) dbUpdates.name = updates.name;
       if (updates.category !== undefined) dbUpdates.category = updates.category;
       if (updates.subject !== undefined) dbUpdates.subject = updates.subject;
@@ -632,6 +737,55 @@ export const api = {
       if (error) throw error;
       return data;
     },
+  },
+
+  // Password Resets
+  passwordResets: {
+    getAll: async () => {
+      const { data, error } = await supabase.from('password_resets').select('*').order('created_at', { ascending: false });
+      return error ? [] : data;
+    },
+    getByEmail: async (email: string) => {
+      const { data, error } = await supabase.from('password_resets').select('*').eq('email', email).order('created_at', { ascending: false });
+      return error ? [] : data;
+    },
+    create: async (email: string) => {
+      const { data, error } = await supabase.from('password_resets').insert({ email, status: 'pending', created_at: Date.now(), updated_at: new Date().toISOString() }).select().single();
+      if (error) throw error;
+      return data;
+    },
+    update: async (id: string, updates: any) => {
+      const { data, error } = await supabase.from('password_resets').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    }
+  },
+
+  // User Plans (Subscribers)
+  subscribers: {
+    getByUserId: async (userId: string) => {
+      const { data, error } = await supabase.from('member_packages').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+      return error ? [] : data;
+    },
+    getAll: async () => {
+      const { data, error } = await supabase.from('member_packages').select('*').order('created_at', { ascending: false });
+      return error ? [] : data;
+    },
+    create: async (data: any) => {
+      const { data: res, error } = await supabase.from('member_packages').insert(data).select().single();
+      if (error) throw error;
+      return res;
+    },
+    update: async (id: string, updates: any) => {
+      const { data, error } = await supabase.from('member_packages').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase.from('member_packages').delete().eq('id', id);
+      if (error) throw error;
+      return true;
+    }
   }
 };
 

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Check, Edit, Trash2, Search, Calendar, CreditCard } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -11,10 +11,14 @@ import {
 } from '../ui/dialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatCurrency } from '../../utils/formatNumber';
+import { api } from '../../utils/supabase/api';
+import { toast } from 'sonner';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Subscriber {
   id: string;
+  dbId?: string;
+  userId?: string;
   name: string;
   email: string;
   plan: string;
@@ -78,39 +82,56 @@ export default function SubscriptionManagement() {
   const [showSubscriberDialog, setShowSubscriberDialog] = useState(false);
   const [selectedSubscriber, setSelectedSubscriber] = useState<Subscriber | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [dbSubscribers, setDbSubscribers] = useState<any[]>([]);
 
   const [subscriberFormData, setSubscriberFormData] = useState({
     plan: 'Basic',
     status: 'active',
   });
 
+  useEffect(() => {
+    const fetchSubscribers = async () => {
+      try {
+        const data = await api.subscribers.getAll();
+        setDbSubscribers(data || []);
+      } catch (err) {
+        console.error('Failed to fetch subscribers', err);
+      }
+    };
+    if (activeTab === 'subscribers') {
+      fetchSubscribers();
+    }
+  }, [activeTab]);
+
   // Build subscribers list from real users
   const subscribers = useMemo<Subscriber[]>(() => {
-    return users
-      .filter(u => u.subscriptionPlan && u.subscriptionPlan !== '')
-      .map(u => {
-        // Find matching plan case-insensitively, fallback to whatever string is stored
-        const planObj = TABLE_PLANS.find(p => p.name.toLowerCase() === u.subscriptionPlan?.toLowerCase());
-        
-        // Ensure safe dates to prevent "Invalid Date" crashes
-        const validStartDate = u.createdAt ? new Date(u.createdAt) : new Date();
-        const startDate = isNaN(validStartDate.getTime()) ? new Date() : validStartDate;
-        
-        const nextBilling = new Date(startDate);
-        nextBilling.setMonth(nextBilling.getMonth() + 1);
-        
-        return {
-          id: u.id,
-          name: `${u.firstName || 'Unknown'} ${u.lastName || 'User'}`,
-          email: u.email,
-          plan: planObj ? planObj.name : (u.subscriptionPlan || 'Basic'),
-          status: 'active' as const,
-          startDate: startDate.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-'),
-          nextBilling: nextBilling.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-'),
-          amount: planObj?.minDeposit ?? 0,
-        };
-      });
-  }, [users]);
+    return dbSubscribers.map(sub => {
+      const user = users.find(u => u.id === sub.user_id);
+      const planObj = TABLE_PLANS.find(p => p.name.toLowerCase() === sub.plan?.toLowerCase());
+      
+      const validStartDate = sub.start_date || sub.created_at ? new Date(sub.start_date || sub.created_at) : new Date();
+      const startDate = isNaN(validStartDate.getTime()) ? new Date() : validStartDate;
+      
+      const validNextBilling = sub.next_billing ? new Date(sub.next_billing) : new Date(startDate);
+      if (!sub.next_billing && !isNaN(validNextBilling.getTime())) {
+         validNextBilling.setMonth(validNextBilling.getMonth() + 1);
+      }
+      const nextBilling = isNaN(validNextBilling.getTime()) ? new Date() : validNextBilling;
+
+      return {
+        id: sub.user_id, // fallback ID for react keys
+        dbId: sub.id,
+        userId: sub.user_id,
+        name: user ? `${user.firstName || 'Unknown'} ${user.lastName || 'User'}` : 'Unknown User',
+        email: user?.email || 'Unknown Email',
+        plan: sub.plan || 'Basic',
+        status: sub.status as any,
+        startDate: startDate.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-'),
+        nextBilling: nextBilling.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-'),
+        amount: sub.amount || planObj?.minDeposit || 0,
+      };
+    });
+  }, [dbSubscribers, users]);
 
   const filteredSubscribers = useMemo(() =>
     subscribers.filter(s =>
@@ -125,16 +146,53 @@ export default function SubscriptionManagement() {
     setShowSubscriberDialog(true);
   };
 
-  const handleDeleteSubscriber = (id: string) => {
+  const handleDeleteSubscriber = async (sub: Subscriber) => {
     if (confirm('Remove this subscription?')) {
-      updateProfile(id, { subscriptionPlan: undefined });
+      if (sub.dbId) {
+        try {
+          await api.subscribers.delete(sub.dbId);
+          setDbSubscribers(prev => prev.filter(s => s.id !== sub.dbId));
+        } catch (err) {
+          console.error('Failed to delete subscriber', err);
+        }
+      }
+      updateProfile(sub.id, { subscriptionPlan: undefined });
+      toast.success('Subscription removed');
     }
   };
 
-  const handleSubmitSubscriber = () => {
+  const handleSubmitSubscriber = async () => {
     if (selectedSubscriber) {
-      updateProfile(selectedSubscriber.id, { subscriptionPlan: subscriberFormData.plan });
-      setShowSubscriberDialog(false);
+      try {
+        const planObj = TABLE_PLANS.find(p => p.name.toLowerCase() === subscriberFormData.plan.toLowerCase());
+        const amount = planObj?.minDeposit || 0;
+        
+        if (selectedSubscriber.dbId) {
+          const updated = await api.subscribers.update(selectedSubscriber.dbId, {
+            plan: subscriberFormData.plan,
+            status: subscriberFormData.status,
+            amount: amount,
+            updated_at: new Date().toISOString()
+          });
+          setDbSubscribers(prev => prev.map(s => s.id === selectedSubscriber.dbId ? { ...s, ...updated } : s));
+        } else {
+          const newSub = await api.subscribers.create({
+            user_id: selectedSubscriber.userId || selectedSubscriber.id,
+            plan: subscriberFormData.plan,
+            status: subscriberFormData.status,
+            amount: amount,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+          if (newSub) setDbSubscribers(prev => [newSub, ...prev]);
+        }
+        updateProfile(selectedSubscriber.id, { subscriptionPlan: subscriberFormData.plan });
+        toast.success('Subscription updated successfully');
+        setShowSubscriberDialog(false);
+      } catch (err) {
+        console.error('Failed to update subscription', err);
+        toast.error('Failed to save subscription updates');
+      }
     }
   };
 
@@ -314,7 +372,7 @@ export default function SubscriptionManagement() {
                             <Button variant="ghost" size="sm" onClick={() => handleEditSubscriber(sub)}>
                               <Edit className="w-4 h-4" />
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleDeleteSubscriber(sub.id)}>
+                            <Button variant="ghost" size="sm" onClick={() => handleDeleteSubscriber(sub)}>
                               <Trash2 className="w-4 h-4 text-red-500" />
                             </Button>
                           </div>

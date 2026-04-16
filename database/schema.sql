@@ -297,30 +297,44 @@ CREATE INDEX IF NOT EXISTS idx_trade_history_closed_at ON trade_history(closed_a
 -- 7. NOTIFICATIONS TABLE
 -- ============================================
 CREATE TABLE IF NOT EXISTS notifications (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE, -- Nullable for broadcast
   
   -- Notification Details
-  type TEXT NOT NULL CHECK (type IN ('trade', 'deposit', 'withdrawal', 'kyc', 'signal', 'system', 'promotion')),
-  category TEXT NOT NULL CHECK (category IN ('success', 'error', 'warning', 'info')),
+  type TEXT NOT NULL, -- 'info', 'success', 'warning', 'error', 'promo', 'announcement', 'offer'
   title TEXT NOT NULL,
   message TEXT NOT NULL,
   
   -- Status
   is_read BOOLEAN DEFAULT false,
+  is_visible BOOLEAN DEFAULT true,
   read_at BIGINT,
   
-  -- Action
+  -- Action / Links
   action_url TEXT,
   action_label TEXT,
+  related_id TEXT,
   
-  -- Metadata
-  created_at BIGINT NOT NULL
+  -- Channel & Metadata
+  channels TEXT[] DEFAULT ARRAY['in-app'],
+  metadata JSONB DEFAULT '{}'::jsonb,
+  
+  -- Timestamp
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
 CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
+
+-- Enable RLS
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+CREATE POLICY "Admins have full access to notifications" ON notifications FOR ALL TO authenticated USING (true);
+CREATE POLICY "Users can view their own notifications" ON notifications FOR SELECT TO authenticated USING (user_id = auth.uid()::text OR user_id IS NULL);
+CREATE POLICY "Users can update their own notifications" ON notifications FOR UPDATE TO authenticated USING (user_id = auth.uid()::text);
 
 -- ============================================
 -- 8. USER PREFERENCES TABLE

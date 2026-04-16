@@ -90,7 +90,7 @@ export default function InvestmentsPage() {
   // Transfer state
   const [transferAmount, setTransferAmount] = useState('');
   const [fromWallet, setFromWallet] = useState<'portfolio' | 'ecn' | 'ipo'>('portfolio');
-  const [toWallet, setToWallet] = useState<'portfolio' | 'ecn' | 'ipo'>('ecn');
+  const [toWallet, setToWallet] = useState<'portfolio' | 'ecn' | 'ipo'>('ipo');
 
   // Buy modal state
   const [buyModalOpen, setBuyModalOpen] = useState(false);

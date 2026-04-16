@@ -2,7 +2,7 @@ import { useTrading, Position, Order, HistoryItem } from '../../contexts/Trading
 import { useAuth } from '../../contexts/AuthContext';
 import { useMarketData } from '../../contexts/MarketDataContext';
 import { useSubscription } from '../../contexts/SubscriptionContext';
-import { initialAssets, getMaxLeverageForPlan } from '../../data/assets';
+import { getMaxLeverageForPlan } from '../../data/assets';
 import PositionCalculator from './PositionCalculator';
 import { getMarketStatus, getTimeUntilOpen } from '../../utils/tradingHours';
 import { useState, useEffect } from 'react';
@@ -61,7 +61,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
   const activeSymbol = editingPosition?.symbol || editingOrder?.symbol || symbol;
 
   // Get leverage limit for current asset based on subscription plan
-  const asset = initialAssets.find(a => a.symbol === activeSymbol);
+  const asset = marketData.assets.find(a => a.symbol === activeSymbol);
   const maxLeverage = getMaxLeverageForPlan(asset, plan);
 
   // Get real-time price data for the active symbol

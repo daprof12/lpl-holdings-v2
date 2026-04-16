@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { useMarketData } from '../../contexts/MarketDataContext';
-import { CATALOGUE, CATEGORIES, CATEGORY_COLOURS, BADGE_COLOUR } from '../../utils/assetCatalogue';
+import { CATEGORIES, CATEGORY_COLOURS, BADGE_COLOUR } from '../../utils/assetCatalogue';
 import { formatPercentage } from '../../utils/formatNumber';
 
 interface Props {
@@ -34,7 +34,8 @@ function formatChangePct(pct: number): string {
 }
 
 export default function SymbolSearchModal({ open, onClose, onSelect, currentSymbol }: Props) {
-  const { prices, subscribeToSymbol, unsubscribeFromSymbol } = useMarketData();
+  const marketData = useMarketData();
+  const { prices, subscribeToSymbol, unsubscribeFromSymbol, assets } = marketData;
 
   const [search,   setSearch]   = useState('');
   const [category, setCategory] = useState('All');
@@ -60,17 +61,16 @@ export default function SymbolSearchModal({ open, onClose, onSelect, currentSymb
 
   // ── Filtered list ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    let list = category === 'All' ? CATALOGUE : CATALOGUE.filter(a => a.category === category);
+    let list = category === 'All' ? assets : assets.filter(a => a.category === category);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(a =>
         a.symbol.toLowerCase().includes(q) ||
-        a.name.toLowerCase().includes(q) ||
-        a.exchange.toLowerCase().includes(q),
+        a.name.toLowerCase().includes(q)
       );
     }
     return list;
-  }, [search, category]);
+  }, [search, category, assets]);
 
   // ── Subscribe to visible symbols for live prices ───────────────────────────
   useEffect(() => {
@@ -82,7 +82,7 @@ export default function SymbolSearchModal({ open, onClose, onSelect, currentSymb
 
   // ── Category counts ────────────────────────────────────────────────────────
   const countFor = (cat: string) =>
-    cat === 'All' ? CATALOGUE.length : CATALOGUE.filter(a => a.category === cat).length;
+    cat === 'All' ? assets.length : assets.filter(a => a.category === cat).length;
 
   // ── Toggle favourite ───────────────────────────────────────────────────────
   const toggleFav = (sym: string, e: React.MouseEvent) => {
@@ -186,7 +186,7 @@ export default function SymbolSearchModal({ open, onClose, onSelect, currentSymb
 
                 return (
                   <button
-                    key={`${item.symbol}-${item.exchange}-${idx}`}
+                    key={`${item.symbol}-${idx}`}
                     onClick={() => { onSelect(item.symbol); onClose(); }}
                     className={`w-full grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center px-5 py-3 text-left transition-colors group ${
                       isActive
@@ -215,12 +215,9 @@ export default function SymbolSearchModal({ open, onClose, onSelect, currentSymb
                             {item.category}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
+                        <div className="mt-0.5">
                           <span className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[220px]">
                             {item.name}
-                          </span>
-                          <span className="text-[10px] text-gray-300 dark:text-gray-600 shrink-0">
-                            {item.exchange}
                           </span>
                         </div>
                       </div>

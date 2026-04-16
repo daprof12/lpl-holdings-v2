@@ -4,9 +4,9 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { formatPct, formatCurrency } from '../../utils/formatNumber';
-import { initialAssets, AssetData } from '../../data/assets';
 import { InvestmentOffer, ProfitabilityTier, PROFITABILITY_TIER_LABELS } from '../../contexts/InvestmentContext';
 import { showSuccessToast, showErrorToast } from '../common/ToastNotifications';
+import { useMarketData } from '../../contexts/MarketDataContext';
 
 // Default investment categories for IPO offers
 const DEFAULT_CATEGORIES = [
@@ -62,23 +62,24 @@ export default function EnhancedOfferModal({ offer, onClose, onSave }: EnhancedO
 
   const [customCategories, setCustomCategories] = useState<string[]>(loadCustomCategories());
   const [newCategory, setNewCategory] = useState('');
-  const [selectedAsset, setSelectedAsset] = useState<AssetData | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [uploadedImage, setUploadedImage] = useState<string>(offer?.logo || '');
   const [showAssetSelector, setShowAssetSelector] = useState(false);
   const [assetSearchTerm, setAssetSearchTerm] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const marketData = useMarketData();
 
   // Get unique asset categories for ECN
-  const assetCategories = Array.from(new Set(initialAssets.map(a => a.category)));
+  const assetCategories = Array.from(new Set(marketData.assets.map(a => a.category)));
   const [selectedAssetCategory, setSelectedAssetCategory] = useState<string>('');
 
   // Filter assets by category and search term
-  const filteredAssets = initialAssets.filter(asset => {
+  const filteredAssets = marketData.assets.filter(asset => {
     const matchesCategory = !selectedAssetCategory || asset.category === selectedAssetCategory;
     const matchesSearch = !assetSearchTerm || 
       asset.name.toLowerCase().includes(assetSearchTerm.toLowerCase()) ||
       asset.symbol.toLowerCase().includes(assetSearchTerm.toLowerCase());
-    return matchesCategory && matchesSearch && asset.status === 'active';
+    return matchesCategory && matchesSearch && asset.is_active;
   });
 
   // Combine default and custom categories
@@ -111,13 +112,13 @@ export default function EnhancedOfferModal({ offer, onClose, onSave }: EnhancedO
     }
   };
 
-  const handleAssetSelect = (asset: AssetData) => {
+  const handleAssetSelect = (asset: any) => {
     setSelectedAsset(asset);
     setFormData({
       ...formData,
       name: asset.name,
       assetSymbol: asset.symbol,
-      marketPrice: asset.price,
+      marketPrice: marketData.getPrice(asset.symbol)?.price || 0,
       category: asset.category,
     });
     setShowAssetSelector(false);
@@ -278,19 +279,19 @@ export default function EnhancedOfferModal({ offer, onClose, onSave }: EnhancedO
                             </span>
                           </div>
                           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{asset.name}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{asset.exchange}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{asset.base_currency}</p>
                         </div>
                         <div className="text-right">
-                          <div className="text-lg font-bold">${formatCurrency(asset.price)}</div>
+                          <div className="text-lg font-bold">${formatCurrency(marketData.getPrice(asset.symbol)?.price || 0)}</div>
                           <div className={`text-sm flex items-center justify-end gap-1 ${
-                            asset.change24h >= 0 ? 'text-green-600' : 'text-red-600'
+                            (marketData.getPrice(asset.symbol)?.change || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                           }`}>
-                            {asset.change24h >= 0 ? (
+                            {(marketData.getPrice(asset.symbol)?.change || 0) >= 0 ? (
                               <TrendingUp className="w-3 h-3" />
                             ) : (
                               <TrendingDown className="w-3 h-3" />
                             )}
-                            {asset.change24h >= 0 ? '+' : ''}{formatPct(asset.change24h)}
+                            {(marketData.getPrice(asset.symbol)?.change || 0) >= 0 ? '+' : ''}{formatPct(marketData.getPrice(asset.symbol)?.changePercent || 0)}
                           </div>
                         </div>
                       </div>
@@ -316,10 +317,10 @@ export default function EnhancedOfferModal({ offer, onClose, onSave }: EnhancedO
                 <div className="text-right">
                   <p className="text-sm text-gray-600 dark:text-gray-400">Current Market Price</p>
                   <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                    ${formatCurrency(selectedAsset.price)}
+                    ${formatCurrency(marketData.getPrice(selectedAsset.symbol)?.price || 0)}
                   </p>
-                  <p className={`text-sm ${selectedAsset.change24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {selectedAsset.change24h >= 0 ? '+' : ''}{selectedAsset.change24h}% (24h)
+                  <p className={`text-sm ${(marketData.getPrice(selectedAsset.symbol)?.change || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {(marketData.getPrice(selectedAsset.symbol)?.change || 0) >= 0 ? '+' : ''}{(marketData.getPrice(selectedAsset.symbol)?.changePercent || 0).toFixed(2)}% (24h)
                   </p>
                 </div>
               </div>

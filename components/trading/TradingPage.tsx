@@ -10,7 +10,7 @@ import AccountSummaryFooter from './AccountSummaryFooter';
 import PositionsAndOrders from './PositionsAndOrders';
 import PositionCalculatorPanel from './PositionCalculatorPanel';
 import { useMarketData } from '../../contexts/MarketDataContext';
-import { initialAssets } from '../../data/assets';
+// Using dynamic assets from MarketDataContext
 import { Position, Order } from '../../contexts/TradingContext';
 import { formatPercentage } from '../../utils/formatNumber';
 
@@ -58,8 +58,8 @@ export default function TradingPage() {
   const safeBid   = priceData?.bid   ?? safePrice * 0.9999;
   const safeAsk   = priceData?.ask   ?? safePrice * 1.0001;
 
-  // ── Rich metadata: prefer initialAssets lookup, fall back gracefully ──────
-  const assetRecord = initialAssets.find(a => a.symbol === symbolKey);
+  // ── Rich metadata: prefer marketData.assets lookup, fall back gracefully ──────
+  const assetRecord = marketData.assets.find(a => a.symbol === symbolKey);
   const metadata = assetRecord
     ? { name: assetRecord.name, category: assetRecord.category }
     : { name: symbolKey, category: 'Asset' };

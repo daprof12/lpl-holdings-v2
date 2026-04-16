@@ -10,6 +10,7 @@ import {
   DialogDescription,
 } from '../ui/dialog';
 import { useAuth } from '../../contexts/AuthContext';
+import { api } from '../../utils/supabase/api';
 
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -127,6 +128,35 @@ export default function UserSubscription() {
       status: 'completed',
       notes: `Lifetime Subscription Upgrade: ${selectedPlan.name} Plan`
     });
+
+    try {
+      // Deactivate old plan if exists
+      const existingSubs = await api.subscribers.getByUserId(currentUser.id);
+      if (existingSubs && existingSubs.length > 0) {
+        await api.subscribers.update(existingSubs[0].id, {
+          plan: selectedPlan.name,
+          amount: price,
+          updated_at: new Date().toISOString()
+        });
+      } else {
+        await api.subscribers.create({
+          user_id: currentUser.id,
+          plan: selectedPlan.name,
+          amount: price,
+          status: 'active',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      }
+    } catch (err) {
+      console.error("Failed to sync new plan to database", err);
+    }
+
+    try {
+      await api.tradingAccounts.update(currentUser.id, { balance: newBalance });
+    } catch (e) {
+      console.error("Failed to update trading account balance", e);
+    }
 
     // Update user profile immediately
     updateProfile(currentUser.id, {

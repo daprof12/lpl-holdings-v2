@@ -1,5 +1,5 @@
-// @refresh reset
 import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
+import { supabase } from '../utils/supabase/client';
 
 // ============================================================
 // TYPES
@@ -23,7 +23,7 @@ interface MarketAsset {
   id: string;
   symbol: string;
   name: string;
-  category: 'crypto' | 'forex' | 'stocks' | 'commodities';
+  category: string;
   base_currency: string;
   quote_currency: string;
   min_trade_amount: number;
@@ -31,6 +31,14 @@ interface MarketAsset {
   is_active: boolean;
   icon_url?: string;
   description?: string;
+  leverage?: {
+    basic: number;
+    standard: number;
+    premium?: number;
+    silver?: number;
+    gold?: number;
+    platinum?: number;
+  };
 }
 
 interface MarketDataContextType {
@@ -594,10 +602,51 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
     }
   }, [stopTickInterval]);
 
+  // ── Market asset list (optional DB fetch) ────────────────────────────────
+  const refreshAssets = useCallback(async () => {
+    setAssetsLoading(true);
+    try {
+      const { data, error } = await supabase.from('market_assets').select('*').eq('enabled', true);
+      if (error) {
+        console.error('Error fetching market assets:', error);
+        return;
+      }
+      
+      if (data && data.length > 0) {
+        const mappedAssets: MarketAsset[] = data.map(dbAsset => {
+          let leverageObj = typeof dbAsset.leverage === 'string' ? JSON.parse(dbAsset.leverage) : (dbAsset.leverage || {});
+          return {
+            id: dbAsset.id || dbAsset.symbol,
+            symbol: dbAsset.symbol,
+            name: dbAsset.name,
+            category: dbAsset.category || 'Forex',
+            base_currency: dbAsset.symbol.slice(0, 3) || 'USD',
+            quote_currency: dbAsset.symbol.slice(3) || 'USD',
+            min_trade_amount: dbAsset.min_trade_size || 0.01,
+            max_leverage: leverageObj.platinum || leverageObj.premium || leverageObj.gold || leverageObj.standard || leverageObj.basic || 10,
+            is_active: dbAsset.enabled !== false,
+            leverage: leverageObj
+          };
+        });
+        setAssets(mappedAssets);
+        
+        // Also subscribe to these symbols
+        mappedAssets.forEach(a => subscribeToSymbol(a.symbol));
+      }
+    } catch (err) {
+      console.error('Failed to parse or fetch market assets', err);
+    } finally {
+      setAssetsLoading(false);
+    }
+  }, [subscribeToSymbol]);
+
   // ── Seed popular symbols on mount ────────────────────────────────────────
   useEffect(() => {
     // Fetch forex rates once at startup
     fetchForexRates();
+    
+    // Fetch assets from the database and implicitly subscribe to them
+    refreshAssets();
 
     const defaults = [
       'BTCUSD', 'ETHUSD', 'EURUSD', 'GBPUSD', 'AAPL', 'TSLA',
@@ -614,19 +663,7 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Market asset list (optional DB fetch) ────────────────────────────────
-  const refreshAssets = useCallback(async () => {
-    setAssetsLoading(true);
-    try {
-      // Future: replace with your Supabase endpoint
-      // const res = await fetch(`${serverUrl}/market-assets`, { headers: apiHeaders });
-      // setAssets(await res.json());
-    } catch {
-      // silently ignore
-    } finally {
-      setAssetsLoading(false);
-    }
-  }, []);
+
 
   // ── Helpers exposed through context ────────────────────────────────────
   const getPrice = useCallback((symbol: string): MarketPrice | null => {

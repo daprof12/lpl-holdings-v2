@@ -4,7 +4,7 @@ import { useMarketData } from './MarketDataContext';
 import { useAuth } from './AuthContext';
 import { supabase, serverUrl, publicAnonKey } from '../utils/supabase/client';
 import { api } from '../utils/supabase/api';
-import { initialAssets } from '../data/assets';
+// Using dynamic assets from MarketDataContext instead of initialAssets
 
 // @refresh reset
 
@@ -373,7 +373,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     try {
       const priceData = marketData.getPrice(position.symbol);
       const currentMarketPrice = priceData?.price || position.entryPrice;
-      const asset = initialAssets.find(a => a.symbol === position.symbol);
+      const asset = marketData.assets.find(a => a.symbol === position.symbol);
       const now = Date.now();
 
       const res = await api.positions.create({
@@ -523,7 +523,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     const userId = auth.currentUser?.id;
     if (!userId) return;
     try {
-      const asset = initialAssets.find(a => a.symbol === item.symbol);
+      const asset = marketData.assets.find(a => a.symbol === item.symbol);
       const dbData = {
         user_id: userId,
         symbol: item.symbol,
@@ -665,7 +665,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
           if (shouldFill) {
             console.log(`🎯 Order filled! Converting Order ${order.id} to Position`);
-            const asset = initialAssets.find(a => a.symbol === order.symbol);
+            const asset = marketData.assets.find(a => a.symbol === order.symbol);
             const now = Date.now();
 
             // 1. Mark as filled in DB first (so user sees the state)
