@@ -542,37 +542,112 @@ export const api = {
     delete: (id: string) => fetch(`${serverUrl}/auto-trader/${id}`, { method: 'DELETE', headers }).then(r => r.json())
   },
 
-  // Tickets
+  // Tickets — direct Supabase calls (bypasses broken server routes)
   tickets: {
-    getByUserId: (userId: string) => fetch(`${serverUrl}/tickets/user/${userId}`, { headers }).then(r => r.json()),
-    getMessages: (ticketId: string) => fetch(`${serverUrl}/tickets/${ticketId}/messages`, { headers }).then(r => r.json()),
-    getAll: () => fetch(`${serverUrl}/tickets`, { headers }).then(r => r.json()),
-    create: (data: any) => fetch(`${serverUrl}/tickets`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    }).then(r => r.json()),
-    addMessage: (ticketId: string, data: any) => fetch(`${serverUrl}/tickets/${ticketId}/messages`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    }).then(r => r.json()),
-    updateStatus: (ticketId: string, status: string) => fetch(`${serverUrl}/tickets/${ticketId}/status`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({ status })
-    }).then(r => r.json()),
-    updatePriority: (ticketId: string, priority: string) => fetch(`${serverUrl}/tickets/${ticketId}/priority`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({ priority })
-    }).then(r => r.json()),
-    assign: (ticketId: string, adminId: string) => fetch(`${serverUrl}/tickets/${ticketId}/assign`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({ assigned_to: adminId })
-    }).then(r => r.json()),
-    delete: (ticketId: string) => fetch(`${serverUrl}/tickets/${ticketId}`, { method: 'DELETE', headers }).then(r => r.json())
+    getByUserId: async (userId: string) => {
+      const { data, error } = await supabase.from('support_tickets').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+      if (error) { console.error('[API] tickets.getByUserId error:', error); return []; }
+      return data;
+    },
+    getAll: async () => {
+      const { data, error } = await supabase.from('support_tickets').select('*').order('created_at', { ascending: false });
+      if (error) { console.error('[API] tickets.getAll error:', error); return []; }
+      return data;
+    },
+    getMessages: async (ticketId: string) => {
+      const { data, error } = await supabase.from('ticket_messages').select('*').eq('ticket_id', ticketId).order('created_at', { ascending: true });
+      if (error) { console.error('[API] tickets.getMessages error:', error); return []; }
+      return data;
+    },
+    create: async (data: any) => {
+      const now = Date.now();
+      // Extract initial_message before inserting ticket
+      const { initial_message, ...ticketFields } = data;
+      const ticketPayload = {
+        id: crypto.randomUUID(),
+        ...ticketFields,
+        status: ticketFields.status || 'open',
+        created_at: now,
+        updated_at: now,
+      };
+      const { data: ticket, error } = await supabase.from('support_tickets').insert(ticketPayload).select().single();
+      if (error) {
+        console.error('[API] tickets.create error:', error);
+        throw error;
+      }
+      // Also create the initial message if provided
+      if (initial_message && ticket) {
+        const msgPayload = {
+          id: crypto.randomUUID(),
+          ticket_id: ticket.id,
+          sender_type: 'user',
+          sender_id: ticketFields.user_id,
+          sender_name: ticketFields.user_name || 'User',
+          message: initial_message,
+          created_at: now,
+        };
+        await supabase.from('ticket_messages').insert(msgPayload);
+      }
+      return ticket;
+    },
+    addMessage: async (ticketId: string, data: any) => {
+      const now = Date.now();
+      const msgPayload = {
+        id: crypto.randomUUID(),
+        ticket_id: ticketId,
+        sender_type: data.sender_role || data.sender_type || 'user',
+        sender_id: data.sender_id,
+        sender_name: data.sender_name || 'Unknown',
+        message: data.message,
+        created_at: now,
+      };
+      const { data: msg, error } = await supabase.from('ticket_messages').insert(msgPayload).select().single();
+      if (error) {
+        console.error('[API] tickets.addMessage error:', error);
+        throw error;
+      }
+      // Update ticket updated_at timestamp
+      await supabase.from('support_tickets').update({ updated_at: now }).eq('id', ticketId);
+      return msg;
+    },
+    updateStatus: async (ticketId: string, status: string) => {
+      const now = Date.now();
+      const updates: any = { status, updated_at: now };
+      if (status === 'resolved') {
+        updates.resolved_at = now;
+      }
+      const { data, error } = await supabase.from('support_tickets').update(updates).eq('id', ticketId).select().single();
+      if (error) {
+        console.error('[API] tickets.updateStatus error:', error);
+        throw error;
+      }
+      return data;
+    },
+    updatePriority: async (ticketId: string, priority: string) => {
+      const { data, error } = await supabase.from('support_tickets').update({ priority, updated_at: Date.now() }).eq('id', ticketId).select().single();
+      if (error) {
+        console.error('[API] tickets.updatePriority error:', error);
+        throw error;
+      }
+      return data;
+    },
+    assign: async (ticketId: string, adminId: string) => {
+      const { data, error } = await supabase.from('support_tickets').update({ assigned_to: adminId, assigned_at: Date.now(), updated_at: Date.now() }).eq('id', ticketId).select().single();
+      if (error) {
+        console.error('[API] tickets.assign error:', error);
+        throw error;
+      }
+      return data;
+    },
+    delete: async (ticketId: string) => {
+      // Messages cascade-delete via FK
+      const { error } = await supabase.from('support_tickets').delete().eq('id', ticketId);
+      if (error) {
+        console.error('[API] tickets.delete error:', error);
+        throw error;
+      }
+      return true;
+    },
   },
 
   // KYC
@@ -611,7 +686,7 @@ export const api = {
     create: async (data: any) => {
       const payload = {
         created_at: data.created_at || Date.now(),
-        updated_at: new Date().toISOString(),
+        updated_at: Date.now(),
         ...data
       };
       // Remove id from payload if it exists but is empty/invalid to let DB handle it
@@ -627,7 +702,7 @@ export const api = {
     update: async (id: string, updates: any) => {
       const { data, error } = await supabase
         .from('system_memos')
-        .update({ ...updates, updated_at: new Date().toISOString() })
+        .update({ ...updates, updated_at: Date.now() })
         .eq('id', id)
         .select()
         .single();
@@ -637,7 +712,7 @@ export const api = {
     markAsRead: async (id: string) => {
       const { data, error } = await supabase
         .from('system_memos')
-        .update({ is_read: true, read_at: Date.now(), updated_at: new Date().toISOString() })
+        .update({ is_read: true, read_at: Date.now(), updated_at: Date.now() })
         .eq('id', id)
         .select()
         .single();

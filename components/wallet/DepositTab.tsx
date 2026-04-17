@@ -314,7 +314,7 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
             {!method.isAvailable && (
               <div className="absolute inset-0 bg-gray-100/50 dark:bg-slate-900/50 z-10 flex items-center justify-center">
                 <div className="bg-white dark:bg-slate-800 px-3 py-1 rounded-full text-xs font-bold text-gray-400 border border-gray-200 dark:border-slate-700">
-                  Coming Soon
+                  Not Available
                 </div>
               </div>
             )}

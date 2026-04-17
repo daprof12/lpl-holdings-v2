@@ -628,7 +628,7 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
                       {!method.isAvailable && (
                         <div className="absolute inset-0 z-10 bg-white/40 dark:bg-slate-800/40 rounded-xl flex items-center justify-center p-6 text-center">
                           <div className="bg-white dark:bg-slate-900 px-4 py-2 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700 text-xs font-bold text-red-600 dark:text-red-400">
-                            Withdrawal method currently not available
+                            This method is not available at this time. Kindly choose another method.
                           </div>
                         </div>
                       )}

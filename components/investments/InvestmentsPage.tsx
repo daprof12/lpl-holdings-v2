@@ -546,15 +546,23 @@ export default function InvestmentsPage() {
                     {activeTab !== 'IPO' && (
                     <td className="px-4 py-3">
                       {offer.type === 'ECN' && (offer as any).marketPrice ? (
-                        <div>
-                          <div className="font-semibold">${formatCurrency((offer as any).marketPrice)}</div>
-                          <span className={`text-xs font-semibold ${
-                            offer.price > (offer as any).marketPrice ? 'text-red-600' : 'text-green-600'
-                          }`}>
-                            {offer.price > (offer as any).marketPrice ? '+' : ''}
-                            {((offer.price - (offer as any).marketPrice) / (offer as any).marketPrice * 100).toFixed(2)}% vs offer
-                          </span>
-                        </div>
+                        (() => {
+                          const marketPrice = (offer as any).marketPrice;
+                          const offerPrice = offer.price;
+                          const percentChange = offerPrice > 0 ? ((marketPrice - offerPrice) / offerPrice) * 100 : 0;
+                          const isAbove = percentChange >= 0;
+                          
+                          return (
+                            <div>
+                              <div className="font-semibold">${formatCurrency(marketPrice)}</div>
+                              <span className={`text-xs font-semibold ${
+                                isAbove ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                              }`}>
+                                {isAbove ? '+' : ''}{percentChange.toFixed(2)}% {isAbove ? 'above offer' : 'below offer'}
+                              </span>
+                            </div>
+                          );
+                        })()
                       ) : (
                         <span className="text-gray-400 dark:text-gray-500">—</span>
                       )}
@@ -844,7 +852,7 @@ export default function InvestmentsPage() {
                       ${formatCurrency(parseInt(buyUnits) * selectedOffer.price)}
                     </div>
                     <div className="text-sm text-green-600 dark:text-green-400 mt-2">
-                      Expected Return: +{selectedOffer.profitability}% ({PROFITABILITY_TIER_LABELS[selectedOffer.profitabilityTier as ProfitabilityTier] || 'Average Yield'}) in {selectedOffer.period} days
+                      {PROFITABILITY_TIER_LABELS[selectedOffer.profitabilityTier as ProfitabilityTier] || 'Average Yield'}
                     </div>
                   </div>
                 )}

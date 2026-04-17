@@ -90,7 +90,7 @@ export default function NotificationManagement() {
         {
           event: '*',
           schema: 'public',
-          table: 'notifications'
+          table: 'system_memos'
         },
         (payload) => {
           console.log('Realtime notification change:', payload);

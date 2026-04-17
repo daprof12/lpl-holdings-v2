@@ -2,7 +2,6 @@ import { createContext, useContext, useState, useEffect, useRef, ReactNode } fro
 import { toast } from 'sonner';
 import { useAuth } from './AuthContext';
 import { api } from '../utils/supabase/api';
-import { serverUrl } from '../utils/supabase/client';
 
 // ============================================
 // TYPES
@@ -26,7 +25,7 @@ export interface Ticket {
   subject: string;
   category: 'technical' | 'account' | 'trading' | 'deposit' | 'withdrawal' | 'kyc' | 'other';
   priority: 'low' | 'medium' | 'high' | 'urgent';
-  status: 'open' | 'pending' | 'resolved' | 'closed';
+  status: 'open' | 'pending' | 'in_progress' | 'waiting_user' | 'waiting_admin' | 'resolved' | 'closed';
   messages: TicketMessage[];
   createdAt: Date;
   updatedAt: Date;
@@ -86,10 +85,10 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
               id: msg.id,
               senderId: msg.sender_id,
               senderName: msg.sender_name || 'Unknown',
-              senderRole: msg.sender_role || 'user',
+              senderRole: msg.sender_type || 'user',
               message: msg.message,
               timestamp: new Date(msg.created_at),
-              attachments: msg.attachments ? JSON.parse(msg.attachments) : undefined
+              attachments: Array.isArray(msg.attachments) ? msg.attachments : undefined
             })) : [];
 
             return {
@@ -142,8 +141,13 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
       priority: data.priority,
       status: 'open',
       initial_message: data.message
-    }).then(() => refreshTickets());
-    toast.success('Support ticket created successfully');
+    }).then(() => {
+      refreshTickets();
+      toast.success('Support ticket created successfully');
+    }).catch((err) => {
+      console.error('Failed to create ticket:', err);
+      toast.error('Failed to create ticket');
+    });
   };
 
   const addMessage = (
@@ -158,23 +162,38 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
       sender_name: senderName,
       sender_role: senderRole,
       message
-    }).then(() => refreshTickets());
+    }).then(() => refreshTickets()).catch((err) => {
+      console.error('Failed to send message:', err);
+      toast.error('Failed to send message');
+    });
   };
 
   const updateTicketStatus = (ticketId: string, status: Ticket['status']) => {
-    api.tickets.updateStatus(ticketId, status).then(() => refreshTickets());
+    api.tickets.updateStatus(ticketId, status).then(() => refreshTickets()).catch((err) => {
+      console.error('Failed to update status:', err);
+      toast.error('Failed to update status');
+    });
   };
 
   const updateTicketPriority = (ticketId: string, priority: Ticket['priority']) => {
-    api.tickets.updatePriority(ticketId, priority).then(() => refreshTickets());
+    api.tickets.updatePriority(ticketId, priority).then(() => refreshTickets()).catch((err) => {
+      console.error('Failed to update priority:', err);
+      toast.error('Failed to update priority');
+    });
   };
 
   const assignTicket = (ticketId: string, adminId: string) => {
-    api.tickets.assign(ticketId, adminId).then(() => refreshTickets());
+    api.tickets.assign(ticketId, adminId).then(() => refreshTickets()).catch((err) => {
+      console.error('Failed to assign ticket:', err);
+      toast.error('Failed to assign ticket');
+    });
   };
 
   const deleteTicket = (ticketId: string) => {
-    api.tickets.delete(ticketId).then(() => refreshTickets());
+    api.tickets.delete(ticketId).then(() => refreshTickets()).catch((err) => {
+      console.error('Failed to delete ticket:', err);
+      toast.error('Failed to delete ticket');
+    });
   };
 
   const getUserTickets = (userId: string) => {

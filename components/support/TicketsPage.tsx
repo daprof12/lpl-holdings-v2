@@ -76,7 +76,6 @@ export default function TicketsPage() {
       userName: `${currentUser.firstName} ${currentUser.lastName}`,
     });
 
-    toast.success('Ticket created successfully');
     setShowNewTicket(false);
     setNewTicketData({
       subject: '',

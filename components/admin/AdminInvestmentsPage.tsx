@@ -1053,6 +1053,7 @@ function EditInvestmentModal({
 }) {
   const [formData, setFormData] = useState({
     units: investment.units,
+    totalAmount: investment.totalAmount,
     currentValue: investment.currentValue,
     status: investment.status,
     endDate: new Date(investment.endDate).toISOString().split('T')[0],
@@ -1063,10 +1064,9 @@ function EditInvestmentModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Convert date back to timestamp
     const updates = {
       ...formData,
-      isCustomValue: investment.isCustomValue || formData.currentValue !== investment.currentValue,
+      isCustomValue: true, // Mark as custom to prioritize admin's manually input values going forward
       endDate: new Date(formData.endDate).getTime(),
     };
     
@@ -1108,11 +1108,58 @@ function EditInvestmentModal({
               type="number"
               step="0.01"
               value={formData.units}
-              onChange={(e) => setFormData({ ...formData, units: parseFloat(e.target.value) })}
+              onChange={(e) => {
+                const newUnits = parseFloat(e.target.value) || 0;
+                const newTotalAmount = newUnits * investment.purchasePrice;
+                let newCurrentValue = formData.currentValue;
+                
+                if (investment.offerType === 'IPO') {
+                   newCurrentValue = newTotalAmount * (1 + formData.profitability / 100);
+                } else if (!investment.isCustomValue) {
+                   const oldPricePerUnit = investment.units > 0 ? investment.currentValue / investment.units : investment.purchasePrice;
+                   newCurrentValue = newUnits * oldPricePerUnit;
+                }
+                
+                setFormData({ 
+                   ...formData, 
+                   units: newUnits,
+                   totalAmount: newTotalAmount,
+                   currentValue: parseFloat(newCurrentValue.toFixed(2)) || 0
+                });
+              }}
               required
             />
             <div className="text-xs text-gray-500 mt-1">
               Original units purchased
+            </div>
+          </div>
+
+          <div>
+            <Label>Total Amount ($)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={formData.totalAmount}
+              onChange={(e) => {
+                const newTotalAmount = parseFloat(e.target.value) || 0;
+                const newUnits = investment.purchasePrice > 0 ? newTotalAmount / investment.purchasePrice : 0;
+                let newCurrentValue = formData.currentValue;
+                
+                if (investment.offerType === 'IPO') {
+                   newCurrentValue = newTotalAmount * (1 + formData.profitability / 100);
+                }
+                
+                setFormData({ 
+                   ...formData, 
+                   totalAmount: newTotalAmount,
+                   units: newUnits,
+                   currentValue: parseFloat(newCurrentValue.toFixed(2)) || 0
+                });
+              }}
+              required
+            />
+            <div className="text-xs text-gray-500 mt-1">
+              Total base investment amount
             </div>
           </div>
 
@@ -1136,7 +1183,20 @@ function EditInvestmentModal({
               type="number"
               step="0.01"
               value={formData.profitability}
-              onChange={(e) => setFormData({ ...formData, profitability: parseFloat(e.target.value) })}
+              onChange={(e) => {
+                const newProf = parseFloat(e.target.value) || 0;
+                let newCurrentValue = formData.currentValue;
+                
+                if (investment.offerType === 'IPO') {
+                   newCurrentValue = formData.totalAmount * (1 + newProf / 100);
+                }
+                
+                setFormData({ 
+                   ...formData, 
+                   profitability: newProf,
+                   currentValue: parseFloat(newCurrentValue.toFixed(2)) || 0
+                });
+              }}
               required
             />
             <div className="text-xs text-gray-500 mt-1">

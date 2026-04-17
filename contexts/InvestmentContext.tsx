@@ -184,7 +184,8 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
             profitability: parseFloat(inv.expected_return || 0),
             status: inv.status || 'in-progress',
             createdAt: new Date(inv.created_at).getTime(),
-            showValueAndDate: inv.show_value_and_date || false
+            showValueAndDate: inv.show_value_and_date || false,
+            isCustomValue: inv.is_custom_value || false
           })));
         }
 
@@ -353,6 +354,8 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.endDate !== undefined) dbUpdates.maturity_date = updates.endDate;
     if (updates.showValueAndDate !== undefined) dbUpdates.show_value_and_date = updates.showValueAndDate;
+    if (updates.profitability !== undefined) dbUpdates.expected_return = updates.profitability;
+    if (updates.isCustomValue !== undefined) dbUpdates.is_custom_value = updates.isCustomValue;
 
     try {
       await api.investments.update(id, dbUpdates);
