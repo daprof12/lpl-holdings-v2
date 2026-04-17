@@ -749,6 +749,27 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
           const currentPrice = priceData.price;
 
+          let shouldClose = false;
+          let closeReason = '';
+
+          if (position.side === 'buy') {
+            if (position.takeProfit && currentPrice >= position.takeProfit) { shouldClose = true; closeReason = 'Take Profit'; }
+            if (position.stopLoss && currentPrice <= position.stopLoss) { shouldClose = true; closeReason = 'Stop Loss'; }
+          } else {
+            if (position.takeProfit && currentPrice <= position.takeProfit) { shouldClose = true; closeReason = 'Take Profit'; }
+            if (position.stopLoss && currentPrice >= position.stopLoss) { shouldClose = true; closeReason = 'Stop Loss'; }
+          }
+
+          if (shouldClose) {
+            console.log(`🎯 Position ${position.id} closed due to ${closeReason} at ${currentPrice}`);
+            api.positions.close(position.id, currentPrice)
+              .then(() => toast.info(`${closeReason} hit! Closed ${position.symbol} @ $${currentPrice.toFixed(2)}`))
+              .catch(err => console.error("Failed to process SL/TP close:", err));
+            
+            hasUpdates = true;
+            return null; // Signals removal from active positions
+          }
+
           const priceDiff = position.side === 'buy'
             ? currentPrice - position.entryPrice
             : position.entryPrice - currentPrice;
@@ -769,7 +790,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
             pnl,
             margin,
           };
-        });
+        }).filter(Boolean) as Position[];
 
         const equity = currentAccount.balance + (currentAccount.bonus || 0) + (currentAccount.credit || 0) + totalUnrealizedPnL;
         const availableFunds = equity - totalMargin;

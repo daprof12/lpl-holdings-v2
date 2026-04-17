@@ -8,8 +8,11 @@ import {
   Search, 
   Download, 
   Eye,
-  Trash2 
+  Trash2,
+  Plus,
+  Edit
 } from 'lucide-react';
+import { api } from '../../utils/supabase/api';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { useAuth } from '../../contexts/AuthContext';
@@ -29,7 +32,7 @@ import { toast } from 'sonner';
 
 export default function TransactionManagement() {
   const { users } = useAuth();
-  const { transactions, deposits, approveTransaction, rejectTransaction, deleteTransaction } = useTransactions();
+  const { transactions, deposits, approveTransaction, rejectTransaction, deleteTransaction, refreshTransactions } = useTransactions();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -41,6 +44,87 @@ export default function TransactionManagement() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [statusNotes, setStatusNotes] = useState('');
   const [actionType, setActionType] = useState<'approve' | 'reject'>('approve');
+
+  // New Custom Transaction States
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editData, setEditData] = useState<any>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createData, setCreateData] = useState<any>({
+    userId: '',
+    type: 'deposit',
+    method: 'crypto',
+    amount: '',
+    currency: 'USD',
+    status: 'pending',
+    walletType: 'live',
+    txHash: '',
+  });
+
+  const handleCreateCustomTransaction = async () => {
+    if (!createData.userId || !createData.amount) {
+      toast.error('Please fill in required fields');
+      return;
+    }
+    
+    setIsSubmitting(true);
+    try {
+      await api.transactions.create({
+        user_id: createData.userId,
+        type: createData.type,
+        amount: Number(createData.amount),
+        currency: createData.currency,
+        description: `Custom ${createData.type}`,
+        status: createData.status,
+        payment_method: createData.method,
+        wallet_type: createData.walletType,
+        details: { txHash: createData.txHash || null }
+      });
+      
+      toast.success('Custom transaction created');
+      setShowCreateDialog(false);
+      refreshTransactions();
+      setCreateData({
+        userId: '',
+        type: 'deposit',
+        method: 'crypto',
+        amount: '',
+        currency: 'USD',
+        status: 'pending',
+        walletType: 'live',
+        txHash: '',
+      });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create transaction');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEditTransaction = async () => {
+    if (!editData) return;
+    
+    setIsSubmitting(true);
+    try {
+      await api.transactions.update(editData.id, {
+        type: editData.type,
+        amount: Number(editData.amount),
+        currency: editData.currency,
+        status: editData.status,
+        payment_method: editData.method,
+        wallet_type: editData.walletType,
+        details: { txHash: editData.txHash || null }
+      });
+      
+      toast.success('Transaction updated successfully');
+      setShowEditDialog(false);
+      refreshTransactions();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update transaction');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Get user details for each transaction
   const transactionsWithUserDetails = transactions.map(tx => {
@@ -172,10 +256,16 @@ export default function TransactionManagement() {
             Manage deposit and withdrawal transactions
           </p>
         </div>
-        <Button onClick={exportTransactions}>
-          <Download className="w-4 h-4 mr-2" />
-          Export CSV
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setShowCreateDialog(true)} variant="outline">
+            <Plus className="w-4 h-4 mr-2" />
+            Create Custom
+          </Button>
+          <Button onClick={exportTransactions}>
+            <Download className="w-4 h-4 mr-2" />
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -395,6 +485,25 @@ export default function TransactionManagement() {
                           Reject
                         </Button>
                       )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setEditData({
+                            id: transaction.id,
+                            type: transaction.type,
+                            amount: transaction.amount,
+                            currency: transaction.currency,
+                            status: transaction.status,
+                            method: transaction.method,
+                            walletType: transaction.walletType || 'live',
+                            txHash: transaction.txHash || '',
+                          });
+                          setShowEditDialog(true);
+                        }}
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -697,6 +806,225 @@ export default function TransactionManagement() {
               variant="destructive"
             >
               Delete Transaction
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Custom Transaction Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create Custom Transaction</DialogTitle>
+            <DialogDescription>
+              This transaction record will not automatically affect any user balances.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="mb-2 block">User</Label>
+              <select
+                className="w-full px-3 py-2 border rounded-md dark:bg-slate-700 dark:border-slate-600"
+                value={createData.userId}
+                onChange={e => setCreateData({...createData, userId: e.target.value})}
+              >
+                <option value="">Select User</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>{u.firstName} {u.lastName} ({u.email})</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="mb-2 block">Type</Label>
+                <select
+                  className="w-full px-3 py-2 border rounded-md dark:bg-slate-700 dark:border-slate-600"
+                  value={createData.type}
+                  onChange={e => setCreateData({...createData, type: e.target.value})}
+                >
+                  <option value="deposit">Deposit</option>
+                  <option value="withdrawal">Withdrawal</option>
+                </select>
+              </div>
+              <div>
+                <Label className="mb-2 block">Wallet To Credit/Debit</Label>
+                <select
+                  className="w-full px-3 py-2 border rounded-md dark:bg-slate-700 dark:border-slate-600"
+                  value={createData.walletType}
+                  onChange={e => setCreateData({...createData, walletType: e.target.value})}
+                >
+                  <option value="live">Live Balance</option>
+                  <option value="portfolio">Portfolio Balance</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="mb-2 block">Amount</Label>
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={createData.amount}
+                  onChange={e => setCreateData({...createData, amount: e.target.value})}
+                />
+              </div>
+              <div>
+                <Label className="mb-2 block">Currency</Label>
+                <Input
+                  type="text"
+                  placeholder="USD"
+                  value={createData.currency}
+                  onChange={e => setCreateData({...createData, currency: e.target.value})}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="mb-2 block">Method</Label>
+                <select
+                  className="w-full px-3 py-2 border rounded-md dark:bg-slate-700 dark:border-slate-600"
+                  value={createData.method}
+                  onChange={e => setCreateData({...createData, method: e.target.value})}
+                >
+                  <option value="crypto">Crypto</option>
+                  <option value="bank">Bank</option>
+                  <option value="card">Card</option>
+                  <option value="paypal">PayPal</option>
+                  <option value="skrill">Skrill</option>
+                  <option value="e_wallet">E-Wallet</option>
+                </select>
+              </div>
+              <div>
+                <Label className="mb-2 block">Status</Label>
+                <select
+                  className="w-full px-3 py-2 border rounded-md dark:bg-slate-700 dark:border-slate-600"
+                  value={createData.status}
+                  onChange={e => setCreateData({...createData, status: e.target.value})}
+                >
+                  <option value="pending">Pending</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <Label className="mb-2 block">Transaction Hash / Ref (Optional)</Label>
+              <Input
+                type="text"
+                placeholder="0x..."
+                value={createData.txHash}
+                onChange={e => setCreateData({...createData, txHash: e.target.value})}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
+            <Button onClick={handleCreateCustomTransaction} disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Transaction Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Transaction</DialogTitle>
+            <DialogDescription>
+              Modify transaction details manually
+            </DialogDescription>
+          </DialogHeader>
+          {editData && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="mb-2 block">Type</Label>
+                  <select
+                    className="w-full px-3 py-2 border rounded-md dark:bg-slate-700 dark:border-slate-600"
+                    value={editData.type}
+                    onChange={e => setEditData({...editData, type: e.target.value})}
+                  >
+                    <option value="deposit">Deposit</option>
+                    <option value="withdrawal">Withdrawal</option>
+                  </select>
+                </div>
+                <div>
+                  <Label className="mb-2 block">Wallet</Label>
+                  <select
+                    className="w-full px-3 py-2 border rounded-md dark:bg-slate-700 dark:border-slate-600"
+                    value={editData.walletType}
+                    onChange={e => setEditData({...editData, walletType: e.target.value})}
+                  >
+                    <option value="live">Live Balance</option>
+                    <option value="portfolio">Portfolio Balance</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="mb-2 block">Amount</Label>
+                  <Input
+                    type="number"
+                    value={editData.amount}
+                    onChange={e => setEditData({...editData, amount: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <Label className="mb-2 block">Currency</Label>
+                  <Input
+                    type="text"
+                    value={editData.currency}
+                    onChange={e => setEditData({...editData, currency: e.target.value})}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="mb-2 block">Method</Label>
+                  <select
+                    className="w-full px-3 py-2 border rounded-md dark:bg-slate-700 dark:border-slate-600"
+                    value={editData.method}
+                    onChange={e => setEditData({...editData, method: e.target.value})}
+                  >
+                    <option value="crypto">Crypto</option>
+                    <option value="bank">Bank</option>
+                    <option value="card">Card</option>
+                    <option value="paypal">PayPal</option>
+                    <option value="skrill">Skrill</option>
+                    <option value="e_wallet">E-Wallet</option>
+                  </select>
+                </div>
+                <div>
+                  <Label className="mb-2 block">Status</Label>
+                  <select
+                    className="w-full px-3 py-2 border rounded-md dark:bg-slate-700 dark:border-slate-600"
+                    value={editData.status}
+                    onChange={e => setEditData({...editData, status: e.target.value})}
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="completed">Completed</option>
+                    <option value="failed">Failed</option>
+                    <option value="cancelled">Cancelled</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <Label className="mb-2 block">Transaction Hash / Ref</Label>
+                <Input
+                  type="text"
+                  value={editData.txHash}
+                  onChange={e => setEditData({...editData, txHash: e.target.value})}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>Cancel</Button>
+            <Button onClick={handleEditTransaction} disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Save Changes'}
             </Button>
           </DialogFooter>
         </DialogContent>

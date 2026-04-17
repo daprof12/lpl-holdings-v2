@@ -140,7 +140,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const [userPreferences, setUserPreferences] = useState<any>({
-    theme: 'dark',
+    theme: 'light',
     notifications: { email: true, push: true, sms: false },
     watchlist: []
   });

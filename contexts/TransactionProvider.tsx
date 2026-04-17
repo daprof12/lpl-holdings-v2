@@ -113,7 +113,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
             timestamp: new Date(t.created_at).getTime(),
             completedAt: t.updated_at ? new Date(t.updated_at).getTime() : undefined,
             walletType: t.wallet_type || details.walletType || 'live',
-            txHash: t.transaction_hash,
+            txHash: t.transaction_hash || details.txHash,
             referenceId: t.reference_id,
             // Withdrawal-specific fields from details
             bankName: details.bankName,

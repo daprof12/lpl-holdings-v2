@@ -309,7 +309,7 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                       <div className="font-mono">${(position.margin || 0).toFixed(2)}</div>
                     </div>
                     <div>
-                      <div className="text-gray-500 dark:text-gray-400">Leverage</div>
+                      <div className="text-gray-500 dark:text-gray-400">&nbsp;</div>
                       <div className="font-semibold text-blue-600 dark:text-blue-400">{position.leverage || 1}x</div>
                     </div>
                     <div>
@@ -428,7 +428,7 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                         </div>
                       </div>
                       <div>
-                        <div className="text-gray-500 dark:text-gray-400">Leverage</div>
+                        <div className="text-gray-500 dark:text-gray-400">&nbsp;</div>
                         <div>{order.leverage}x</div>
                       </div>
                     </div>
