@@ -59,6 +59,7 @@ export default function TransactionManagement() {
     status: 'pending',
     walletType: 'live',
     txHash: '',
+    createdAt: new Date().toISOString().slice(0, 16),
   });
 
   const handleCreateCustomTransaction = async () => {
@@ -78,6 +79,7 @@ export default function TransactionManagement() {
         status: createData.status,
         payment_method: createData.method,
         wallet_type: createData.walletType,
+        created_at: new Date(createData.createdAt).getTime(),
         details: { txHash: createData.txHash || null }
       });
       
@@ -113,6 +115,7 @@ export default function TransactionManagement() {
         status: editData.status,
         payment_method: editData.method,
         wallet_type: editData.walletType,
+        created_at: new Date(editData.createdAt).getTime(),
         details: { txHash: editData.txHash || null }
       });
       
@@ -498,6 +501,7 @@ export default function TransactionManagement() {
                             method: transaction.method,
                             walletType: transaction.walletType || 'live',
                             txHash: transaction.txHash || '',
+                            createdAt: new Date(transaction.timestamp).toISOString().slice(0, 16),
                           });
                           setShowEditDialog(true);
                         }}
@@ -917,6 +921,14 @@ export default function TransactionManagement() {
                 onChange={e => setCreateData({...createData, txHash: e.target.value})}
               />
             </div>
+            <div>
+              <Label className="mb-2 block">Date & Time</Label>
+              <Input
+                type="datetime-local"
+                value={createData.createdAt}
+                onChange={e => setCreateData({...createData, createdAt: e.target.value})}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
@@ -1011,8 +1023,18 @@ export default function TransactionManagement() {
                   </select>
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <Label className="mb-2 block">Date & Time</Label>
+                  <Input
+                    type="datetime-local"
+                    value={editData.createdAt}
+                    onChange={e => setEditData({...editData, createdAt: e.target.value})}
+                  />
+                </div>
+              </div>
               <div>
-                <Label className="mb-2 block">Transaction Hash / Ref</Label>
+                <Label className="mb-2 block">Transaction Hash (Optional)</Label>
                 <Input
                   type="text"
                   value={editData.txHash}
