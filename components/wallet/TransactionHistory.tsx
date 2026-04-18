@@ -1,10 +1,18 @@
 import { useState } from 'react';
-import { Search, Download, CheckCircle, Clock, XCircle, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
+import { Search, Download, CheckCircle, Clock, XCircle, ArrowDownCircle, ArrowUpCircle, Eye } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTransactions, Transaction } from '../../contexts/TransactionProvider';
-import { formatTxnId } from '../../utils/formatNumber';
+import { formatTxnId, formatCurrency } from '../../utils/formatNumber';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
+import { Label } from '../ui/label';
 
 export default function TransactionHistory() {
   const { currentUser } = useAuth();
@@ -13,6 +21,8 @@ export default function TransactionHistory() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'deposit' | 'withdrawal'>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'completed' | 'pending' | 'failed' | 'rejected' | 'cancelled'>('all');
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
 
   // Get all transactions for current user
   const transactions = currentUser ? getUserTransactions(currentUser.id) : [];
@@ -120,6 +130,7 @@ export default function TransactionHistory() {
               <th className="text-right py-4 px-6 text-sm text-gray-600 dark:text-gray-400">Fee</th>
               <th className="text-left py-4 px-6 text-sm text-gray-600 dark:text-gray-400">Status</th>
               <th className="text-left py-4 px-6 text-sm text-gray-600 dark:text-gray-400">Reference</th>
+              <th className="text-right py-4 px-6 text-sm text-gray-600 dark:text-gray-400">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -191,6 +202,18 @@ export default function TransactionHistory() {
                   </td>
                   <td className="py-4 px-6 font-mono text-sm text-gray-600 dark:text-gray-400">
                     {formatTxnId(tx.id)}
+                  </td>
+                  <td className="py-4 px-6 text-right">
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => {
+                        setSelectedTransaction(tx);
+                        setShowDetailsDialog(true);
+                      }}
+                    >
+                      <Eye className="w-4 h-4" />
+                    </Button>
                   </td>
                 </tr>
               );
@@ -272,9 +295,23 @@ export default function TransactionHistory() {
                   <span>Date:</span>
                   <span>{formattedDate}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span>Reference:</span>
                   <span className="font-mono">{formatTxnId(tx.id)}</span>
+                </div>
+                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-slate-700/50">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full text-xs h-8"
+                    onClick={() => {
+                      setSelectedTransaction(tx);
+                      setShowDetailsDialog(true);
+                    }}
+                  >
+                    <Eye className="w-3 h-3 mr-1" />
+                    View Full Details
+                  </Button>
                 </div>
               </div>
             </div>
@@ -288,6 +325,95 @@ export default function TransactionHistory() {
           </div>
         )}
       </div>
+
+      {/* Details Dialog */}
+      <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Transaction Details</DialogTitle>
+            <DialogDescription>
+              Complete information about this transaction
+            </DialogDescription>
+          </DialogHeader>
+          {selectedTransaction && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-gray-600 dark:text-gray-400">Transaction ID</Label>
+                  <p className="font-mono">{formatTxnId(selectedTransaction.id)}</p>
+                </div>
+                <div>
+                  <Label className="text-gray-600 dark:text-gray-400">Date & Time</Label>
+                  <p>{new Date(selectedTransaction.timestamp).toLocaleString()}</p>
+                </div>
+                <div>
+                  <Label className="text-gray-600 dark:text-gray-400">Type</Label>
+                  <p className="capitalize">{selectedTransaction.type}</p>
+                </div>
+                <div>
+                  <Label className="text-gray-600 dark:text-gray-400">Method</Label>
+                  <p className="capitalize">{selectedTransaction.method}</p>
+                </div>
+                <div>
+                  <Label className="text-gray-600 dark:text-gray-400">Wallet Type</Label>
+                  <p className="capitalize text-sm">
+                    <span className={`px-2 py-0.5 rounded-full ${
+                      selectedTransaction.walletType === 'portfolio'
+                        ? 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                    }`}>
+                      {selectedTransaction.walletType === 'portfolio' ? 'Portfolio' : 'Live'}
+                    </span>
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-gray-600 dark:text-gray-400">Status</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    {getStatusIcon(selectedTransaction.status)}
+                    <span className="capitalize">{selectedTransaction.status}</span>
+                  </div>
+                </div>
+                <div className="col-span-2 p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg border border-gray-200 dark:border-slate-700">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <Label className="text-gray-600 dark:text-gray-400">Amount Sent</Label>
+                      <p className="text-xl font-bold">
+                        {selectedTransaction.amount} {selectedTransaction.currency}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <Label className="text-gray-600 dark:text-gray-400">USD Equivalent</Label>
+                      <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                        ${formatCurrency(selectedTransaction.usdEquivalent)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {selectedTransaction.adminNotes && (
+                  <div className="col-span-2 border-t border-gray-100 dark:border-slate-700 pt-4">
+                    <Label className="text-blue-600 dark:text-blue-400 font-semibold mb-2 block">
+                      Admin Update/Note:
+                    </Label>
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded text-sm text-blue-700 dark:text-blue-300">
+                      {selectedTransaction.adminNotes}
+                    </div>
+                  </div>
+                )}
+                
+                {selectedTransaction.details?.txHash && (
+                  <div className="col-span-2">
+                    <Label className="text-gray-600 dark:text-gray-400">Transaction Hash</Label>
+                    <p className="font-mono text-xs break-all p-2 bg-gray-100 dark:bg-slate-900 rounded mt-1">
+                      {selectedTransaction.details.txHash}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

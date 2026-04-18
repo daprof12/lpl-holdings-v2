@@ -166,7 +166,7 @@ export default function NotificationManagement() {
         title: createForm.title,
         message: createForm.message,
         channels: createForm.channels,
-        is_visible: true
+        is_visible: false
       });
       
       toast.success('Notification created successfully');

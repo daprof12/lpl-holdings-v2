@@ -188,6 +188,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             credit: Math.max(safeFloat(ta.credit), safeFloat(u.credit)),
             bonus: Math.max(safeFloat(ta.bonus), safeFloat(u.bonus)),
             isVerified: u.email_verified || false,
+            phoneVerified: u.phone_verified || false,
             createdAt: new Date(u.created_at || Date.now()),
             enabledDepositMethods: u.enabled_deposit_methods || [],
             enabledWithdrawalMethods: u.enabled_withdrawal_methods || [],
@@ -322,6 +323,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 credit: parseFloat((ta as any)?.credit ?? u.credit ?? 0),
                 bonus: parseFloat((ta as any)?.bonus ?? u.bonus ?? 0),
                 isVerified: u.email_verified || false,
+                phoneVerified: u.phone_verified || false,
                 createdAt: new Date(u.created_at || Date.now()),
                 enabledDepositMethods: u.enabled_deposit_methods || [],
                 enabledWithdrawalMethods: u.enabled_withdrawal_methods || [],
@@ -430,8 +432,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           if (updated) {
             setCurrentUser(prev => prev ? {
               ...prev,
+              phone: updated.phone || prev.phone,
               liveBalance: parseFloat(updated.balance || 0),
-              kycStatus: updated.kyc_status === 'approved' ? 'verified' : updated.kyc_status === 'rejected' ? 'rejected' : 'pending',
+              isVerified: updated.email_verified || false,
+              phoneVerified: updated.phone_verified || false,
+              kycStatus: updated.kyc_status === 'approved' ? 'verified' : updated.kyc_status === 'rejected' ? 'rejected' : updated.kyc_status === 'pending' ? 'pending' : 'not_started',
               hasInvestmentAccess: updated.has_investment_access,
               hasAutoTradeAccess: updated.has_auto_trade_access,
               hasSignalAccess: updated.has_signal_access,
@@ -568,6 +573,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           balance: parseFloat(user.balance || 0),
           liveBalance: parseFloat(user.balance || 0),
           isVerified: user.email_verified || false,
+          phoneVerified: user.phone_verified || false,
           createdAt: new Date(user.created_at || Date.now()),
           enabledDepositMethods: user.enabled_deposit_methods || [],
           enabledWithdrawalMethods: user.enabled_withdrawal_methods || [],
@@ -771,6 +777,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                                updates.kycStatus === 'rejected' ? 'rejected' : 'pending';
       }
       if (updates.isVerified !== undefined) dbUpdates.email_verified = updates.isVerified;
+      if (updates.phoneVerified !== undefined) dbUpdates.phone_verified = updates.phoneVerified;
       // We removed subscription_plan to avoid adblocker rules; relies entirely on member_packages now.
       if (updates.hasInvestmentAccess !== undefined) dbUpdates.has_investment_access = updates.hasInvestmentAccess;
       if (updates.hasAutoTradeAccess !== undefined) dbUpdates.has_auto_trade_access = updates.hasAutoTradeAccess;
@@ -800,7 +807,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       // Dispatch global event for other components to refresh
       window.dispatchEvent(new Event('usersUpdated'));
-      await loadInitialData();
+      
+      // Refresh only the specific user data instead of the whole database
+      const refreshedUser = await api.users.getById(userId);
+      if (refreshedUser) {
+        setUsers(prev => prev.map(u => u.id === userId ? {
+          ...u,
+          isVerified: refreshedUser.email_verified,
+          phoneVerified: refreshedUser.phone_verified,
+          kycStatus: refreshedUser.kyc_status === 'approved' ? 'verified' : refreshedUser.kyc_status === 'rejected' ? 'rejected' : 'not_started'
+        } : u));
+      }
     } catch (err) {
       console.error('Failed to update profile:', err);
       toast.error('Failed to sync profile update.');

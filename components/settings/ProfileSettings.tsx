@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Camera, Save, Mail, Phone, MapPin, Calendar, CheckCircle, XCircle, Clock, Upload, FileText, Eye, X, AlertCircle, Shield } from 'lucide-react';
+import { Camera, Save, Mail, Phone, MapPin, Calendar, CheckCircle, XCircle, Clock, Upload, FileText, Eye, X, AlertCircle, Shield, AlertTriangle, MessageSquare, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -51,6 +51,14 @@ export default function ProfileSettings() {
   const [uploadingId, setUploadingId]   = useState(false);
   const [uploadingAddr, setUploadingAddr] = useState(false);
   const [viewDoc, setViewDoc]           = useState<KycDoc | null>(null);
+  
+  // Account Deactivation/Deletion
+  const [accountAction, setAccountAction] = useState<'deactivate' | 'delete' | null>(null);
+  const [surveyReason, setSurveyReason] = useState('');
+  const [surveyNotes, setSurveyNotes] = useState('');
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
+  const [actionSuccess, setActionSuccess] = useState(false);
+
   const idInputRef   = useRef<HTMLInputElement>(null);
   const addrInputRef = useRef<HTMLInputElement>(null);
 
@@ -159,6 +167,45 @@ export default function ProfileSettings() {
       console.error('Failed to submit KYC:', err);
       toast.error('Submission failed. Please try again.');
     }
+  };
+
+  const handleAccountActionSubmit = async () => {
+    if (!currentUser || !accountAction) return;
+    if (!surveyReason) {
+      toast.error('Please select a reason');
+      return;
+    }
+
+    setIsSubmittingAction(true);
+    try {
+      // Create a support ticket with the survey data
+      await api.tickets.create({
+        userId: currentUser.id,
+        subject: `Account ${accountAction === 'deactivate' ? 'Deactivation' : 'Deletion'} Request`,
+        category: 'account',
+        priority: 'high',
+        message: `User: ${currentUser.firstName} ${currentUser.lastName} (${currentUser.email})
+Action: ${accountAction.toUpperCase()}
+Reason: ${surveyReason}
+Additional Notes: ${surveyNotes || 'None'}`,
+      });
+
+      // In a real app we might also call an API to flag the user as pending deactivation
+      // for now we just show the success message
+      setActionSuccess(true);
+    } catch (err) {
+      console.error('Failed to process account action:', err);
+      toast.error('Something went wrong. Please contact support directly.');
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  const closeActionModal = () => {
+    setAccountAction(null);
+    setSurveyReason('');
+    setSurveyNotes('');
+    setActionSuccess(false);
   };
 
   if (!currentUser) {
@@ -440,7 +487,7 @@ export default function ProfileSettings() {
           <div className="mt-4 flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
             <AlertCircle className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
             <p className="text-xs text-blue-700 dark:text-blue-300">
-              Email and phone verification are confirmed by our admin team. Please contact support if you need to verify your contact details.
+              Email and phone verification are confirmed by compliance team. Please contact support if you need to verify your contact details.
             </p>
           </div>
         )}
@@ -455,14 +502,14 @@ export default function ProfileSettings() {
               <div className="font-semibold">Deactivate Account</div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Temporarily disable your account</div>
             </div>
-            <Button variant="outline">Deactivate</Button>
+            <Button variant="outline" onClick={() => setAccountAction('deactivate')}>Deactivate</Button>
           </div>
           <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-slate-700">
             <div>
               <div className="font-semibold text-red-600 dark:text-red-400">Delete Account</div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Permanently delete your account and all data</div>
             </div>
-            <Button variant="outline" className="text-red-600 hover:text-red-700 border-red-600">Delete Account</Button>
+            <Button variant="outline" className="text-red-600 hover:text-red-700 border-red-600" onClick={() => setAccountAction('delete')}>Delete Account</Button>
           </div>
         </div>
       </div>
@@ -684,6 +731,102 @@ export default function ProfileSettings() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Account Action Modal (Deactivate/Delete) ──────────────────────── */}
+      {accountAction && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            {!actionSuccess ? (
+              <>
+                <div className="p-6 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${accountAction === 'delete' ? 'bg-red-100 dark:bg-red-900/30 text-red-600' : 'bg-orange-100 dark:bg-orange-900/30 text-orange-600'}`}>
+                      {accountAction === 'delete' ? <Trash2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+                    </div>
+                    <h3 className="text-lg font-bold capitalize">{accountAction} Account</h3>
+                  </div>
+                  <button onClick={closeActionModal} className="p-1 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-4">
+                  <div className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-lg">
+                    <p className="text-sm text-red-700 dark:text-red-400">
+                      {accountAction === 'delete' 
+                        ? "Warning: Deleting your account is permanent and cannot be undone. All your data and funds will be removed."
+                        : "Note: Deactivating your account will temporarily disable your access. You can reach out to support to reactivate it."}
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label>Why are you {accountAction === 'delete' ? 'leaving' : 'deactivating'}? (Required)</Label>
+                    <select 
+                      value={surveyReason} 
+                      onChange={(e) => setSurveyReason(e.target.value)}
+                      className="w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                      <option value="">Select a reason</option>
+                      <option value="Not using anymore">I am not using the account anymore</option>
+                      <option value="Found alternative">Found a better alternative</option>
+                      <option value="Technical issues">Technical issues / Too complex</option>
+                      <option value="Privacy concerns">Privacy concerns</option>
+                      <option value="Poor support">Issue with customer support</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4" />
+                      Additional Feedback (Optional)
+                    </Label>
+                    <textarea 
+                      value={surveyNotes}
+                      onChange={(e) => setSurveyNotes(e.target.value)}
+                      placeholder="Tell us more about how we can improve..."
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm h-24 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-6 bg-gray-50 dark:bg-slate-900/50 border-t border-gray-200 dark:border-slate-700 flex gap-3">
+                  <Button variant="outline" className="flex-1" onClick={closeActionModal} disabled={isSubmittingAction}>
+                    Cancel
+                  </Button>
+                  <Button 
+                    className={`flex-1 ${accountAction === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-600 hover:bg-orange-700'}`}
+                    onClick={handleAccountActionSubmit}
+                    disabled={isSubmittingAction || !surveyReason}
+                  >
+                    {isSubmittingAction ? 'Processing...' : `Confirm ${accountAction}`}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="p-8 text-center space-y-6">
+                <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-full flex items-center justify-center mx-auto">
+                  <CheckCircle className="w-10 h-10" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xl font-bold">Request Submitted</h3>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm">
+                    Your request has been forwarded to our support team for processing. They will reach out to your registered email shortly.
+                  </p>
+                </div>
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                  <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                    "We always strive to serve you better. Even during transitions, we are here to support your requirements."
+                  </p>
+                </div>
+                <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={closeActionModal}>
+                  Close
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}

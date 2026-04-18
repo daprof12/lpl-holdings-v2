@@ -262,7 +262,7 @@ export default function CardDeposit({ walletType = 'live', methods }: { walletTy
               <AlertCircle className="w-5 h-5 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
               <div className="text-sm text-orange-600 dark:text-orange-400">
                 <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li>Deposits are usually instant but may take up to 5 minutes</li>
+                  <li>{currentProcessor?.notes || 'Deposits are usually instant but may take up to 30 min - 2 hours after approval'}</li>
                   <li>Some banks may charge additional foreign transaction fees</li>
                   <li>Ensure your card supports international transactions</li>
                   <li>Daily limit: $10,000 per card</li>

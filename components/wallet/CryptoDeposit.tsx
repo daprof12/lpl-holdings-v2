@@ -459,11 +459,11 @@ export default function CryptoDeposit({ walletType = 'live', methods }: { wallet
         <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg mb-6">
           <div>
             <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Expected Arrival</div>
-            <div className="font-semibold">10-30 min</div>
+            <div className="font-semibold">{selectedMethodConfig?.notes || '30 min - 2 hours after approval'}</div>
           </div>
           <div>
             <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Min Deposit</div>
-            <div className="font-semibold">0.001 {selectedCrypto}</div>
+            <div className="font-semibold">{selectedMethodConfig?.minDeposit || 0.001} {selectedCrypto}</div>
           </div>
           <div>
             <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Network Fee</div>

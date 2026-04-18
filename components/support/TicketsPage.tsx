@@ -22,12 +22,19 @@ import { Label } from '../ui/label';
 
 export default function TicketsPage() {
   const { currentUser } = useAuth();
-  const { createTicket, getUserTickets, addMessage } = useTickets();
+  const { createTicket, getUserTickets, addMessage, markTicketAsRead } = useTickets();
   const location = useLocation();
   const navigate = useNavigate();
   const [showNewTicket, setShowNewTicket] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [newMessage, setNewMessage] = useState('');
+
+  // Mark as read when selected
+  useEffect(() => {
+    if (selectedTicket && currentUser) {
+      markTicketAsRead(selectedTicket.id);
+    }
+  }, [selectedTicket?.id, currentUser?.id]);
 
   const [newTicketData, setNewTicketData] = useState({
     subject: '',

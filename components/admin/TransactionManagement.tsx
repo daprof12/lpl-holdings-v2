@@ -59,6 +59,7 @@ export default function TransactionManagement() {
     status: 'pending',
     walletType: 'live',
     txHash: '',
+    adminNotes: '',
     createdAt: new Date().toISOString().slice(0, 16),
   });
 
@@ -80,6 +81,7 @@ export default function TransactionManagement() {
         payment_method: createData.method,
         wallet_type: createData.walletType,
         created_at: new Date(createData.createdAt).getTime(),
+        admin_notes: createData.adminNotes,
         details: { txHash: createData.txHash || null }
       });
       
@@ -95,6 +97,7 @@ export default function TransactionManagement() {
         status: 'pending',
         walletType: 'live',
         txHash: '',
+        adminNotes: '',
       });
     } catch (err: any) {
       toast.error(err.message || 'Failed to create transaction');
@@ -116,6 +119,7 @@ export default function TransactionManagement() {
         payment_method: editData.method,
         wallet_type: editData.walletType,
         created_at: new Date(editData.createdAt).getTime(),
+        admin_notes: editData.adminNotes,
         details: { txHash: editData.txHash || null }
       });
       
@@ -501,6 +505,7 @@ export default function TransactionManagement() {
                             method: transaction.method,
                             walletType: transaction.walletType || 'live',
                             txHash: transaction.txHash || '',
+                            adminNotes: transaction.adminNotes || '',
                             createdAt: new Date(transaction.timestamp).toISOString().slice(0, 16),
                           });
                           setShowEditDialog(true);
@@ -686,10 +691,10 @@ export default function TransactionManagement() {
                     <p>{new Date(selectedTransaction.processedAt).toLocaleString()}</p>
                   </div>
                 )}
-                {selectedTransaction.notes && (
+                {selectedTransaction.adminNotes && (
                   <div className="col-span-2">
                     <Label className="text-gray-600 dark:text-gray-400">Admin Notes</Label>
-                    <p className="text-sm">{selectedTransaction.notes}</p>
+                    <p className="text-sm">{selectedTransaction.adminNotes}</p>
                   </div>
                 )}
 
@@ -913,12 +918,12 @@ export default function TransactionManagement() {
               </div>
             </div>
             <div>
-              <Label className="mb-2 block">Transaction Hash / Ref (Optional)</Label>
-              <Input
-                type="text"
-                placeholder="0x..."
-                value={createData.txHash}
-                onChange={e => setCreateData({...createData, txHash: e.target.value})}
+              <Label className="mb-2 block">Admin Notes (Optional)</Label>
+              <Textarea
+                placeholder="Add any internal notes..."
+                value={createData.adminNotes}
+                onChange={e => setCreateData({...createData, adminNotes: e.target.value})}
+                rows={3}
               />
             </div>
             <div>
@@ -1039,6 +1044,15 @@ export default function TransactionManagement() {
                   type="text"
                   value={editData.txHash}
                   onChange={e => setEditData({...editData, txHash: e.target.value})}
+                />
+              </div>
+              <div>
+                <Label className="mb-2 block">Admin Notes</Label>
+                <Textarea
+                  placeholder="Notes about this transaction..."
+                  value={editData.adminNotes}
+                  onChange={e => setEditData({...editData, adminNotes: e.target.value})}
+                  rows={3}
                 />
               </div>
             </div>

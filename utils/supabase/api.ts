@@ -610,6 +610,14 @@ export const api = {
       await supabase.from('support_tickets').update({ updated_at: now }).eq('id', ticketId);
       return msg;
     },
+    updateMessage: async (messageId: string, updates: any) => {
+      const { data, error } = await supabase.from('ticket_messages').update(updates).eq('id', messageId).select().single();
+      if (error) {
+        console.error('[API] tickets.updateMessage error:', error);
+        throw error;
+      }
+      return data;
+    },
     updateStatus: async (ticketId: string, status: string) => {
       const now = Date.now();
       const updates: any = { status, updated_at: now };

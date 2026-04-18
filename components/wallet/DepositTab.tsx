@@ -314,7 +314,7 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
             {!method.isAvailable && (
               <div className="absolute inset-0 bg-gray-100/50 dark:bg-slate-900/50 z-10 flex items-center justify-center">
                 <div className="bg-white dark:bg-slate-800 px-3 py-1 rounded-full text-xs font-bold text-gray-400 border border-gray-200 dark:border-slate-700">
-                  Not Available
+                  Unavailable
                 </div>
               </div>
             )}
@@ -326,7 +326,7 @@ export default function DepositTab({ availableBalance, walletType = 'live', onWa
             <p className="text-sm text-gray-600 dark:text-gray-400">{method.description}</p>
             
             <div className="mt-4 flex items-center text-sm font-medium text-blue-600 dark:text-blue-400">
-              {method.isAvailable ? 'Deposit Now' : 'Not Available'}
+              {method.isAvailable ? 'Deposit Now' : 'Unavailable'}
               <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
             </div>
           </button>

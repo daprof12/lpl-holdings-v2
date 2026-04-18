@@ -14,6 +14,7 @@ export interface TicketMessage {
   senderRole: 'user' | 'admin';
   message: string;
   timestamp: Date;
+  isRead: boolean;
   attachments?: string[];
 }
 
@@ -50,6 +51,7 @@ interface TicketContextType {
   assignTicket: (ticketId: string, adminId: string) => void;
   deleteTicket: (ticketId: string) => void;
   getUserTickets: (userId: string) => Ticket[];
+  markTicketAsRead: (ticketId: string) => Promise<void>;
   // New database functions
   refreshTickets: () => Promise<void>;
 }
@@ -88,6 +90,7 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
               senderRole: msg.sender_type || 'user',
               message: msg.message,
               timestamp: new Date(msg.created_at),
+              isRead: msg.is_read || false,
               attachments: Array.isArray(msg.attachments) ? msg.attachments : undefined
             })) : [];
 
@@ -200,6 +203,32 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
     return tickets.filter(ticket => ticket.userId === userId);
   };
 
+  const markTicketAsRead = async (ticketId: string) => {
+    if (!currentUser?.id) return;
+    
+    try {
+      // Find unread messages from admin
+      const ticket = tickets.find(t => t.id === ticketId);
+      if (!ticket) return;
+
+      const unreadAdminMessages = ticket.messages.filter(m => m.senderRole === 'admin' && !m.isRead);
+      if (unreadAdminMessages.length === 0) return;
+
+      // Update in DB
+      await Promise.all(unreadAdminMessages.map(m => 
+        api.tickets.updateMessage(m.id, { is_read: true, read_at: Date.now() })
+      ));
+
+      // Update local state
+      setTickets(prev => prev.map(t => t.id === ticketId ? {
+        ...t,
+        messages: t.messages.map(m => m.senderRole === 'admin' ? { ...m, isRead: true } : m)
+      } : t));
+    } catch (error) {
+      console.error('Failed to mark ticket as read:', error);
+    }
+  };
+
   const value: TicketContextType = {
     tickets,
     loading,
@@ -210,6 +239,7 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
     assignTicket,
     deleteTicket,
     getUserTickets,
+    markTicketAsRead,
     refreshTickets
   };
 

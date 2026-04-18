@@ -180,7 +180,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             read: n.is_read || false,
             userId: n.user_id,
             channels: n.channels || ['in-app'],
-            isVisibleToUser: n.is_visible ?? true,
+            isVisibleToUser: n.is_visible ?? false,
             relatedId: n.related_id,
             metadata: n.metadata
           })));
@@ -261,7 +261,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                read: n.is_read || false,
                userId: n.user_id,
                channels: n.channels || ['in-app'],
-               isVisibleToUser: n.is_visible ?? true,
+               isVisibleToUser: n.is_visible ?? false,
                relatedId: n.related_id,
                metadata: n.metadata
              })));
@@ -289,7 +289,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           message: notification.message,
           user_id: notification.userId,
           channels: notification.channels,
-          is_visible: notification.isVisibleToUser ?? true,
+          is_visible: notification.isVisibleToUser ?? false,
           related_id: notification.relatedId,
           metadata: notification.metadata
         });

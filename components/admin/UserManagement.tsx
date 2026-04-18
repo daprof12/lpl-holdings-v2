@@ -300,28 +300,28 @@ export default function UserManagement() {
       // Notify user when subscription plan changes and update subscribers table
       if (formData.subscriptionPlan && formData.subscriptionPlan !== prevPlan) {
         try {
-           const existingSubs = await api.subscribers.getByUserId(selectedUserId);
-           const planObj = SUBSCRIPTION_PLANS.find(p => p.label.toLowerCase() === formData.subscriptionPlan?.toLowerCase());
-           const amount = planObj?.minDeposit || 0;
-           
-           if (existingSubs && existingSubs.length > 0) {
-             await api.subscribers.update(existingSubs[0].id, {
-               plan: formData.subscriptionPlan,
-               amount: amount,
-               updated_at: new Date().toISOString()
-             });
-           } else {
-             await api.subscribers.create({
-               user_id: selectedUserId,
-               plan: formData.subscriptionPlan,
-               amount: amount,
-               status: 'active',
-               created_at: new Date().toISOString(),
-               updated_at: new Date().toISOString()
-             });
-           }
+          const existingSubs = await api.subscribers.getByUserId(selectedUserId);
+          const planObj = SUBSCRIPTION_PLANS.find(p => p.label.toLowerCase() === formData.subscriptionPlan?.toLowerCase());
+          const amount = planObj?.minDeposit || 0;
+
+          if (existingSubs && existingSubs.length > 0) {
+            await api.subscribers.update(existingSubs[0].id, {
+              plan: formData.subscriptionPlan,
+              amount: amount,
+              updated_at: new Date().toISOString()
+            });
+          } else {
+            await api.subscribers.create({
+              user_id: selectedUserId,
+              plan: formData.subscriptionPlan,
+              amount: amount,
+              status: 'active',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+          }
         } catch (e) {
-           console.error("Failed to update subscribers table:", e);
+          console.error("Failed to update subscribers table:", e);
         }
 
         try {
@@ -369,8 +369,8 @@ export default function UserManagement() {
 
       const balanceLabel = targetType === 'live' ? 'Live Balance'
         : targetType === 'credit' ? 'Credit Balance'
-        : targetType === 'bonus' ? 'Bonus Balance'
-        : (targetType.toUpperCase() + ' Balance');
+          : targetType === 'bonus' ? 'Bonus Balance'
+            : (targetType.toUpperCase() + ' Balance');
 
       await addNotification(selectedUserId, {
         type: 'success',
@@ -723,8 +723,8 @@ export default function UserManagement() {
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded text-xs ${user.accountType === 'vip' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' :
-                          user.accountType === 'premium' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
-                            'bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400'
+                        user.accountType === 'premium' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                          'bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400'
                         }`}>
                         {user.accountType}
                       </span>
@@ -741,8 +741,8 @@ export default function UserManagement() {
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded text-xs ${user.kycStatus === 'verified' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
-                          user.kycStatus === 'rejected' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
-                            'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
+                        user.kycStatus === 'rejected' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                          'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
                         }`}>
                         {user.kycStatus}
                       </span>
@@ -1166,18 +1166,18 @@ export default function UserManagement() {
                           <KycStatusBadge status={(selectedUser as any).phoneVerified ? 'verified' : 'unverified'} />
                           {(selectedUser as any).phoneVerified ? (
                             <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
-                              onClick={() => {
-                                updateProfile(selectedUser.id, { phoneVerified: false } as any);
-                                addNotification(selectedUser.id, { type: 'warning', title: 'Phone Verification Revoked', message: 'Your phone verification has been revoked by an administrator.' });
+                              onClick={async () => {
+                                await updateProfile(selectedUser.id, { phoneVerified: false } as any);
+                                await addNotification(selectedUser.id, { type: 'warning', title: 'Phone Verification Revoked', message: 'Your phone verification has been revoked by an administrator.' });
                                 toast.success('Phone verification revoked');
                               }}>
                               Revoke
                             </Button>
                           ) : (
                             <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white"
-                              onClick={() => {
-                                updateProfile(selectedUser.id, { phoneVerified: true } as any);
-                                addNotification(selectedUser.id, { type: 'success', title: 'Phone Verified', message: 'Your phone number has been verified by an administrator.' });
+                              onClick={async () => {
+                                await updateProfile(selectedUser.id, { phoneVerified: true } as any);
+                                await addNotification(selectedUser.id, { type: 'success', title: 'Phone Verified', message: 'Your phone number has been verified by an administrator.' });
                                 toast.success('Phone verified');
                               }}>
                               Verify
@@ -1191,12 +1191,12 @@ export default function UserManagement() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${selectedUser.kycStatus === 'verified' ? 'bg-green-100 dark:bg-green-900/30' :
-                                selectedUser.kycStatus === 'rejected' ? 'bg-red-100 dark:bg-red-900/30' :
-                                  'bg-gray-100 dark:bg-slate-700'
+                              selectedUser.kycStatus === 'rejected' ? 'bg-red-100 dark:bg-red-900/30' :
+                                'bg-gray-100 dark:bg-slate-700'
                               }`}>
                               <FileText className={`w-4 h-4 ${selectedUser.kycStatus === 'verified' ? 'text-green-600 dark:text-green-400' :
-                                  selectedUser.kycStatus === 'rejected' ? 'text-red-600 dark:text-red-400' :
-                                    'text-gray-400'
+                                selectedUser.kycStatus === 'rejected' ? 'text-red-600 dark:text-red-400' :
+                                  'text-gray-400'
                                 }`} />
                             </div>
                             <div>
@@ -1208,9 +1208,9 @@ export default function UserManagement() {
                             <KycStatusBadge status={selectedUser.kycStatus} />
                             {selectedUser.kycStatus !== 'verified' && (
                               <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white"
-                                onClick={() => {
-                                  updateProfile(selectedUser.id, { kycStatus: 'verified' });
-                                  addNotification(selectedUser.id, { type: 'success', title: 'KYC Approved', message: 'Your KYC verification has been approved. You now have full account access.' });
+                                onClick={async () => {
+                                  await updateProfile(selectedUser.id, { kycStatus: 'verified' });
+                                  await addNotification(selectedUser.id, { type: 'success', title: 'KYC Approved', message: 'Your KYC verification has been approved. You now have full account access.' });
                                   toast.success('KYC approved');
                                 }}>
                                 Approve
@@ -1218,9 +1218,9 @@ export default function UserManagement() {
                             )}
                             {selectedUser.kycStatus !== 'rejected' && (
                               <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                onClick={() => {
-                                  updateProfile(selectedUser.id, { kycStatus: 'rejected' });
-                                  addNotification(selectedUser.id, { type: 'error', title: 'KYC Rejected', message: 'Your KYC documents have been rejected. Please resubmit with clearer documents.' });
+                                onClick={async () => {
+                                  await updateProfile(selectedUser.id, { kycStatus: 'rejected' });
+                                  await addNotification(selectedUser.id, { type: 'error', title: 'KYC Rejected', message: 'Your KYC documents have been rejected. Please resubmit with clearer documents.' });
                                   toast.success('KYC rejected');
                                 }}>
                                 Reject

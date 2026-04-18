@@ -64,7 +64,8 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
           cryptoType: m.currency,
           withdrawalFeeType: m.details?.withdrawalFeeType,
           withdrawalFee: m.details?.withdrawalFee,
-          network: m.details?.network,
+          processingFee: m.fee_percentage,
+          notes: m.processing_time,
           ...(m.details || {})
         })) : [];
         const cryptoMethods = allMethods.filter((m: any) => m.type === 'crypto' && m.enabled && m.isWithdrawal);
@@ -248,8 +249,8 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
       name: 'Cryptocurrency',
       icon: Bitcoin,
       description: `${cryptoOptions.length} crypto option${cryptoOptions.length !== 1 ? 's' : ''} available`,
-      fee: '0.5%',
-      processingTime: '30 min - 2 hours',
+      fee: adminCryptoMethods.length > 0 ? (adminCryptoMethods[0].withdrawalFeeType === 'fixed' ? `$${adminCryptoMethods[0].withdrawalFee}` : `${adminCryptoMethods[0].withdrawalFee}%`) : '0.5%',
+      processingTime: adminCryptoMethods.find(m => m.notes)?.notes || '30 min - 2 hours after approval',
       minWithdraw: 50,
       color: 'from-orange-500 to-orange-600',
       isAvailable: (hasUserSpecificConfig ? userEnabledMethods.includes('crypto') : true) &&
@@ -260,8 +261,8 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
       name: 'E-Wallet',
       icon: DollarSign,
       description: 'PayPal or E-Wallet transfer',
-      fee: '2%',
-      processingTime: '1-2 business days',
+      fee: adminAllMethods.find(m => m.type === 'paypal')?.withdrawalFee ? (adminAllMethods.find(m => m.type === 'paypal').withdrawalFeeType === 'fixed' ? `$${adminAllMethods.find(m => m.type === 'paypal').withdrawalFee}` : `${adminAllMethods.find(m => m.type === 'paypal').withdrawalFee}%`) : '2%',
+      processingTime: adminAllMethods.find(m => m.type === 'paypal' && m.notes)?.notes || '1-2 business days',
       minWithdraw: 25,
       color: 'from-blue-500 to-blue-600',
       isAvailable: adminAllMethods.some(m => m.type === 'paypal' && m.enabled)
@@ -271,8 +272,8 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
       name: 'Bank Transfer',
       icon: Building2,
       description: 'Direct wire to your bank',
-      fee: '$25',
-      processingTime: '2-5 business days',
+      fee: adminAllMethods.find(m => m.type === 'bank')?.withdrawalFee ? (adminAllMethods.find(m => m.type === 'bank').withdrawalFeeType === 'fixed' ? `$${adminAllMethods.find(m => m.type === 'bank').withdrawalFee}` : `${adminAllMethods.find(m => m.type === 'bank').withdrawalFee}%`) : '$25',
+      processingTime: adminAllMethods.find(m => m.type === 'bank' && m.notes)?.notes || '2-5 business days',
       minWithdraw: 500,
       color: 'from-green-500 to-green-600',
       isAvailable: adminAllMethods.some(m => m.type === 'bank' && m.enabled)
@@ -300,8 +301,23 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
       return amt * 0.005;
     }
 
-    if (selectedMethod === 'e_wallet') return amt * 0.02;
-    if (selectedMethod === 'bank') return 25;
+    if (selectedMethod === 'e_wallet') {
+      const paypalConfig = adminAllMethods.find(m => m.type === 'paypal');
+      if (paypalConfig) {
+        if (paypalConfig.withdrawalFeeType === 'fixed') return paypalConfig.withdrawalFee || 0;
+        return (amt * (paypalConfig.withdrawalFee || 2)) / 100;
+      }
+      return amt * 0.02;
+    }
+
+    if (selectedMethod === 'bank') {
+      const bankConfig = adminAllMethods.find(m => m.type === 'bank');
+      if (bankConfig) {
+        if (bankConfig.withdrawalFeeType === 'fixed') return bankConfig.withdrawalFee || 0;
+        return (amt * (bankConfig.withdrawalFee || 0)) / 100;
+      }
+      return 25;
+    }
     return 0;
   };
 

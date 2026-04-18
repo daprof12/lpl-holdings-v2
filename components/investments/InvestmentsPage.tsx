@@ -787,7 +787,7 @@ export default function InvestmentsPage() {
                       </td>
                       <td className="px-4 py-3">{req.units}</td>
                       <td className="px-4 py-3 font-semibold">${formatCurrency(req.totalAmount)}</td>
-                      <td className="px-4 py-3 capitalize">{req.paymentWallet}</td>
+                      <td className="px-4 py-3 uppercase">{req.paymentWallet}</td>
                       <td className="px-4 py-3">{new Date(req.createdAt).toLocaleDateString()}</td>
                       <td className="px-4 py-3">
                         <span className={`px-3 py-1 rounded-full text-xs capitalize ${
@@ -836,13 +836,12 @@ export default function InvestmentsPage() {
                   <Label>Payment Wallet</Label>
                   <select
                     value={paymentWallet}
-                    onChange={(e) => setPaymentWallet(e.target.value as 'portfolio' | 'ecn' | 'ipo' | 'wallet')}
+                    onChange={(e) => setPaymentWallet(e.target.value as 'portfolio' | 'ecn' | 'ipo')}
                     className="w-full mt-1 p-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700"
                   >
                     <option value="portfolio">Portfolio Balance (${formatCurrency(portfolioBalance)})</option>
                     <option value="ipo">IPO Balance (${formatCurrency(ipoBalance)})</option>
                     <option value="ecn">ECN Balance (${formatCurrency(ecnBalance)})</option>
-                    <option value="wallet">Wallet Balance (${formatCurrency(currentUser?.liveBalance || 0)})</option>
                   </select>
                 </div>
                 {buyUnits && parseInt(buyUnits) > 0 && (

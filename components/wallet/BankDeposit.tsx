@@ -332,7 +332,7 @@ export default function BankDeposit({ walletType = 'live', methods }: { walletTy
               className="text-2xl h-14 mb-3"
             />
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Minimum: $100 | Processing time: 1-3 business days
+              Minimum: ${currentMethod?.minDeposit || 100} | Processing time: {currentMethod?.notes || '30 min - 2 hours after approval'}
             </p>
           </div>
 

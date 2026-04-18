@@ -19,6 +19,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useNotifications } from '../../contexts/NotificationContext';
+import { useTickets } from '../../contexts/TicketContext';
 const logoImage = "/logo.png";
 
 interface SidebarProps {
@@ -32,13 +33,14 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const { logout, currentUser } = useAuth();
   const { theme } = useTheme();
   const { notifications } = useNotifications();
+  const { getUserTickets } = useTickets();
+  const userTickets = currentUser ? getUserTickets(currentUser.id) : [];
 
   // Count unread admin ticket replies for the current user
-  const ticketReplyCount = notifications.filter(n =>
-    !n.read &&
-    n.metadata?.ticketId &&
-    (!n.userId || n.userId === currentUser?.id)
-  ).length;
+  const ticketReplyCount = userTickets.reduce((count, ticket) => {
+    const unreadReplies = ticket.messages.filter(m => m.senderRole === 'admin' && !m.isRead).length;
+    return count + unreadReplies;
+  }, 0);
 
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard', visible: true },
