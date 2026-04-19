@@ -74,10 +74,16 @@ function getTVSymbol(ourSymbol: string): string {
   const forex = ['EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'USDJPY', 'USDCHF', 'USDCAD', 'EURGBP', 'EURJPY', 'GBPJPY', 'EURCHF', 'AUDCAD', 'AUDCHF', 'AUDNZD', 'CADJPY', 'CHFJPY', 'EURAUD', 'EURCAD', 'EURNZD', 'GBPAUD', 'GBPCAD', 'GBPCHF', 'GBPNZD', 'NZDCAD', 'NZDCHF', 'NZDJPY'];
   const crypto = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE', 'AVAX', 'DOT', 'MATIC', 'LINK', 'LTC', 'BCH', 'UNI', 'AAVE', 'ATOM', 'FIL', 'NEAR', 'APT', 'ARB', 'OP', 'SUI', 'XMR', 'ALGO', 'VET', 'ICP'];
   
-  if (ourSymbol.includes('USD') && (!forex.includes(ourSymbol))) {
-    const base = ourSymbol.replace('USD', '');
-    if (crypto.includes(base) || ourSymbol.length >= 6) {
-      if (ourSymbol === 'USDTUSD') return 'CRYPTOCAP:USDT'; // Best effort for tether
+  if ((ourSymbol.endsWith('USD') || ourSymbol.endsWith('USDT')) && !forex.includes(ourSymbol)) {
+    let base = ourSymbol;
+    if (ourSymbol.endsWith('USDT')) {
+      base = ourSymbol.slice(0, -4);
+    } else if (ourSymbol.endsWith('USD')) {
+      base = ourSymbol.slice(0, -3);
+    }
+    
+    if (crypto.includes(base) || ourSymbol.length > 5) {
+      if (ourSymbol === 'USDTUSD' || ourSymbol === 'USDCUSD') return 'CRYPTOCAP:USDT'; // Best effort for stablecoins
       return `BINANCE:${base}USDT`; 
     }
   }
