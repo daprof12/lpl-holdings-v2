@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { supabase } from '../utils/supabase/client';
-import { TradingViewSocket } from '../utils/TradingViewSocket';
+import { TradingViewSocket, MarketPrice } from '../utils/TradingViewSocket';
+import { CATALOGUE } from '../utils/assetCatalogue';
+import { initialAssets, deriveFullLeverage } from '../data/assets';
 
 // ============================================================
 // TYPES
@@ -368,49 +370,6 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // ── Database Sync ────────────────────────────────────────────────────────
-  // Periodically upsert live prices to the DB for other components/server-side logic
-  useEffect(() => {
-    const syncInterval = setInterval(async () => {
-      const currentPrices = pricesRef.current;
-      const symbolsToSync = Object.keys(currentPrices);
-      
-      if (symbolsToSync.length === 0) return;
-
-      const updates = symbolsToSync
-        .map(symbol => {
-          const asset = assets.find(a => a.symbol === symbol);
-          if (!asset) return null;
-          
-          return {
-            id: asset.id,
-            symbol: symbol,
-            name: asset.name,
-            category: asset.category,
-            exchange: (asset as any).exchange || '',
-            price: currentPrices[symbol].price,
-            change_24h: currentPrices[symbol].changePercent,
-            volume: currentPrices[symbol].volume ? parseInt(currentPrices[symbol].volume.replace(/[^0-9]/g, '')) || 0 : 0,
-            updated_at: Date.now()
-          };
-        })
-        .filter(Boolean);
-
-      try {
-        // Only sync if we have a valid session (some users might be guests)
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-
-        // Use upsert to update live data for existing symbols
-        await supabase.from('market_assets').upsert(updates, { onConflict: 'symbol' });
-      } catch (err) {
-        console.error('Failed to sync live prices to DB:', err);
-      }
-    }, 30000); // Sync every 30 seconds to balance real-time needs vs DB load
-
-    return () => clearInterval(syncInterval);
-  }, []);
-
   // ── Subscription management ──────────────────────────────────────────────
   
   const subscribeToSymbol = useCallback((symbol: string) => {
@@ -463,11 +422,14 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase.from('market_assets').select('*').eq('enabled', true);
       if (error) {
         console.error('Error fetching market assets:', error);
+        // Fallback to catalogue if DB error
         return;
       }
       
+      let finalAssets: MarketAsset[] = [];
+      
       if (data && data.length > 0) {
-        const mappedAssets: MarketAsset[] = data.map(dbAsset => {
+        finalAssets = data.map(dbAsset => {
           let leverageObj = typeof dbAsset.leverage === 'string' ? JSON.parse(dbAsset.leverage) : (dbAsset.leverage || {});
           return {
             id: dbAsset.id || dbAsset.symbol,
@@ -482,11 +444,25 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
             leverage: leverageObj
           };
         });
-        setAssets(mappedAssets);
-        
-        // Also subscribe to these symbols
-        mappedAssets.forEach(a => subscribeToSymbol(a.symbol));
+      } else {
+        // Fallback to CATALOGUE if DB is empty
+        finalAssets = CATALOGUE.map(c => ({
+          id: `cat_${c.symbol}`,
+          symbol: c.symbol,
+          name: c.name,
+          category: c.category,
+          base_currency: c.symbol.slice(0, 3),
+          quote_currency: c.symbol.slice(3) || 'USD',
+          min_trade_amount: 0.01,
+          max_leverage: 50,
+          is_active: true,
+          leverage: { basic: 10, standard: 20, silver: 35, gold: 50, platinum: 75 }
+        }));
       }
+
+      setAssets(finalAssets);
+      // Also subscribe to these symbols
+      finalAssets.forEach(a => subscribeToSymbol(a.symbol));
     } catch (err) {
       console.error('Failed to parse or fetch market assets', err);
     } finally {
@@ -496,8 +472,6 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
 
   // ── Seed popular symbols on mount ────────────────────────────────────────
   useEffect(() => {
-
-    
     // Fetch assets from the database and implicitly subscribe to them
     refreshAssets();
 
@@ -505,11 +479,59 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
       'BTCUSD', 'ETHUSD', 'EURUSD', 'GBPUSD', 'AAPL', 'TSLA',
       'XAUUSD', 'SPX', 'USDJPY', 'MSFT', 'GOOGL', 'AMZN',
       'BNBUSD', 'SOLUSD', 'XRPUSD', 'NVDA', 'META',
+      'SHIBUSDT', 'PEPEUSD', 'DOGEUSD'
     ];
     defaults.forEach(s => subscribeToSymbol(s));
 
+    // BACKGROUND SYNC: Periodically push live prices to database
+    // This allows the database to stay fresh without manual seeding.
+    const syncInterval = setInterval(async () => {
+      const currentPrices = pricesRef.current;
+      const symbolsToSync = Object.keys(currentPrices);
+      
+      if (symbolsToSync.length === 0) return;
+
+      const now = Date.now();
+      const updates = symbolsToSync.map(symbol => {
+        const p = currentPrices[symbol];
+        if (!p || p.price <= 0) return null;
+
+        // Find the asset to get its metadata from CATALOGUE if not in DB
+        const catItem = CATALOGUE.find(c => c.symbol === symbol);
+        if (!catItem) return null;
+
+        return {
+          symbol,
+          name: catItem.name,
+          category: catItem.category,
+          exchange: catItem.exchange,
+          price: p.price,
+          volume: p.volume || '0',
+          change_24h: p.changePercent || 0,
+          enabled: true,
+          updated_at: now,
+          leverage: { basic: 10, standard: 20, silver: 35, gold: 50, platinum: 75 }
+        };
+      }).filter(Boolean);
+
+      if (updates.length > 0) {
+        try {
+          // Perform a batch upsert to the database
+          // Note: we use symbol as conflict target to update prices
+          const { error } = await supabase.from('market_assets').upsert(updates, { 
+            onConflict: 'symbol',
+            ignoreDuplicates: false 
+          });
+          if (error) console.warn('[MarketData] Background sync error:', error.message);
+        } catch (e) {
+          // Silently fail to avoid console noise
+        }
+      }
+    }, 60000); // Every 60 seconds
+
     return () => {
       subscribedRef.current.clear();
+      clearInterval(syncInterval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

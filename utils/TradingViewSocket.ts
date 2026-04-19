@@ -57,22 +57,6 @@ const INDICES_MAP: Record<string, string> = {
   'HSI': 'HSI:HSI',
   'N225': 'TSE:NI225',
   'FTSE': 'FTSE:UK100',
-  'DE40': 'CAPITALCOM:DE40',
-  'FR40': 'CAPITALCOM:FR40',
-  'AU200': 'CAPITALCOM:AU200',
-  'JP225': 'CAPITALCOM:JP225',
-  'US30': 'CAPITALCOM:US30',
-  'NAS100': 'CAPITALCOM:NAS100',
-  'US500': 'CAPITALCOM:US500',
-  'TLT': 'NASDAQ:TLT',
-  'IEF': 'NASDAQ:IEF',
-  'SHY': 'NASDAQ:SHY',
-  'AGG': 'NYSE:AGG',
-  'LQD': 'NYSE:LQD',
-  'BND': 'NASDAQ:BND',
-  'US10Y': 'TVC:US10Y',
-  'US30Y': 'TVC:US30Y',
-  'US02Y': 'TVC:US02Y',
 };
 
 const REVERSE_INDICES_MAP: Record<string, string> = Object.fromEntries(
@@ -131,12 +115,6 @@ function getTVSymbol(ourSymbol: string): string {
   
   if (STOCKS_NASDAQ.includes(ourSymbol)) return `NASDAQ:${ourSymbol}`;
   if (STOCKS_NYSE.includes(ourSymbol)) return `NYSE:${ourSymbol}`;
-  
-  // ETFs and Funds
-  if (['SPY', 'QQQ', 'VOO', 'VTI', 'IWM', 'EEM', 'EFA', 'VWO', 'VEA'].includes(ourSymbol)) return `AMEX:${ourSymbol}`;
-  
-  // Options (Basic support via indices/underlying if not found)
-  if (ourSymbol.includes('-OPT')) return getTVSymbol(ourSymbol.split('-')[0]);
   
   // Try treating as a stock or generic asset if not explicitly mapped
   return ourSymbol;

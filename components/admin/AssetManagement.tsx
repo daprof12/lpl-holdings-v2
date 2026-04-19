@@ -166,14 +166,9 @@ export default function AssetManagement() {
         const liveData = prices[asset.symbol];
         if (liveData && liveData.price > 0) {
           return {
-            id: asset.id,
+            id: asset.id, // specify the ID for upsert
             symbol: asset.symbol,
-            name: asset.name,
-            category: asset.category,
-            exchange: (asset as any).exchange || '',
             price: liveData.price,
-            change_24h: liveData.changePercent || 0,
-            volume: liveData.volume ? parseInt(liveData.volume.replace(/[^0-9]/g, '')) || 0 : 0,
             updated_at: Date.now()
           };
         }
