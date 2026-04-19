@@ -833,7 +833,7 @@ export const api = {
       return error ? [] : data;
     },
     create: async (email: string) => {
-      const { data, error } = await supabase.from('password_resets').insert({ email, status: 'pending', created_at: Date.now(), updated_at: new Date().toISOString() }).select().single();
+      const { data, error } = await supabase.from('password_resets').insert({ email, status: 'pending', created_at: Date.now(), updated_at: Date.now() }).select().single();
       if (error) throw error;
       return data;
     },

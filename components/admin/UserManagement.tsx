@@ -496,14 +496,10 @@ export default function UserManagement() {
     }
 
     try {
-      // Use Supabase Admin API via our server-side function to update password
-      // Since we are in the admin dashboard, we can assume the admin has privileges
-      const { data, error } = await supabase.rpc('admin_update_user_password', {
-        target_user_id: passwordResetUserId,
-        new_password: newPassword
+      // Update password directly in the users table (since app uses custom password_hash column)
+      await api.users.update(passwordResetUserId, {
+        password_hash: newPassword
       });
-
-      if (error) throw error;
 
       // Send notification to user
       await addNotification(passwordResetUserId, {
@@ -1053,10 +1049,7 @@ export default function UserManagement() {
                       <Label>Password</Label>
                       <div className="flex items-center gap-2 mt-1">
                         <p className="font-mono text-sm flex-1">
-                          {showPassword ? (() => {
-                            const storedPasswords = JSON.parse(localStorage.getItem('gross_passwords') || '{}');
-                            return storedPasswords[selectedUser.email] || 'N/A';
-                          })() : '••••••••'}
+                          {showPassword ? selectedUser.passwordHash || 'N/A' : '••••••••'}
                         </p>
                         <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
                           {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}

@@ -112,7 +112,7 @@ export default function PasswordResetManagement() {
     try {
       const user = await api.users.getByEmail(selectedRequest.email);
       if (user) {
-        await api.users.update(user.id, { password: newPassword });
+        await api.users.update(user.id, { password_hash: newPassword });
       }
 
       await api.passwordResets.update(selectedRequest.id, { status: 'completed' });

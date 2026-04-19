@@ -38,6 +38,7 @@ export interface UserProfile {
   hasInvestmentAccess?: boolean;
   hasAutoTradeAccess?: boolean;
   hasSignalAccess?: boolean;
+  passwordHash?: string;
 }
 
 export interface UserActivity {
@@ -200,7 +201,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               ipo: Math.max(safeFloat(iw.ipo), safeFloat(u.ipo_balance), safeFloat(u.investment_balances?.ipo)),
               ecn: Math.max(safeFloat(iw.ecn), safeFloat(u.ecn_balance), safeFloat(u.investment_balances?.ecn)),
               portfolio: Math.max(safeFloat(iw.portfolio), safeFloat(u.portfolio_balance), safeFloat(u.investment_balances?.portfolio)),
-            }
+            },
+            passwordHash: u.password_hash
+          };
           };
         });
         
@@ -335,7 +338,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                   ipo: Math.max(safeFloat((iw as any)?.ipo), safeFloat(u.ipo_balance), safeFloat(u.investment_balances?.ipo)),
                   ecn: Math.max(safeFloat((iw as any)?.ecn), safeFloat(u.ecn_balance), safeFloat(u.investment_balances?.ecn)),
                   portfolio: Math.max(safeFloat((iw as any)?.portfolio), safeFloat(u.portfolio_balance), safeFloat(u.investment_balances?.portfolio)),
-                }
+                },
+                passwordHash: u.password_hash
+              };
               };
               setCurrentUser(latestUser);
               sessionStorage.setItem('gross_current_user', JSON.stringify(latestUser));
@@ -578,6 +583,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           enabledDepositMethods: user.enabled_deposit_methods || [],
           enabledWithdrawalMethods: user.enabled_withdrawal_methods || [],
           cryptoWallets: user.crypto_wallets || {},
+          passwordHash: user.password_hash,
         };
 
         setCurrentUser(processedUser);

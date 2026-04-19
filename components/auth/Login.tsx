@@ -214,7 +214,7 @@ export default function Login() {
       const user = await api.users.getByEmail(resetEmail);
 
       if (user) {
-        await api.users.update(user.id, { password: newPassword });
+        await api.users.update(user.id, { password_hash: newPassword });
 
         const requests = await api.passwordResets.getByEmail(resetEmail);
         const activeRequest = requests.find((r: any) => r.status === 'code_sent');
