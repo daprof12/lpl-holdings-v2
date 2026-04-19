@@ -204,7 +204,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             },
             passwordHash: u.password_hash
           };
-          };
         });
         
         setUsers(processedUsers);
@@ -340,7 +339,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                   portfolio: Math.max(safeFloat((iw as any)?.portfolio), safeFloat(u.portfolio_balance), safeFloat(u.investment_balances?.portfolio)),
                 },
                 passwordHash: u.password_hash
-              };
               };
               setCurrentUser(latestUser);
               sessionStorage.setItem('gross_current_user', JSON.stringify(latestUser));

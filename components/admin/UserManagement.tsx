@@ -223,7 +223,7 @@ export default function UserManagement() {
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
-        password: '', // Password is not retrieved anymore for security
+        password: user.passwordHash || '', 
         phone: user.phone || '',
         country: user.country || '',
         balance: (user.liveBalance ?? user.balance ?? 0).toString(),

@@ -23,22 +23,22 @@ export interface Transaction {
   status: TransactionStatus;
   timestamp: number;
   completedAt?: number;
-  
+
   // Wallet type: which balance this deposit/withdrawal targets
   walletType?: 'live' | 'portfolio';
-  
+
   // Crypto specific
   walletAddress?: string;
   network?: string;
   txHash?: string;
-  
+
   // Bank specific
   bankName?: string;
   accountNumber?: string;
-  
+
   // Card specific
   cardLast4?: string;
-  
+
   // Admin notes
   adminNotes?: string;
   processedBy?: string;
@@ -99,35 +99,35 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
         currentUser.role === 'admin' ? api.withdrawals.getAll() : api.withdrawals.getByUserId(currentUser.id),
       ]);
 
-        setTransactions(dbTxns.map((t: any) => {
-          const details = t.details || {};
-          return {
-            id: t.id,
-            userId: t.user_id,
-            type: t.type,
-            method: t.payment_method || 'crypto',
-            amount: parseFloat(t.amount),
-            currency: t.currency || details.currency || 'USD',
-            usdEquivalent: parseFloat(t.amount),
-            status: t.status,
-            timestamp: new Date(t.created_at).getTime(),
-            completedAt: t.updated_at ? new Date(t.updated_at).getTime() : undefined,
-            walletType: t.wallet_type || details.walletType || 'live',
-            txHash: t.transaction_hash || details.txHash,
-            referenceId: t.reference_id,
-            // Withdrawal-specific fields from details
-            bankName: details.bankName,
-            accountName: details.accountName,
-            accountNumber: details.accountNumber,
-            routingNumber: details.routingNumber,
-            swiftCode: details.swiftCode,
-            paypalEmail: details.paypalEmail,
-            walletAddress: details.destination_address || details.walletAddress,
-            network: details.network || t.network,
-            adminNotes: t.admin_notes || details.adminNotes,
-            details: details,
-          };
-        }));
+      setTransactions(dbTxns.map((t: any) => {
+        const details = t.details || {};
+        return {
+          id: t.id,
+          userId: t.user_id,
+          type: t.type,
+          method: t.payment_method || 'crypto',
+          amount: parseFloat(t.amount),
+          currency: t.currency || details.currency || 'USD',
+          usdEquivalent: parseFloat(t.amount),
+          status: t.status,
+          timestamp: new Date(t.created_at).getTime(),
+          completedAt: t.updated_at ? new Date(t.updated_at).getTime() : undefined,
+          walletType: t.wallet_type || details.walletType || 'live',
+          txHash: t.transaction_hash || details.txHash,
+          referenceId: t.reference_id,
+          // Withdrawal-specific fields from details
+          bankName: details.bankName,
+          accountName: details.accountName,
+          accountNumber: details.accountNumber,
+          routingNumber: details.routingNumber,
+          swiftCode: details.swiftCode,
+          paypalEmail: details.paypalEmail,
+          walletAddress: details.destination_address || details.walletAddress,
+          network: details.network || t.network,
+          adminNotes: t.admin_notes || details.adminNotes,
+          details: details,
+        };
+      }));
       if (Array.isArray(dbDeps)) setDeposits(dbDeps);
       if (Array.isArray(dbWds)) setWithdrawals(dbWds);
     } catch (err) {
@@ -175,7 +175,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
         status: 'pending',
         proof_data: data.metadata?.proof_data
       });
-      
+
       await api.transactions.create({
         user_id: currentUser.id,
         type: 'deposit',
@@ -186,7 +186,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
         status: 'pending',
         payment_method: data.method || data.payment_method
       });
-      
+
       refreshTransactions();
       return { success: true, deposit };
     } catch (error) {
@@ -205,7 +205,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
         destination_address: data.destination_address || data.walletAddress || data.bankAccountNumber || data.paypalEmail,
         status: 'pending'
       });
-      
+
       await api.transactions.create({
         user_id: currentUser.id,
         type: 'withdrawal',
@@ -231,7 +231,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
           totalDeduction: data.metadata?.totalDeduction,
         }
       });
-      
+
       refreshTransactions();
       return { success: true, withdrawal };
     } catch (error) {
@@ -265,9 +265,9 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
           admin_notes: notes || null,
         });
         // Mirror status and notes on the transactions ledger
-        await api.transactions.update(id, { 
+        await api.transactions.update(id, {
           status: 'completed',
-          admin_notes: notes || null 
+          admin_notes: notes || null
         });
 
         // Credit the correct wallet
@@ -303,7 +303,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
           updated_at: now,
           admin_notes: notes || null,
         });
-        await api.transactions.update(id, { 
+        await api.transactions.update(id, {
           status: 'completed',
           admin_notes: notes || null
         });
@@ -328,28 +328,28 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       if (transaction.type === 'deposit') {
         // Deposit rejected: no balance change needed — was never credited
         await api.deposits.update(refId, {
-          status: 'failed', 
+          status: 'failed',
           reviewed_by: adminId,
           rejection_reason: notes || null,
           admin_notes: notes || null,
           processed_at: now,
           updated_at: now,
         });
-        await api.transactions.update(id, { 
+        await api.transactions.update(id, {
           status: 'rejected',
           admin_notes: notes || null
         });
       } else {
         // Withdrawal rejected: REFUND — amount was deducted at request time
         await api.withdrawals.update(refId, {
-          status: 'rejected', 
+          status: 'rejected',
           reviewed_by: adminId,
           rejection_reason: notes || null,
           admin_notes: notes || null,
           processed_at: now,
           updated_at: now,
         });
-        await api.transactions.update(id, { 
+        await api.transactions.update(id, {
           status: 'rejected',
           admin_notes: notes || null
         });
