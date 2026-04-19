@@ -85,7 +85,9 @@ export default function AccountSummary() {
     },
     {
       title: 'Margin Level',
-      value: marginLevel > 0 ? formatPercentage(marginLevel) : 'N/A',
+      value: marginLevel > 0 
+        ? marginLevel.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%' 
+        : 'N/A',
       icon: TrendingUp,
       color: 'from-teal-500 to-teal-600',
       bgColor: 'bg-teal-50 dark:bg-teal-900/20',

@@ -35,14 +35,14 @@ export interface StrategyConfig {
   symbol: string;
   isActive: boolean;
   mode: 'paper' | 'live';
-  
+
   // Risk management
   investmentAmount: number;
   maxDrawdown: number; // percentage
   stopLossPercent: number;
   takeProfitPercent: number;
   leverage: number;
-  
+
   // Strategy-specific parameters
   parameters: {
     timeframe?: '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
@@ -52,7 +52,7 @@ export interface StrategyConfig {
     gridSpacing?: number;
     trendStrength?: number;
   };
-  
+
   // Performance tracking
   totalTrades: number;
   winningTrades: number;
@@ -140,7 +140,7 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
         })));
       }
     } catch (error) {
-       console.error('Failed to refresh strategies:', error);
+      console.error('Failed to refresh strategies:', error);
     } finally {
       setLoading(false);
       setIsHydrated(true);
@@ -187,10 +187,10 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
       const changes = prices.slice(1).map((price, i) => price - prices[i]);
       const gains = changes.map(change => change > 0 ? change : 0);
       const losses = changes.map(change => change < 0 ? -change : 0);
-      
+
       const avgGain = gains.slice(-period).reduce((a, b) => a + b, 0) / period;
       const avgLoss = losses.slice(-period).reduce((a, b) => a + b, 0) / period;
-      
+
       if (avgLoss === 0) return 100;
       const rs = avgGain / avgLoss;
       return 100 - (100 / (1 + rs));
@@ -345,11 +345,11 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
         const gridLevels = parameters.gridLevels || 5;
         const gridSpacing = parameters.gridSpacing || 1; // percentage
         const basePrice = indicators.sma50;
-        
+
         for (let i = 1; i <= gridLevels; i++) {
           const buyLevel = basePrice * (1 - (gridSpacing * i) / 100);
           const sellLevel = basePrice * (1 + (gridSpacing * i) / 100);
-          
+
           if (Math.abs(currentPrice - buyLevel) < basePrice * 0.001) {
             return {
               strategyId: strategy.id,
@@ -361,7 +361,7 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
               timestamp: new Date(),
             };
           }
-          
+
           if (Math.abs(currentPrice - sellLevel) < basePrice * 0.001) {
             return {
               strategyId: strategy.id,
@@ -423,7 +423,7 @@ export const AutoTraderProvider = ({ children }: { children: ReactNode }) => {
     setStrategies(prev =>
       prev.map(s => s.id === strategyId ? { ...s, isActive } : s)
     );
-    
+
     toast.success(isActive ? `Strategy "${strategy.name}" activated` : `Strategy "${strategy.name}" paused`);
   };
 

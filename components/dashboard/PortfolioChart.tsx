@@ -143,7 +143,7 @@ export default function PortfolioChart() {
         <div>
           <h3 className="text-lg mb-2">Portfolio Performance</h3>
           <div className="flex items-center gap-3">
-            <p className="text-3xl">${lastValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+            <p className="text-3xl">${(account.equity || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             <div className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
               isPositive 
                 ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400' 

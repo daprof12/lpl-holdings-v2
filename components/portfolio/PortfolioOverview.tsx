@@ -322,14 +322,14 @@ export default function PortfolioOverview({ timeframe, portfolioData }: Portfoli
         <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
           <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Avg Win</div>
           <div className="text-xl font-semibold text-green-600 dark:text-green-400">
-            +${portfolioData.avgWin}
+            +${formatCurrency(portfolioData.avgWin)}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
           <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Avg Loss</div>
           <div className="text-xl font-semibold text-red-600 dark:text-red-400">
-            -${portfolioData.avgLoss}
+            -${formatCurrency(portfolioData.avgLoss)}
           </div>
         </div>
 

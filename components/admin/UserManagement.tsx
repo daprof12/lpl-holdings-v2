@@ -509,7 +509,7 @@ export default function UserManagement() {
       await addNotification(passwordResetUserId, {
         type: 'warning',
         title: 'Password Reset',
-        message: 'Your password has been reset by an administrator. Please use your new password to login.',
+        message: 'Your password has been reset. Please use your new password to login.',
         channels: ['in-app'],
       });
 
@@ -1133,7 +1133,7 @@ export default function UserManagement() {
                             <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
                               onClick={() => {
                                 updateProfile(selectedUser.id, { isVerified: false });
-                                addNotification(selectedUser.id, { type: 'warning', title: 'Email Verification Revoked', message: 'Your email verification has been revoked by an administrator.' });
+                                addNotification(selectedUser.id, { type: 'warning', title: 'Email Verification Revoked', message: 'Your email verification has been revoked.' });
                                 toast.success('Email verification revoked');
                               }}>
                               Revoke
@@ -1142,7 +1142,7 @@ export default function UserManagement() {
                             <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white"
                               onClick={() => {
                                 updateProfile(selectedUser.id, { isVerified: true });
-                                addNotification(selectedUser.id, { type: 'success', title: 'Email Verified', message: 'Your email has been verified by an administrator.' });
+                                addNotification(selectedUser.id, { type: 'success', title: 'Email Verified', message: 'Your email has been verified.' });
                                 toast.success('Email verified');
                               }}>
                               Verify
@@ -1168,7 +1168,7 @@ export default function UserManagement() {
                             <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
                               onClick={async () => {
                                 await updateProfile(selectedUser.id, { phoneVerified: false } as any);
-                                await addNotification(selectedUser.id, { type: 'warning', title: 'Phone Verification Revoked', message: 'Your phone verification has been revoked by an administrator.' });
+                                await addNotification(selectedUser.id, { type: 'warning', title: 'Phone Verification Revoked', message: 'Your phone verification has been revoked.' });
                                 toast.success('Phone verification revoked');
                               }}>
                               Revoke
@@ -1177,7 +1177,7 @@ export default function UserManagement() {
                             <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white"
                               onClick={async () => {
                                 await updateProfile(selectedUser.id, { phoneVerified: true } as any);
-                                await addNotification(selectedUser.id, { type: 'success', title: 'Phone Verified', message: 'Your phone number has been verified by an administrator.' });
+                                await addNotification(selectedUser.id, { type: 'success', title: 'Phone Verified', message: 'Your phone number has been verified.' });
                                 toast.success('Phone verified');
                               }}>
                               Verify

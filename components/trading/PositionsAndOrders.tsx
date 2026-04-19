@@ -103,11 +103,9 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm overflow-hidden">
       {/* ── Close Position Confirmation Modal ── */}
       {positionToClose && (() => {
-        const priceDiff = positionToClose.side === 'buy'
-          ? currentPrice - positionToClose.entryPrice
-          : positionToClose.entryPrice - currentPrice;
-        const pnl = priceDiff * positionToClose.units;
+        const pnl = positionToClose.pnl || 0;
         const pnlPositive = pnl >= 0;
+        const currentPosPrice = positionToClose.currentPrice || positionToClose.entryPrice;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             {/* Backdrop */}
@@ -163,7 +161,7 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500 dark:text-gray-400">Close Price</span>
-                    <span className="font-semibold">${currentPrice.toFixed(2)}</span>
+                    <span className="font-semibold">${currentPosPrice.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between border-t border-gray-200 dark:border-slate-600 pt-2 mt-1">
                     <span className="text-gray-500 dark:text-gray-400">Estimated P&L</span>
