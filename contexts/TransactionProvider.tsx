@@ -262,12 +262,11 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
           processed_at: now,
           completed_at: now,
           updated_at: now,
-          admin_notes: notes || null,
         });
         // Mirror status and notes on the transactions ledger
         await api.transactions.update(id, { 
           status: 'completed',
-          admin_notes: notes || null 
+          notes: notes || null 
         }).catch(() => null);
 
         // Credit the correct wallet
@@ -301,11 +300,10 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
           processed_at: now,
           completed_at: now,
           updated_at: now,
-          admin_notes: notes || null,
         });
         await api.transactions.update(id, { 
           status: 'completed',
-          admin_notes: notes || null
+          notes: notes || null
         }).catch(() => null);
       }
 
@@ -328,30 +326,28 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       if (transaction.type === 'deposit') {
         // Deposit rejected: no balance change needed — was never credited
         await api.deposits.update(refId, {
-          status: 'rejected',
+          status: 'failed', // 'rejected' not in deposits_status_check
           reviewed_by: adminId,
           rejection_reason: notes || null,
-          admin_notes: notes || null,
           processed_at: now,
           updated_at: now,
         });
         await api.transactions.update(id, { 
-          status: 'rejected',
-          admin_notes: notes || null
+          status: 'failed', // 'rejected' not in transactions_status_check
+          notes: notes || null // 'notes' is the column in transactions table
         }).catch(() => null);
       } else {
         // Withdrawal rejected: REFUND — amount was deducted at request time
         await api.withdrawals.update(refId, {
-          status: 'rejected',
+          status: 'rejected', // 'rejected' is allowed for withdrawals
           reviewed_by: adminId,
           rejection_reason: notes || null,
-          admin_notes: notes || null,
           processed_at: now,
           updated_at: now,
         });
         await api.transactions.update(id, { 
-          status: 'rejected',
-          admin_notes: notes || null
+          status: 'failed',
+          notes: notes || null
         }).catch(() => null);
 
         // Refund to the wallet the withdrawal came from
