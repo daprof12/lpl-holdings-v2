@@ -12,7 +12,7 @@ import PositionCalculatorPanel from './PositionCalculatorPanel';
 import { useMarketData } from '../../contexts/MarketDataContext';
 // Using dynamic assets from MarketDataContext
 import { Position, Order } from '../../contexts/TradingContext';
-import { formatPercentage } from '../../utils/formatNumber';
+import { formatPercentage, formatPrice, formatCurrency } from '../../utils/formatNumber';
 
 export default function TradingPage() {
   const { symbol } = useParams<{ symbol: string }>();
@@ -120,7 +120,7 @@ export default function TradingPage() {
                 {safePrice > 0 && (
                   <div className="hidden md:flex items-center gap-3 ml-4 pl-4 border-l border-gray-200 dark:border-slate-700">
                     <span className="text-xl font-semibold">
-                      ${safePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 })}
+                      {formatPrice(safePrice)}
                     </span>
                     <span className={`flex items-center gap-1 text-sm px-2 py-0.5 rounded ${
                       isPositive
@@ -131,9 +131,9 @@ export default function TradingPage() {
                       {isPositive ? '+' : ''}{formatPercentage(assetData.change24h)}
                     </span>
                     <span className="text-xs text-gray-500 dark:text-gray-400">
-                      Bid&nbsp;<span className="text-red-500">{safeBid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 })}</span>
+                      Bid&nbsp;<span className="text-red-500">{formatCurrency(safeBid)}</span>
                       &nbsp;·&nbsp;
-                      Ask&nbsp;<span className="text-blue-500">{safeAsk.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 })}</span>
+                      Ask&nbsp;<span className="text-blue-500">{formatCurrency(safeAsk)}</span>
                     </span>
                   </div>
                 )}

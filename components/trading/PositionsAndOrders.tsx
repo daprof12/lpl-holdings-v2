@@ -3,7 +3,7 @@ import { useTrading, Position, Order, HistoryItem } from '../../contexts/Trading
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
 import { Edit, AlertTriangle, X } from 'lucide-react';
-import { formatPercentage, formatTxnId } from '../../utils/formatNumber';
+import { formatPercentage, formatTxnId, formatPrice, formatCurrency, formatNumber } from '../../utils/formatNumber';
 
 // Derive market category from symbol
 const getCategory = (symbol: string): string => {
@@ -96,7 +96,7 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
     };
     addHistory(historyItem);
     
-    toast.info(`Order cancelled: ${order.side.toUpperCase()} ${order.units} ${order.symbol} @ $${order.price.toFixed(2)}`);
+    toast.info(`Order cancelled: ${order.side.toUpperCase()} ${order.units} ${order.symbol} @ ${formatPrice(order.price)}`);
   };
 
   return (
@@ -157,16 +157,16 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500 dark:text-gray-400">Entry Price</span>
-                    <span className="font-semibold">${positionToClose.entryPrice.toFixed(2)}</span>
+                    <span className="font-semibold">{formatPrice(positionToClose.entryPrice)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500 dark:text-gray-400">Close Price</span>
-                    <span className="font-semibold">${currentPosPrice.toFixed(2)}</span>
+                    <span className="font-semibold">{formatPrice(currentPosPrice)}</span>
                   </div>
                   <div className="flex justify-between border-t border-gray-200 dark:border-slate-600 pt-2 mt-1">
                     <span className="text-gray-500 dark:text-gray-400">Estimated P&L</span>
                     <span className={`font-bold ${pnlPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {pnlPositive ? '+' : ''}${pnl.toFixed(2)}
+                      {pnlPositive ? '+' : ''}{formatPrice(pnl)}
                     </span>
                   </div>
                 </div>
@@ -290,21 +290,21 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                     </div>
                     <div>
                       <div className="text-gray-500 dark:text-gray-400">Entry</div>
-                      <div>${(position.entryPrice || 0).toFixed(2)}</div>
+                      <div>{formatPrice(position.entryPrice || 0)}</div>
                     </div>
                     <div>
                       <div className="text-gray-500 dark:text-gray-400">Current</div>
-                      <div>${(position.currentPrice || 0).toFixed(2)}</div>
+                      <div>{formatPrice(position.currentPrice || 0)}</div>
                     </div>
                     <div>
                       <div className="text-gray-500 dark:text-gray-400">P&L</div>
                       <div className={(position.pnl || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
-                        {(position.pnl || 0) >= 0 ? '+' : ''}${(position.pnl || 0).toFixed(2)}
+                        {(position.pnl || 0) >= 0 ? '+' : ''}{formatPrice(position.pnl || 0)}
                       </div>
                     </div>
                     <div>
                       <div className="text-gray-500 dark:text-gray-400">Margin</div>
-                      <div className="font-mono">${(position.margin || 0).toFixed(2)}</div>
+                      <div className="font-mono">{formatPrice(position.margin || 0)}</div>
                     </div>
                     <div>
                       <div className="text-gray-500 dark:text-gray-400">&nbsp;</div>
@@ -321,13 +321,13 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                       {position.stopLoss && (
                         <div>
                           <span className="text-gray-500 dark:text-gray-400">SL: </span>
-                          <span className="text-red-600 dark:text-red-400">${position.stopLoss.toFixed(2)}</span>
+                          <span className="text-red-600 dark:text-red-400">{formatPrice(position.stopLoss)}</span>
                         </div>
                       )}
                       {position.takeProfit && (
                         <div>
                           <span className="text-gray-500 dark:text-gray-400">TP: </span>
-                          <span className="text-green-600 dark:text-green-400">${position.takeProfit.toFixed(2)}</span>
+                          <span className="text-green-600 dark:text-green-400">{formatPrice(position.takeProfit)}</span>
                         </div>
                       )}
                     </div>
@@ -411,7 +411,7 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                       </div>
                       <div>
                         <div className="text-gray-500 dark:text-gray-400">Entry Price</div>
-                        <div className="font-medium">${order.price.toFixed(2)}</div>
+                        <div className="font-medium">{formatPrice(order.price)}</div>
                       </div>
                       <div>
                         <div className="text-gray-500 dark:text-gray-400">Current Price</div>
@@ -422,7 +422,7 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                               ? 'text-red-600 dark:text-red-400'
                               : ''
                         }`}>
-                          ${(order.currentPrice || order.price).toFixed(2)}
+                          {formatPrice(order.currentPrice || order.price)}
                         </div>
                       </div>
                       <div>
@@ -436,13 +436,13 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                         {order.stopLoss && (
                           <div>
                             <span className="text-gray-500 dark:text-gray-400">SL: </span>
-                            <span className="text-red-600 dark:text-red-400">${order.stopLoss.toFixed(2)}</span>
+                            <span className="text-red-600 dark:text-red-400">{formatPrice(order.stopLoss)}</span>
                           </div>
                         )}
                         {order.takeProfit && (
                           <div>
                             <span className="text-gray-500 dark:text-gray-400">TP: </span>
-                            <span className="text-green-600 dark:text-green-400">${order.takeProfit.toFixed(2)}</span>
+                            <span className="text-green-600 dark:text-green-400">{formatPrice(order.takeProfit)}</span>
                           </div>
                         )}
                       </div>
@@ -510,19 +510,19 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
                     </div>
                     <div>
                       <div className="text-gray-500 dark:text-gray-400">Price</div>
-                      <div>${item.price?.toFixed(2) ?? '0.00'}</div>
+                      <div>{formatPrice(item.price || 0)}</div>
                     </div>
                     {item.entryPrice && (
                       <div>
                         <div className="text-gray-500 dark:text-gray-400">Entry</div>
-                        <div>${item.entryPrice.toFixed(2)}</div>
+                        <div>{formatPrice(item.entryPrice)}</div>
                       </div>
                     )}
                     {item.pnl !== undefined && (
                       <div>
                         <div className="text-gray-500 dark:text-gray-400">P&L</div>
                         <div className={item.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
-                          {item.pnl >= 0 ? '+' : ''}${item.pnl.toFixed(2)}
+                          {item.pnl >= 0 ? '+' : ''}{formatPrice(item.pnl)}
                         </div>
                       </div>
                     )}

@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { toast } from 'sonner';
-import { formatPercentage } from '../../utils/formatNumber';
+import { formatPercentage, formatCurrency, formatPrice, formatNumber } from '../../utils/formatNumber';
 
 interface OrderPanelProps {
   symbol: string;
@@ -225,7 +225,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
   const calculateMargin = () => {
     const vol = getActualUnits();
     const lev = parseFloat(leverage) || 1;
-    return ((activePrice * vol) / lev).toFixed(2);
+    return formatNumber((activePrice * vol) / lev);
   };
 
   const calculateOrderInfo = () => {
@@ -304,7 +304,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
     
     if (requiredMargin > account.availableFunds) {
       toast.error('Insufficient Balance', {
-        description: `Required: $${requiredMargin.toFixed(2)} | Available: $${account.availableFunds.toFixed(2)}`,
+        description: `Required: ${formatPrice(requiredMargin)} | Available: ${formatPrice(account.availableFunds)}`,
       });
       return;
     }
@@ -352,7 +352,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
       });
       
       toast.success('Order Executed', {
-        description: `${orderSide.toUpperCase()} ${unitsNum} ${activeSymbol} @ $${execPrice.toFixed(2)} | Margin: $${requiredMargin.toFixed(2)}`,
+        description: `${orderSide.toUpperCase()} ${unitsNum} ${activeSymbol} @ ${formatPrice(execPrice)} | Margin: ${formatPrice(requiredMargin)}`,
       });
     } 
     // Handle Limit/Stop Orders
@@ -376,7 +376,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
       addOrder(newOrder);
       
       toast.success('Order Placed', {
-        description: `${orderType.toUpperCase()} ${orderSide.toUpperCase()} ${unitsNum} ${activeSymbol} @ $${execPrice.toFixed(2)}`,
+        description: `${orderType.toUpperCase()} ${orderSide.toUpperCase()} ${unitsNum} ${activeSymbol} @ ${formatPrice(execPrice)}`,
       });
     }
   };
@@ -544,9 +544,9 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
             <div className="flex justify-between items-center text-sm">
               <span className="text-gray-600 dark:text-gray-400">Price</span>
               <span className="text-lg">
-                ${orderType === 'market' 
-                  ? (orderSide === 'buy' ? activeAsk : activeBid).toFixed(2)
-                  : parseFloat(limitPrice || '0').toFixed(2)
+                {orderType === 'market' 
+                  ? formatPrice(orderSide === 'buy' ? activeAsk : activeBid)
+                  : formatPrice(parseFloat(limitPrice || '0'))
                 }
               </span>
             </div>
@@ -721,7 +721,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
                   <HelpCircle className="w-3 h-3 text-gray-400" />
                 </div>
                 <span className="text-xs">
-                  {orderInfo.margin.toFixed(2)} / {account.balance.toFixed(2)}
+                  {formatNumber(orderInfo.margin)} / {formatNumber(account.balance)}
                 </span>
               </div>
               <div className="w-full h-2 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -746,20 +746,20 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
               
               <div className="flex items-center justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Trade value</span>
-                <span>{orderInfo.tradeValue.toFixed(2)} USD</span>
+                <span>{formatCurrency(orderInfo.tradeValue)} USD</span>
               </div>
               
               <div className="flex items-center justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Reward</span>
                 <span className={orderInfo.reward > 0 ? 'text-green-600 dark:text-green-400' : ''}>
-                  {formatPercentage(orderInfo.rewardPercent)} / {orderInfo.reward.toFixed(2)} USD
+                  {formatPercentage(orderInfo.rewardPercent)} / {formatCurrency(orderInfo.reward)} USD
                 </span>
               </div>
               
               <div className="flex items-center justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Risk</span>
                 <span className={orderInfo.risk > 0 ? 'text-red-600 dark:text-red-400' : ''}>
-                  {formatPercentage(orderInfo.riskPercent)} / {orderInfo.risk.toFixed(2)} USD
+                  {formatPercentage(orderInfo.riskPercent)} / {formatCurrency(orderInfo.risk)} USD
                 </span>
               </div>
             </div>
@@ -797,9 +797,9 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
             }`}
             onClick={handlePlaceOrder}
           >
-            {orderSide === 'buy' ? 'Buy' : 'Sell'} {units} {activeSymbol} @ ${orderType === 'market' 
-              ? (orderSide === 'buy' ? activeAsk : activeBid).toFixed(2)
-              : parseFloat(limitPrice || '0').toFixed(2)
+            {orderSide === 'buy' ? 'Buy' : 'Sell'} {units} {activeSymbol} @ {orderType === 'market' 
+              ? formatPrice(orderSide === 'buy' ? activeAsk : activeBid)
+              : formatPrice(parseFloat(limitPrice || '0'))
             }
           </Button>
         )}

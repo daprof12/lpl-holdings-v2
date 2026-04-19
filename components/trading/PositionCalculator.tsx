@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Calculator, Info } from 'lucide-react';
+import { formatCurrency, formatPrice, formatNumber } from '../../utils/formatNumber';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Button } from '../ui/button';
@@ -193,19 +194,19 @@ export default function PositionCalculator({ currentPrice, onApplyToOrder }: Pos
             <div className="space-y-2">
               <div className="flex justify-between items-center pb-2 border-b border-blue-200 dark:border-blue-800">
                 <span className="text-xs text-gray-600 dark:text-gray-400">Position Size</span>
-                <span className="font-semibold">${results.positionSize.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span className="font-semibold">{formatPrice(results.positionSize)}</span>
               </div>
 
               <div className="flex justify-between items-center pb-2 border-b border-blue-200 dark:border-blue-800">
                 <span className="text-xs text-gray-600 dark:text-gray-400">Required Margin</span>
-                <span className="font-semibold">${results.margin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span className="font-semibold">{formatPrice(results.margin)}</span>
               </div>
 
               {results.potentialProfit > 0 && (
                 <div className="flex justify-between items-center pb-2 border-b border-blue-200 dark:border-blue-800">
                   <span className="text-xs text-gray-600 dark:text-gray-400">Potential Profit</span>
                   <span className="font-semibold text-green-600 dark:text-green-400">
-                    +${results.potentialProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    +{formatPrice(results.potentialProfit)}
                   </span>
                 </div>
               )}
@@ -214,7 +215,7 @@ export default function PositionCalculator({ currentPrice, onApplyToOrder }: Pos
                 <div className="flex justify-between items-center pb-2 border-b border-blue-200 dark:border-blue-800">
                   <span className="text-xs text-gray-600 dark:text-gray-400">Potential Loss</span>
                   <span className="font-semibold text-red-600 dark:text-red-400">
-                    -${results.potentialLoss.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    -{formatPrice(results.potentialLoss)}
                   </span>
                 </div>
               )}
