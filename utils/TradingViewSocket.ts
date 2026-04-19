@@ -34,6 +34,32 @@ const REVERSE_COMMODITIES_MAP: Record<string, string> = {
   'KRAKEN:USDTUSD': 'USDTUSD'
 };
 
+const INDICES_MAP: Record<string, string> = {
+  'SPX': 'SP:SPX',
+  'NDX': 'NASDAQ:NDX',
+  'DJI': 'DJ:DJI',
+  'US30': 'CAPITALCOM:US30',
+  'UK100': 'CAPITALCOM:UK100',
+  'GER30': 'CAPITALCOM:DE40',
+  'GER40': 'CAPITALCOM:DE40',
+  'FRA40': 'CAPITALCOM:FR40',
+  'JPN225': 'CAPITALCOM:JP225',
+  'AUS200': 'CAPITALCOM:AU200',
+  'IXIC': 'NASDAQ:IXIC',
+  'RUT': 'RUSSELL:RUT',
+  'RUT2000': 'RUSSELL:RUT',
+  'VIX': 'CBOE:VIX',
+  'DXY': 'TVC:DXY',
+  'TNX': 'TVC:US10Y',
+};
+
+const REVERSE_INDICES_MAP: Record<string, string> = Object.fromEntries(
+  Object.entries(INDICES_MAP).map(([sym, tvSym]) => [tvSym, sym])
+);
+
+const STOCKS_NASDAQ = ['AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'TSLA', 'META', 'NVDA', 'NFLX', 'PYPL', 'INTC', 'CMCSA', 'PEP', 'CSCO', 'ADBE', 'TXN', 'AVGO', 'QCOM', 'HON', 'AMGN', 'SBUX', 'GILD', 'MDLZ', 'FISV', 'BKNG', 'CHTR', 'VRTX', 'REGN', 'ISRG', 'AMD', 'MU', 'LRCX', 'ATVI', 'ILMN', 'ADSK', 'MELI', 'CRWD', 'PLTR', 'SNOW', 'DDOG', 'ZM', 'TWLO', 'NET', 'RBLX', 'COIN', 'HOOD', 'QQQ', 'TLT', 'IEF', 'SHY'];
+const STOCKS_NYSE = ['JPM', 'V', 'JNJ', 'WMT', 'PG', 'MA', 'UNH', 'HD', 'BAC', 'DIS', 'CVX', 'KO', 'MRK', 'PFE', 'VZ', 'T', 'XOM', 'ABBV', 'CRM', 'NKE', 'MCD', 'DHR', 'PFE', 'LLY', 'NIO', 'BABA', 'GME', 'AMC', 'SQ', 'SPOT', 'SHOP', 'SPY', 'VOO', 'VTI', 'IWM', 'AGG', 'LQD'];
+
 /**
  * Normalizes our symbols (BTCUSD, AAPL, SPX) to TradingView symbols format
  */
@@ -41,9 +67,12 @@ function getTVSymbol(ourSymbol: string): string {
   if (COMMODITIES_MAP[ourSymbol]) {
     return COMMODITIES_MAP[ourSymbol];
   }
+  if (INDICES_MAP[ourSymbol]) {
+    return INDICES_MAP[ourSymbol];
+  }
 
-  const forex = ['EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'USDJPY', 'USDCHF', 'USDCAD', 'EURGBP', 'EURJPY', 'GBPJPY'];
-  const crypto = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE', 'AVAX', 'DOT', 'MATIC', 'LINK'];
+  const forex = ['EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'USDJPY', 'USDCHF', 'USDCAD', 'EURGBP', 'EURJPY', 'GBPJPY', 'EURCHF', 'AUDCAD', 'AUDCHF', 'AUDNZD', 'CADJPY', 'CHFJPY', 'EURAUD', 'EURCAD', 'EURNZD', 'GBPAUD', 'GBPCAD', 'GBPCHF', 'GBPNZD', 'NZDCAD', 'NZDCHF', 'NZDJPY'];
+  const crypto = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE', 'AVAX', 'DOT', 'MATIC', 'LINK', 'LTC', 'BCH', 'UNI', 'AAVE', 'ATOM', 'FIL', 'NEAR', 'APT', 'ARB', 'OP', 'SUI', 'XMR', 'ALGO', 'VET', 'ICP'];
   
   if (ourSymbol.includes('USD') && (!forex.includes(ourSymbol))) {
     const base = ourSymbol.replace('USD', '');
@@ -54,9 +83,9 @@ function getTVSymbol(ourSymbol: string): string {
   }
   
   if (forex.includes(ourSymbol)) return `OANDA:${ourSymbol}`;
-  if (ourSymbol === 'SPX') return 'SP:SPX';
-  if (ourSymbol === 'NDX') return 'NASDAQ:NDX';
-  if (ourSymbol === 'DJI') return 'DJ:DJI';
+  
+  if (STOCKS_NASDAQ.includes(ourSymbol)) return `NASDAQ:${ourSymbol}`;
+  if (STOCKS_NYSE.includes(ourSymbol)) return `NYSE:${ourSymbol}`;
   
   // Try treating as a stock or generic asset if not explicitly mapped
   return ourSymbol;
@@ -68,6 +97,9 @@ function getTVSymbol(ourSymbol: string): string {
 function getOurSymbol(tvSymbol: string): string {
   if (REVERSE_COMMODITIES_MAP[tvSymbol]) {
     return REVERSE_COMMODITIES_MAP[tvSymbol];
+  }
+  if (REVERSE_INDICES_MAP[tvSymbol]) {
+    return REVERSE_INDICES_MAP[tvSymbol];
   }
 
   const parts = tvSymbol.split(':');

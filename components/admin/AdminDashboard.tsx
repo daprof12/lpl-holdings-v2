@@ -5,6 +5,7 @@ import { useTransactions } from '../../contexts/TransactionProvider';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatCurrency } from '../../utils/formatNumber';
 import { api } from '../../utils/supabase/api';
+import { supabase } from '../../utils/supabase/client';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState([
@@ -35,9 +36,16 @@ export default function AdminDashboard() {
       try {
         // Fetch real-time data from relational DB
         const trades = await api.tradeHistory.getAll();
-        const signals = await api.signals.getAll();
-        const subscriptions = await api.subscriptions.getAll();
-        const assets = await api.assets.getAll();
+        
+        // Signals and assets are fetched directly from supabase
+        const { data: signalsData } = await supabase.from('signals').select('*');
+        const signals = signalsData || [];
+        
+        const subscriptions = await api.subscribers.getAll();
+        
+        const { data: assetsData } = await supabase.from('market_assets').select('*');
+        const assets = assetsData || [];
+        
         const tickets = await api.tickets.getAll();
 
         // Calculate total users (excluding admin users to match User Management page)
