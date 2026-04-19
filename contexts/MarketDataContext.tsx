@@ -368,6 +368,38 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // ── Database Sync ────────────────────────────────────────────────────────
+  // Periodically upsert live prices to the DB for other components/server-side logic
+  useEffect(() => {
+    const syncInterval = setInterval(async () => {
+      const currentPrices = pricesRef.current;
+      const symbolsToSync = Object.keys(currentPrices);
+      
+      if (symbolsToSync.length === 0) return;
+
+      const updates = symbolsToSync.map(symbol => ({
+        symbol,
+        price: currentPrices[symbol].price,
+        change_24h: currentPrices[symbol].changePercent,
+        volume: currentPrices[symbol].volume,
+        updated_at: Date.now()
+      }));
+
+      try {
+        // Only sync if we have a valid session (some users might be guests)
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
+        // Use upsert to update live data for existing symbols
+        await supabase.from('market_assets').upsert(updates, { onConflict: 'symbol' });
+      } catch (err) {
+        console.error('Failed to sync live prices to DB:', err);
+      }
+    }, 30000); // Sync every 30 seconds to balance real-time needs vs DB load
+
+    return () => clearInterval(syncInterval);
+  }, []);
+
   // ── Subscription management ──────────────────────────────────────────────
   
   const subscribeToSymbol = useCallback((symbol: string) => {
