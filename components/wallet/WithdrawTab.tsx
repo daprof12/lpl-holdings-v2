@@ -195,14 +195,17 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
         if (asset.enabled && asset.assetType && asset.network) {
           const existing = cryptoOptionsMap.get(asset.assetType);
           const realPrice = getCryptoPrice(asset.assetType);
+          const assetNetworks = asset.network.split(',').map((n: string) => n.trim()).filter((n: string) => n);
           if (existing) {
-             if (!existing.networks.includes(asset.network)) {
-               existing.networks.push(asset.network);
-             }
+             assetNetworks.forEach((net: string) => {
+               if (!existing.networks.includes(net)) {
+                 existing.networks.push(net);
+               }
+             });
           } else {
              cryptoOptionsMap.set(asset.assetType, {
                symbol: asset.assetType,
-               networks: [asset.network],
+               networks: assetNetworks,
                price: realPrice,
              });
           }
@@ -212,14 +215,17 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
        // Legacy support
        const existing = cryptoOptionsMap.get(method.cryptoType);
        const realPrice = getCryptoPrice(method.cryptoType);
+       const methodNetworks = method.network.split(',').map((n: string) => n.trim()).filter((n: string) => n);
        if (existing) {
-         if (!existing.networks.includes(method.network)) {
-           existing.networks.push(method.network);
-         }
+         methodNetworks.forEach((net: string) => {
+           if (!existing.networks.includes(net)) {
+             existing.networks.push(net);
+           }
+         });
        } else {
          cryptoOptionsMap.set(method.cryptoType, {
            symbol: method.cryptoType,
-           networks: [method.network],
+           networks: methodNetworks,
            price: realPrice,
          });
        }
@@ -285,9 +291,12 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
 
     // For crypto, use admin-configured withdrawal fee
     if (selectedMethod === 'crypto' && selectedCryptoType && selectedCryptoNetwork) {
-      const methodConfig = adminCryptoMethods.find(
-        m => m.cryptoType === selectedCryptoType && m.network === selectedCryptoNetwork
-      );
+      const methodConfig = adminCryptoMethods.find(m => {
+        if (m.cryptoAssets && Array.isArray(m.cryptoAssets)) {
+          return m.cryptoAssets.some((a: any) => a.assetType === selectedCryptoType && a.network && a.network.includes(selectedCryptoNetwork));
+        }
+        return m.cryptoType === selectedCryptoType && m.network?.includes(selectedCryptoNetwork);
+      });
 
       if (methodConfig) {
         if (methodConfig.withdrawalFeeType === 'fixed') {

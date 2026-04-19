@@ -19,7 +19,8 @@ const COMMODITIES_MAP: Record<string, string> = {
   'USOIL': 'TVC:USOIL',
   'BCOUSD': 'TVC:UKOIL',
   'UKOIL': 'TVC:UKOIL',
-  'NATGAS': 'TVC:NATGAS'
+  'NATGAS': 'TVC:NATGAS',
+  'USDTUSD': 'KRAKEN:USDTUSD'
 };
 
 const REVERSE_COMMODITIES_MAP: Record<string, string> = {
@@ -29,7 +30,8 @@ const REVERSE_COMMODITIES_MAP: Record<string, string> = {
   'TVC:PALLADIUM': 'XPDUSD',
   'TVC:USOIL': 'WTIUSD',
   'TVC:UKOIL': 'BCOUSD',
-  'TVC:NATGAS': 'NATGAS'
+  'TVC:NATGAS': 'NATGAS',
+  'KRAKEN:USDTUSD': 'USDTUSD'
 };
 
 /**

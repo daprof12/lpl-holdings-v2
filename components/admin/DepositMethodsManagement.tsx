@@ -499,13 +499,53 @@ export default function DepositMethodsManagement() {
                     onChange={(e) => setFormData({ ...formData, walletAddress: e.target.value })}
                   />
                 </div>
-                <div>
-                  <Label>Network</Label>
-                  <Input
-                    placeholder="e.g., Bitcoin, Ethereum, Tron (TRC20)"
-                    value={formData.network || ''}
-                    onChange={(e) => setFormData({ ...formData, network: e.target.value })}
-                  />
+                <div className="space-y-3">
+                  <Label>Supported Networks For This Address</Label>
+                  <div className="p-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 min-h-[100px]">
+                    {(() => {
+                      const type = formData.cryptoType || 'BTC';
+                      const options: string[] = [];
+                      if (type === 'BTC') options.push('Bitcoin', 'Lightning');
+                      if (type === 'ETH') options.push('Ethereum (ERC20)', 'Arbitrum', 'Polygon', 'Base', 'Optimism');
+                      if (type === 'USDT' || type === 'USDC') options.push('Tron (TRC20)', 'Ethereum (ERC20)', 'BSC (BEP20)', 'Polygon', 'Arbitrum', 'Solana');
+                      if (type === 'BNB') options.push('BSC (BEP20)', 'Binance Chain');
+                      if (type === 'XRP') options.push('Ripple', 'BSC (BEP20)');
+                      if (type === 'ADA') options.push('Cardano', 'BSC (BEP20)');
+                      if (type === 'SOL') options.push('Solana');
+
+                      const currentNetworks = formData.network ? formData.network.split(',').map(n => n.trim()) : [];
+
+                      const handleCheckbox = (net: string, checked: boolean) => {
+                        let newNets = [...currentNetworks];
+                        if (checked && !newNets.includes(net)) newNets.push(net);
+                        if (!checked) newNets = newNets.filter(n => n !== net);
+                        setFormData({ ...formData, network: newNets.join(', ') });
+                      };
+
+                      return options.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          {options.map(net => (
+                            <label key={net} className="flex items-center gap-2 cursor-pointer p-1">
+                              <input 
+                                type="checkbox" 
+                                checked={currentNetworks.includes(net)}
+                                onChange={(e) => handleCheckbox(net, e.target.checked)}
+                                className="w-4 h-4 rounded border-gray-300"
+                              />
+                              <span className="text-sm">{net}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                         <Input
+                           placeholder="Enter network manually..."
+                           value={formData.network || ''}
+                           onChange={(e) => setFormData({ ...formData, network: e.target.value })}
+                         />
+                      );
+                    })()}
+                  </div>
+                  <p className="text-xs text-gray-500">Select all networks that your wallet address above supports.</p>
                 </div>
                 <div>
                   <Label>Minimum Deposit (Optional)</Label>
@@ -727,12 +767,53 @@ export default function DepositMethodsManagement() {
                     onChange={(e) => setFormData({ ...formData, walletAddress: e.target.value })}
                   />
                 </div>
-                <div>
-                  <Label>Network</Label>
-                  <Input
-                    value={formData.network || ''}
-                    onChange={(e) => setFormData({ ...formData, network: e.target.value })}
-                  />
+                <div className="space-y-3">
+                  <Label>Supported Networks For This Address</Label>
+                  <div className="p-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 min-h-[100px]">
+                    {(() => {
+                      const type = formData.cryptoType || 'BTC';
+                      const options: string[] = [];
+                      if (type === 'BTC') options.push('Bitcoin', 'Lightning');
+                      if (type === 'ETH') options.push('Ethereum (ERC20)', 'Arbitrum', 'Polygon', 'Base', 'Optimism');
+                      if (type === 'USDT' || type === 'USDC') options.push('Tron (TRC20)', 'Ethereum (ERC20)', 'BSC (BEP20)', 'Polygon', 'Arbitrum', 'Solana');
+                      if (type === 'BNB') options.push('BSC (BEP20)', 'Binance Chain');
+                      if (type === 'XRP') options.push('Ripple', 'BSC (BEP20)');
+                      if (type === 'ADA') options.push('Cardano', 'BSC (BEP20)');
+                      if (type === 'SOL') options.push('Solana');
+
+                      const currentNetworks = formData.network ? formData.network.split(',').map(n => n.trim()) : [];
+
+                      const handleCheckbox = (net: string, checked: boolean) => {
+                        let newNets = [...currentNetworks];
+                        if (checked && !newNets.includes(net)) newNets.push(net);
+                        if (!checked) newNets = newNets.filter(n => n !== net);
+                        setFormData({ ...formData, network: newNets.join(', ') });
+                      };
+
+                      return options.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          {options.map(net => (
+                            <label key={net} className="flex items-center gap-2 cursor-pointer p-1">
+                              <input 
+                                type="checkbox" 
+                                checked={currentNetworks.includes(net)}
+                                onChange={(e) => handleCheckbox(net, e.target.checked)}
+                                className="w-4 h-4 rounded border-gray-300"
+                              />
+                              <span className="text-sm">{net}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                         <Input
+                           placeholder="Enter network manually..."
+                           value={formData.network || ''}
+                           onChange={(e) => setFormData({ ...formData, network: e.target.value })}
+                         />
+                      );
+                    })()}
+                  </div>
+                  <p className="text-xs text-gray-500">Select all networks that your wallet address above supports.</p>
                 </div>
                 <div>
                   <Label>Minimum Deposit</Label>

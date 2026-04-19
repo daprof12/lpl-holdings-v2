@@ -815,16 +815,30 @@ export default function WithdrawalMethodsManagement() {
                               {asset.enabled && (
                                 <div className="space-y-3 pl-2 border-l-2 border-blue-500">
                                   <div className="ml-3">
-                                    <Label className="text-xs">Network</Label>
-                                    <select
-                                      value={asset.network}
-                                      onChange={(e) => handleCryptoAssetChange(index, 'network', e.target.value)}
-                                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
-                                    >
-                                      {assetInfo?.networks.map(network => (
-                                        <option key={network} value={network}>{network}</option>
-                                      ))}
-                                    </select>
+                                    <Label className="text-xs mb-2 block">Supported Networks</Label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      {assetInfo?.networks.map(network => {
+                                        const isChecked = asset.network?.includes(network);
+                                        return (
+                                          <label key={network} className="flex items-center gap-2 cursor-pointer text-sm">
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked || false}
+                                              onChange={(e) => {
+                                                const currentNets = asset.network ? asset.network.split(',').map(n => n.trim()).filter(n => n) : [];
+                                                let newNets = [...currentNets];
+                                                if (e.target.checked && !newNets.includes(network)) newNets.push(network);
+                                                if (!e.target.checked) newNets = newNets.filter(n => n !== network);
+                                                handleCryptoAssetChange(index, 'network', newNets.join(', '));
+                                              }}
+                                              className="w-4 h-4 rounded border-gray-300"
+                                            />
+                                            {network}
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-2">Select all networks available for withdrawal. Users will specify their network when submitting requests.</p>
                                   </div>
                                 </div>
                               )}
@@ -974,16 +988,30 @@ export default function WithdrawalMethodsManagement() {
                               {asset.enabled && (
                                 <div className="space-y-3 pl-2 border-l-2 border-blue-500">
                                   <div className="ml-3">
-                                    <Label className="text-xs">Network</Label>
-                                    <select
-                                      value={asset.network}
-                                      onChange={(e) => handleCryptoAssetChange(index, 'network', e.target.value)}
-                                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
-                                    >
-                                      {assetInfo?.networks.map(network => (
-                                        <option key={network} value={network}>{network}</option>
-                                      ))}
-                                    </select>
+                                    <Label className="text-xs mb-2 block">Supported Networks</Label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      {assetInfo?.networks.map(network => {
+                                        const isChecked = asset.network?.includes(network);
+                                        return (
+                                          <label key={network} className="flex items-center gap-2 cursor-pointer text-sm">
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked || false}
+                                              onChange={(e) => {
+                                                const currentNets = asset.network ? asset.network.split(',').map(n => n.trim()).filter(n => n) : [];
+                                                let newNets = [...currentNets];
+                                                if (e.target.checked && !newNets.includes(network)) newNets.push(network);
+                                                if (!e.target.checked) newNets = newNets.filter(n => n !== network);
+                                                handleCryptoAssetChange(index, 'network', newNets.join(', '));
+                                              }}
+                                              className="w-4 h-4 rounded border-gray-300"
+                                            />
+                                            {network}
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-2">Select all networks available for withdrawal. Users will specify their network when submitting requests.</p>
                                   </div>
                                 </div>
                               )}

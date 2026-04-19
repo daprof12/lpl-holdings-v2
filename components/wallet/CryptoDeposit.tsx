@@ -150,20 +150,25 @@ export default function CryptoDeposit({ walletType = 'live', methods }: { wallet
 
   methods.forEach(method => {
     if (method.cryptoType && method.network && method.walletAddress) {
+      const networks = method.network.split(',').map(n => n.trim()).filter(n => n);
       const existing = cryptoOptionsMap.get(method.cryptoType);
+      
       if (existing) {
-        // Add network and address to existing crypto
-        if (!existing.networks.includes(method.network)) {
-          existing.networks.push(method.network);
-          existing.addresses[method.network] = method.walletAddress;
-        }
+        networks.forEach(net => {
+          if (!existing.networks.includes(net)) {
+            existing.networks.push(net);
+            existing.addresses[net] = method.walletAddress;
+          }
+        });
       } else {
-        // Create new crypto option
+        const addresses: { [n: string]: string } = {};
+        networks.forEach(net => addresses[net] = method.walletAddress);
+        
         cryptoOptionsMap.set(method.cryptoType, {
           symbol: method.cryptoType,
           name: method.cryptoType,
-          networks: [method.network],
-          addresses: { [method.network]: method.walletAddress },
+          networks,
+          addresses,
           minDeposit: method.minDeposit || 0.001,
           price: getCryptoPrice(method.cryptoType),
         });

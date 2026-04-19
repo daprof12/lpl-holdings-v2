@@ -373,6 +373,36 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
   // ── Subscription management ──────────────────────────────────────────────
   
   const subscribeToSymbol = useCallback((symbol: string) => {
+    if (!symbol) return;
+    
+    // Create immediate fallback to prevent showing $0.00 while weighting for WS connecting
+    if (!pricesRef.current[symbol] && !pendingUpdatesRef.current[symbol]) {
+      if (symbol === 'USDTUSD' || symbol === 'USDCUSD') {
+        const fallback: MarketPrice = {
+            symbol,
+            price: 1.00,
+            change: 0.00,
+            changePercent: 0.00,
+            volume: '5B',
+            high: 1.001,
+            low: 0.999,
+            lastUpdate: Date.now(),
+            open: 1.00,
+            bid: 0.999,
+            ask: 1.001
+        };
+        pricesRef.current[symbol] = fallback;
+        pendingUpdatesRef.current[symbol] = fallback;
+      } else {
+        const fallback = buildFallbackPrice(symbol);
+        pricesRef.current[symbol] = fallback;
+        pendingUpdatesRef.current[symbol] = fallback;
+      }
+      
+      // Force an immediate update
+      setPrices(prev => ({ ...prev, [symbol]: pricesRef.current[symbol] }));
+    }
+
     const isNew = !subscribedRef.current.has(symbol);
     if (isNew) {
       subscribedRef.current.add(symbol);
