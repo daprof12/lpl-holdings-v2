@@ -14,6 +14,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '../ui/dialog';
+import { useMarketData } from '../../contexts/MarketDataContext';
 import { initialAssets, deriveFullLeverage } from '../../data/assets';
 import { CATALOGUE } from '../../utils/assetCatalogue';
 import type { AssetData } from '../../data/assets';
@@ -58,6 +59,7 @@ const PAGE_SIZE_KEY = 'gross_admin_assets_page_size';
 
 
 export default function AssetManagement() {
+  const { prices, subscribeToSymbol } = useMarketData();
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [showDialog, setShowDialog] = useState(false);
@@ -87,7 +89,10 @@ export default function AssetManagement() {
       if (error) throw error;
 
       if (data && data.length > 0) {
-        setAssets(data.map(toAdminAsset));
+        const adminAssets = data.map(toAdminAsset);
+        setAssets(adminAssets);
+        // Subscribe to these assets to get real-time prices
+        adminAssets.forEach(a => subscribeToSymbol(a.symbol));
       } else {
         // Seed if empty
         await handleResetSeed();
@@ -149,6 +154,38 @@ export default function AssetManagement() {
     } catch (err) {
       console.error('Failed to seed assets:', err);
       toast.error('Failed to seed assets. Ensure the table "market_assets" has been created in Supabase.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSyncPricesToDB = async () => {
+    setIsLoading(true);
+    try {
+      const updates = assets.map(asset => {
+        const liveData = prices[asset.symbol];
+        if (liveData && liveData.price > 0) {
+          return {
+            id: asset.id, // specify the ID for upsert
+            symbol: asset.symbol,
+            price: liveData.price,
+            updated_at: Date.now()
+          };
+        }
+        return null;
+      }).filter(Boolean);
+
+      if (updates.length > 0) {
+        // Upsert standardizes on matching the primary key/unique constraint and updating columns
+        const { error } = await supabase.from('market_assets').upsert(updates, { onConflict: 'symbol' });
+        if (error) throw error;
+        toast.success(`Successfully synced ${updates.length} live prices to the database.`);
+      } else {
+        toast.info('No live prices available to sync yet. Please wait for the websocket stream.');
+      }
+    } catch (err) {
+      console.error('Sync error:', err);
+      toast.error('Failed to sync live prices to database.');
     } finally {
       setIsLoading(false);
     }
@@ -323,6 +360,15 @@ export default function AssetManagement() {
         <div className="flex gap-2">
           <Button 
             variant="outline" 
+            onClick={handleSyncPricesToDB} 
+            disabled={isLoading || Object.keys(prices).length === 0}
+            className="gap-2 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400"
+          >
+            <TrendingUp className="w-4 h-4" />
+            Sync Live Prices to DB
+          </Button>
+          <Button 
+            variant="outline" 
             onClick={handleResetSeed} 
             disabled={isLoading}
             className="gap-2 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400"
@@ -400,7 +446,13 @@ export default function AssetManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-              {paginatedAssets.map((asset) => (
+              {paginatedAssets.map((asset) => {
+                const liveData = prices[asset.symbol];
+                const displayPrice = liveData?.price ?? asset.price;
+                const displayChange = liveData?.changePercent ?? asset.change24h;
+                const displayVolume = liveData?.volume ?? asset.volume;
+                
+                return (
                 <tr key={asset.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
                   <td className="px-6 py-4">
                     <div>
@@ -437,22 +489,22 @@ export default function AssetManagement() {
                     <div className="text-sm">{asset.exchange}</div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="font-mono font-semibold">${formatCurrency(asset.price)}</div>
+                    <div className="font-mono font-semibold">${formatCurrency(displayPrice)}</div>
                   </td>
                   <td className="px-6 py-4">
                     <div className={`flex items-center gap-1 font-semibold ${
-                      asset.change24h >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      displayChange >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     }`}>
-                      {asset.change24h >= 0 ? (
+                      {displayChange >= 0 ? (
                         <TrendingUp className="w-4 h-4" />
                       ) : (
                         <TrendingDown className="w-4 h-4" />
                       )}
-                      {asset.change24h >= 0 ? '+' : ''}{asset.change24h}%
+                      {displayChange >= 0 ? '+' : ''}{displayChange.toFixed(2)}%
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="text-sm">{asset.volume}</div>
+                    <div className="text-sm">{displayVolume}</div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-wrap gap-1">
@@ -506,7 +558,7 @@ export default function AssetManagement() {
                       </div>
                     </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>

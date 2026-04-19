@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { supabase } from '../utils/supabase/client';
+import { TradingViewSocket } from '../utils/TradingViewSocket';
 
 // ============================================================
 // TYPES
@@ -270,6 +271,46 @@ function computeForexPrice(symbol: string, rates: Record<string, number>): numbe
 // PROVIDER
 // ============================================================
 
+// Create a deterministic fallback price until the websocket pushes real data
+function buildFallbackPrice(symbol: string): MarketPrice {
+  let base = 100;
+  if (STATIC_BASE[symbol]) {
+    base = STATIC_BASE[symbol];
+  } else {
+    const hash = symbol.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    if (symbol.includes('AAPL')) base = 180;
+    else if (symbol.includes('TSLA')) base = 240;
+    else if (symbol.includes('MSFT')) base = 400;
+    else if (symbol.includes('GOOG')) base = 150;
+    else if (symbol.includes('AMZN')) base = 175;
+    else if (symbol.includes('NVDA')) base = 800;
+    else if (symbol.includes('SPX'))  base = 5100;
+    else if (symbol.includes('XAU'))  base = 2150;
+    else if (symbol.includes('XAG'))  base = 24;
+    else if (symbol.includes('OIL'))  base = 78;
+    else {
+      base = 10 + (hash % 1000); 
+    }
+  }
+
+  const isCrypto = symbol.includes('BTC') || symbol.includes('ETH');
+  const { bid, ask } = makeSpread(base, false, isCrypto);
+
+  return {
+    symbol,
+    price: base,
+    change: 0,
+    changePercent: 0,
+    high: base * 1.015,
+    low: base * 0.985,
+    open: base,
+    volume: formatVolume(500000),
+    bid,
+    ask,
+    lastUpdate: Date.now(),
+  };
+}
+
 export function MarketDataProvider({ children }: { children: ReactNode }) {
   const [prices, setPrices]           = useState<Record<string, MarketPrice>>({});
   const [assets, setAssets]           = useState<MarketAsset[]>([]);
@@ -278,329 +319,71 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
 
   // ── Refs (avoid stale-closure issues in intervals/callbacks) ────────────
   const pricesRef       = useRef<Record<string, MarketPrice>>({});  // mirrors state
-  const forexRatesRef   = useRef<Record<string, number>>({});       // USD-base FX rates
-  const forexFetchedAt  = useRef<number>(0);
-  const staticWalkRef   = useRef<Record<string, number>>({});       // random-walk prices
-  const tickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tvSocketRef     = useRef<TradingViewSocket | null>(null);
+  const flushIntervalRef= useRef<ReturnType<typeof setInterval> | null>(null);
   const subscribedRef   = useRef<Set<string>>(new Set());
-  const fetchPriceRef   = useRef<(symbol: string) => Promise<void>>();
 
-  // CoinGecko batch cache: one API call for ALL crypto symbols
-  const coinGeckoCacheRef    = useRef<Record<string, MarketPrice>>({});
-  const coinGeckoFetchedAt   = useRef<number>(0);
-  const coinGeckoFetchingRef = useRef<Promise<void> | null>(null);
+  // Pending updates from WebSocket to prevent excessive React re-renders
+  const pendingUpdatesRef = useRef<Record<string, MarketPrice>>({});
 
-  // Keep pricesRef in sync with state
-  const setAndCachePrices = useCallback((updater: (prev: Record<string, MarketPrice>) => Record<string, MarketPrice>) => {
-    setPrices(prev => {
-      const next = updater(prev);
-      pricesRef.current = next;
-      return next;
-    });
-  }, []);
-
-  // ── Forex: fetch rates from open.er-api.com ──────────────────────────────
-  const fetchForexRates = useCallback(async () => {
-    const now = Date.now();
-    // Refresh at most every 5 minutes
-    if (now - forexFetchedAt.current < 5 * 60 * 1000 && Object.keys(forexRatesRef.current).length > 0) return;
-    try {
-      const res = await fetch('https://open.er-api.com/v6/latest/USD', { cache: 'no-store' });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.result === 'success' && data.rates) {
-        forexRatesRef.current = data.rates as Record<string, number>;
-        forexFetchedAt.current = now;
-      }
-    } catch {
-      // silently ignore - will retry on next interval
-    }
-  }, []);
-
-  // ── Crypto: fetch from Binance REST (free, no CORS) ──────────────────────
-  const fetchBinancePrice = useCallback(async (symbol: string): Promise<MarketPrice | null> => {
-    const pair = BINANCE_PAIR[symbol];
-    if (!pair) return null;
-    try {
-      const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${pair}`, { cache: 'no-store' });
-      if (!res.ok) return null;
-      const d = await res.json();
-
-      const price         = parseFloat(d.lastPrice);
-      const open          = parseFloat(d.openPrice);
-      const high          = parseFloat(d.highPrice);
-      const low           = parseFloat(d.lowPrice);
-      const changePercent = parseFloat(d.priceChangePercent);
-      const change        = price - open;
-      const quoteVolume   = parseFloat(d.quoteVolume);
-
-      // Prefer Binance's real bid/ask; fall back to tight spread
-      const rawBid = parseFloat(d.bidPrice);
-      const rawAsk = parseFloat(d.askPrice);
-      const { bid, ask } = makeSpread(price, false, true);
-
-      return {
-        symbol,
-        price,
-        change,
-        changePercent,
-        high,
-        low,
-        open,
-        volume: formatVolume(quoteVolume),
-        bid: rawBid > 0 ? rawBid : bid,
-        ask: rawAsk > 0 ? rawAsk : ask,
-        lastUpdate: Date.now(),
-      };
-    } catch {
-      return null;
-    }
-  }, []);
-
-  // ── Crypto: CoinGecko batch cache (1 request for ALL 26 coins) ─────────
-  // Uses /coins/markets which returns price, high_24h, low_24h, change%, volume
-  // in a single request. Cache is shared across all per-symbol lookups.
-  const refreshCoinGeckoCache = useCallback(async (): Promise<void> => {
-    const now = Date.now();
-    // Still fresh? Skip.
-    if (now - coinGeckoFetchedAt.current < COINGECKO_CACHE_TTL_MS
-        && Object.keys(coinGeckoCacheRef.current).length > 0) return;
-
-    // If already fetching, await the existing promise (dedup concurrent calls)
-    if (coinGeckoFetchingRef.current) {
-      await coinGeckoFetchingRef.current;
-      return;
-    }
-
-    const fetchPromise = (async () => {
-      try {
-        const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ALL_COINGECKO_IDS}&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h`;
-        const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) return;
-        const coins: Array<{
-          id: string;
-          current_price: number;
-          high_24h: number | null;
-          low_24h: number | null;
-          price_change_percentage_24h: number | null;
-          total_volume: number | null;
-        }> = await res.json();
-
-        const cache: Record<string, MarketPrice> = {};
-        for (const coin of coins) {
-          const symbol = COINGECKO_ID_TO_SYMBOL[coin.id];
-          if (!symbol) continue;
-
-          const price         = coin.current_price ?? 0;
-          const high          = coin.high_24h ?? price * 1.005;
-          const low           = coin.low_24h ?? price * 0.995;
-          const changePercent = coin.price_change_percentage_24h ?? 0;
-          const open          = price / (1 + changePercent / 100);
-          const change        = price - open;
-          const volume        = coin.total_volume ?? 0;
-          const { bid, ask }  = makeSpread(price, false, true);
-
-          cache[symbol] = {
-            symbol,
-            price,
-            change,
-            changePercent,
-            high,
-            low,
-            open,
-            volume: formatVolume(volume),
-            bid,
-            ask,
-            lastUpdate: Date.now(),
-          };
+  // ── Setup TradingView WebSocket ───────────────────────────────────────
+  useEffect(() => {
+    // Initialize TV WebSocket singleton
+    const tvSocket = new TradingViewSocket();
+    tvSocketRef.current = tvSocket;
+    
+    tvSocket.setOnDataCallback((symbol, update) => {
+      // Merge partial update into existing price or pending update
+      const existing = pendingUpdatesRef.current[symbol] || pricesRef.current[symbol] || buildFallbackPrice(symbol);
+      const newPrice = { ...existing, ...update };
+      
+      // Calculate change and changePercent if missing from update but we got a new price
+      if (update.price !== undefined && existing.open) {
+        newPrice.change = newPrice.price - newPrice.open;
+        if (newPrice.open > 0) {
+          newPrice.changePercent = (newPrice.change / newPrice.open) * 100;
         }
-
-        coinGeckoCacheRef.current = cache;
-        coinGeckoFetchedAt.current = Date.now();
-      } catch {
-        // silently ignore - will retry next cycle
       }
-    })();
+      
+      pendingUpdatesRef.current[symbol] = newPrice;
+    });
 
-    coinGeckoFetchingRef.current = fetchPromise;
-    await fetchPromise;
-    coinGeckoFetchingRef.current = null;
-  }, []);
+    tvSocket.connect();
 
-  /** Read a single symbol from the CoinGecko batch cache (refreshes if stale). */
-  const getCoinGeckoPrice = useCallback(async (symbol: string): Promise<MarketPrice | null> => {
-    if (!COINGECKO_ID[symbol]) return null;
-    await refreshCoinGeckoCache();
-    return coinGeckoCacheRef.current[symbol] ?? null;
-  }, [refreshCoinGeckoCache]);
+    // Setup an interval to flush pending WebSocket updates to React state
+    // We do this to decouple high-frequency WS messages from React re-renders, 
+    // keeping UI smooth (e.g., 500ms flush).
+    flushIntervalRef.current = setInterval(() => {
+      if (Object.keys(pendingUpdatesRef.current).length > 0) {
+        setPrices(prev => {
+          const next = { ...prev, ...pendingUpdatesRef.current };
+          pricesRef.current = next;
+          return next;
+        });
+        pendingUpdatesRef.current = {};
+      }
+    }, 500);
 
-  // ── Forex: build a MarketPrice from cached FX rates ──────────────────────
-  const buildForexPrice = useCallback((symbol: string): MarketPrice | null => {
-    const base = computeForexPrice(symbol, forexRatesRef.current);
-    if (!base) return null;
-
-    // Micro random-walk (+-0.02%) to simulate live tick movement
-    const prev = staticWalkRef.current[symbol] ?? base;
-    const drift = (Math.random() - 0.5) * 0.0004;
-    const price = prev * (1 + drift);
-    staticWalkRef.current[symbol] = price;
-
-    const open   = base; // treat fresh API rate as "day open"
-    const change = price - open;
-    const changePercent = (change / open) * 100;
-    const { bid, ask } = makeSpread(price, true, false);
-
-    // Typical forex daily range ~ +-0.3%
-    return {
-      symbol,
-      price,
-      change,
-      changePercent,
-      high: Math.max(price, base) * 1.003,
-      low:  Math.min(price, base) * 0.997,
-      open,
-      volume: 'N/A',
-      bid,
-      ask,
-      lastUpdate: Date.now(),
+    return () => {
+      tvSocket.cleanup();
+      if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
     };
   }, []);
-
-  // ── Static assets: seed + random-walk tick ─────────────────────────────
-  /**
-   * Build a simulated fallback price for any symbol (Stocks, Commodities, Indices, etc.)
-   * Uses a random-walk from a deterministic base to ensure it looks "live".
-   */
-  const buildStaticPrice = useCallback((symbol: string): MarketPrice => {
-    // Deterministic base price based on symbol string
-    let base = 100;
-    const hash = symbol.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    
-    // Assign some realistic bases
-    if (symbol.includes('AAPL')) base = 180;
-    else if (symbol.includes('TSLA')) base = 240;
-    else if (symbol.includes('MSFT')) base = 400;
-    else if (symbol.includes('GOOG')) base = 150;
-    else if (symbol.includes('AMZN')) base = 175;
-    else if (symbol.includes('NVDA')) base = 800;
-    else if (symbol.includes('SPX'))  base = 5100;
-    else if (symbol.includes('XAU'))  base = 2150; // Gold
-    else if (symbol.includes('XAG'))  base = 24;   // Silver
-    else if (symbol.includes('OIL'))  base = 78;   // Oil
-    else {
-      base = 10 + (hash % 1000); // Randomish base between 10 and 1010
-    }
-
-    // Apply a micro random-walk (+-0.03%) to simulate live ticks
-    const prev = staticWalkRef.current[symbol] ?? base;
-    const drift = (Math.random() - 0.5) * 0.0006;
-    const price = prev * (1 + drift);
-    
-    // Keep it within a reasonable +-2% daily range of its "base"
-    const clampedPrice = Math.max(base * 0.98, Math.min(base * 1.02, price));
-    staticWalkRef.current[symbol] = clampedPrice;
-
-    const open   = base;
-    const change = clampedPrice - open;
-    const changePercent = (change / open) * 100;
-    
-    const isCrypto = symbol.includes('BTC') || symbol.includes('ETH'); // rough guess
-    const { bid, ask } = makeSpread(clampedPrice, false, isCrypto);
-
-    return {
-      symbol,
-      price: clampedPrice,
-      change,
-      changePercent,
-      high: base * 1.015,
-      low: base * 0.985,
-      open,
-      volume: formatVolume(500000 + (hash * 1000) % 2000000),
-      bid,
-      ask,
-      lastUpdate: Date.now(),
-    };
-  }, []);
-
-  // ── Master fetch: dispatch to right source ────────────────────────────
-  const fetchPrice = useCallback(async (symbol: string) => {
-    let data: MarketPrice | null = null;
-
-    if (BINANCE_PAIR[symbol]) {
-      // Primary: Binance -> Fallback: CoinGecko batch cache -> Last resort: Static simulation
-      data = await fetchBinancePrice(symbol);
-      if (!data) {
-        data = await getCoinGeckoPrice(symbol);
-      }
-      if (!data) {
-        data = buildStaticPrice(symbol);
-      }
-    } else if (COINGECKO_ID[symbol]) {
-      // Crypto without a Binance pair (e.g. USDTUSD) — CoinGecko primary, static fallback
-      data = await getCoinGeckoPrice(symbol);
-      if (!data) {
-        data = buildStaticPrice(symbol);
-      }
-    } else if (FOREX_SYMBOLS.has(symbol)) {
-      // Ensure forex rates are loaded
-      await fetchForexRates();
-      data = buildForexPrice(symbol);
-    } else {
-      data = buildStaticPrice(symbol);
-    }
-
-    if (data) {
-      setAndCachePrices(prev => ({ ...prev, [symbol]: data! }));
-    }
-  }, [fetchBinancePrice, getCoinGeckoPrice, fetchForexRates, buildForexPrice, buildStaticPrice, setAndCachePrices]);
-
-  // Keep fetchPriceRef in sync so the interval always calls the latest version
-  fetchPriceRef.current = fetchPrice;
 
   // ── Subscription management ──────────────────────────────────────────────
-  // Standard 5-second interval for ALL asset types (batched single tick)
-  const TICK_INTERVAL_MS = 5000;
-
-  const startTickInterval = useCallback(() => {
-    if (tickIntervalRef.current) return; // already running
-    tickIntervalRef.current = setInterval(() => {
-      const symbols = Array.from(subscribedRef.current);
-      if (symbols.length === 0) return;
-      // Fetch all subscribed symbols in one batched tick
-      symbols.forEach(symbol => fetchPriceRef.current?.(symbol));
-    }, TICK_INTERVAL_MS);
-  }, []);
-
-  const stopTickInterval = useCallback(() => {
-    if (tickIntervalRef.current) {
-      clearInterval(tickIntervalRef.current);
-      tickIntervalRef.current = null;
-    }
-  }, []);
-
+  
   const subscribeToSymbol = useCallback((symbol: string) => {
     const isNew = !subscribedRef.current.has(symbol);
     if (isNew) {
       subscribedRef.current.add(symbol);
-      startTickInterval();
+      tvSocketRef.current?.subscribe(symbol);
     }
-
-    // Always trigger immediate fetch if price is missing or older than 10 seconds
-    const currentPrice = pricesRef.current[symbol];
-    const isStale = !currentPrice || (Date.now() - currentPrice.lastUpdate > 10000);
-    
-    if (isNew || isStale) {
-      fetchPriceRef.current?.(symbol);
-    }
-  }, [startTickInterval]);
+  }, []);
 
   const unsubscribeFromSymbol = useCallback((symbol: string) => {
     subscribedRef.current.delete(symbol);
-    // Stop the interval if no more subscriptions
-    if (subscribedRef.current.size === 0) {
-      stopTickInterval();
-    }
-  }, [stopTickInterval]);
+    tvSocketRef.current?.unsubscribe(symbol);
+  }, []);
 
   // ── Market asset list (optional DB fetch) ────────────────────────────────
   const refreshAssets = useCallback(async () => {
@@ -642,8 +425,7 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
 
   // ── Seed popular symbols on mount ────────────────────────────────────────
   useEffect(() => {
-    // Fetch forex rates once at startup
-    fetchForexRates();
+
     
     // Fetch assets from the database and implicitly subscribe to them
     refreshAssets();
@@ -656,8 +438,6 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
     defaults.forEach(s => subscribeToSymbol(s));
 
     return () => {
-      // Cleanup the single batched interval on unmount
-      stopTickInterval();
       subscribedRef.current.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
