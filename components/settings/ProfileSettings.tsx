@@ -487,7 +487,7 @@ Additional Notes: ${surveyNotes || 'None'}`,
           <div className="mt-4 flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
             <AlertCircle className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
             <p className="text-xs text-blue-700 dark:text-blue-300">
-              Email and phone verification are confirmed by compliance team. Please contact support if you need to verify your contact details.
+              Email and phone verifications are confirmed by compliance team. Please contact support if you need to verify your contact details.
             </p>
           </div>
         )}
