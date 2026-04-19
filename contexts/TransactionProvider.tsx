@@ -376,7 +376,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       }
 
       refreshTransactions();
-      toast.success('Transaction rejected');
+      toast.success('Transaction rejected (V2)');
     } catch (err) {
       console.error('Failed to reject transaction:', err);
       toast.error('Failed to reject transaction');
