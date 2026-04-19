@@ -377,13 +377,24 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
       
       if (symbolsToSync.length === 0) return;
 
-      const updates = symbolsToSync.map(symbol => ({
-        symbol,
-        price: currentPrices[symbol].price,
-        change_24h: currentPrices[symbol].changePercent,
-        volume: currentPrices[symbol].volume,
-        updated_at: Date.now()
-      }));
+      const updates = symbolsToSync
+        .map(symbol => {
+          const asset = assets.find(a => a.symbol === symbol);
+          if (!asset) return null;
+          
+          return {
+            id: asset.id,
+            symbol: symbol,
+            name: asset.name,
+            category: asset.category,
+            exchange: (asset as any).exchange || '',
+            price: currentPrices[symbol].price,
+            change_24h: currentPrices[symbol].changePercent,
+            volume: currentPrices[symbol].volume ? parseInt(currentPrices[symbol].volume.replace(/[^0-9]/g, '')) || 0 : 0,
+            updated_at: Date.now()
+          };
+        })
+        .filter(Boolean);
 
       try {
         // Only sync if we have a valid session (some users might be guests)
