@@ -2,6 +2,7 @@
 // Connects to TradingView's free internal websocket to stream real-time price data
 
 import { MarketPrice } from '../contexts/MarketDataContext';
+import { CATALOGUE } from './assetCatalogue';
 
 type SymbolDataCallback = (symbol: string, data: Partial<MarketPrice>) => void;
 
@@ -51,6 +52,11 @@ const INDICES_MAP: Record<string, string> = {
   'VIX': 'CBOE:VIX',
   'DXY': 'TVC:DXY',
   'TNX': 'TVC:US10Y',
+  'TYX': 'TVC:US30Y',
+  'IRX': 'TVC:US03Y',
+  'HSI': 'HSI:HSI',
+  'N225': 'TSE:NI225',
+  'FTSE': 'FTSE:UK100',
 };
 
 const REVERSE_INDICES_MAP: Record<string, string> = Object.fromEntries(
@@ -72,8 +78,25 @@ function getTVSymbol(ourSymbol: string): string {
   }
 
   const forex = ['EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'USDJPY', 'USDCHF', 'USDCAD', 'EURGBP', 'EURJPY', 'GBPJPY', 'EURCHF', 'AUDCAD', 'AUDCHF', 'AUDNZD', 'CADJPY', 'CHFJPY', 'EURAUD', 'EURCAD', 'EURNZD', 'GBPAUD', 'GBPCAD', 'GBPCHF', 'GBPNZD', 'NZDCAD', 'NZDCHF', 'NZDJPY'];
-  const crypto = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE', 'AVAX', 'DOT', 'MATIC', 'LINK', 'LTC', 'BCH', 'UNI', 'AAVE', 'ATOM', 'FIL', 'NEAR', 'APT', 'ARB', 'OP', 'SUI', 'XMR', 'ALGO', 'VET', 'ICP'];
+  const crypto = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE', 'AVAX', 'DOT', 'MATIC', 'LINK', 'LTC', 'BCH', 'UNI', 'AAVE', 'ATOM', 'FIL', 'NEAR', 'APT', 'ARB', 'OP', 'SUI', 'XMR', 'ALGO', 'VET', 'ICP', 'SHIB', 'PEPE', 'FLOKI', 'BONK', 'TRX', 'TON', 'STX', 'LDO', 'ETC', 'XLM', 'CRO', 'HBAR', 'NEAR', 'GRT', 'MKR', 'BSV', 'THETA', 'RNDR'];
   
+  // Try to find in catalogue for explicit exchange
+  const catalogItem = CATALOGUE.find(i => i.symbol === ourSymbol);
+  if (catalogItem && catalogItem.exchange && catalogItem.exchange !== 'FX') {
+    const exchange = catalogItem.exchange.toUpperCase();
+    if (exchange === 'BINANCE' && !ourSymbol.endsWith('USDT')) {
+      const base = ourSymbol.endsWith('USD') ? ourSymbol.slice(0, -3) : ourSymbol;
+      return `BINANCE:${base}USDT`;
+    }
+    
+    // Futures usually need 1! for continuous front-month data
+    if (catalogItem.category === 'Futures' && !ourSymbol.includes('1!')) {
+      return `${exchange}:${ourSymbol}1!`;
+    }
+    
+    return `${exchange}:${ourSymbol}`;
+  }
+
   if ((ourSymbol.endsWith('USD') || ourSymbol.endsWith('USDT')) && !forex.includes(ourSymbol)) {
     let base = ourSymbol;
     if (ourSymbol.endsWith('USDT')) {
@@ -109,11 +132,13 @@ function getOurSymbol(tvSymbol: string): string {
   }
 
   const parts = tvSymbol.split(':');
-  const symbol = parts[parts.length - 1]; // e.g., "BTCUSDT" or "AAPL"
+  let symbol = parts[parts.length - 1]; 
   
-  if (tvSymbol.startsWith('BINANCE:') && symbol.endsWith('USDT')) {
-    return symbol.replace('USDT', 'USD');
+  // Strip Futures continuous suffix
+  if (symbol.endsWith('1!')) {
+    symbol = symbol.slice(0, -2);
   }
+  
   return symbol;
 }
 
@@ -122,6 +147,7 @@ export class TradingViewSocket {
   private readonly sessionId: string;
   private onDataCallback: SymbolDataCallback | null = null;
   private subscribedSymbols: Set<string> = new Set();
+  private tvToOurSymbolMap: Map<string, string> = new Map();
   public isConnected: boolean = false;
   private reconnectTimer: any = null;
 
@@ -153,7 +179,12 @@ export class TradingViewSocket {
       // Resubscribe if there are existing symbols
       if (this.subscribedSymbols.size > 0) {
         const tvSymbols = Array.from(this.subscribedSymbols).map(getTVSymbol);
-        this.sendMessage('quote_add_symbols', [this.sessionId, ...tvSymbols]);
+        // Batch resubscriptions to avoid payload size limits/server rejection
+        const batchSize = 30;
+        for (let i = 0; i < tvSymbols.length; i += batchSize) {
+          const batch = tvSymbols.slice(i, i + batchSize);
+          this.sendMessage('quote_add_symbols', [this.sessionId, ...batch]);
+        }
       }
     };
 
@@ -187,8 +218,10 @@ export class TradingViewSocket {
   public subscribe(symbol: string) {
     if (!this.subscribedSymbols.has(symbol)) {
       this.subscribedSymbols.add(symbol);
+      const tvSymbol = getTVSymbol(symbol);
+      this.tvToOurSymbolMap.set(tvSymbol, symbol);
       if (this.isConnected && this.ws) {
-        this.sendMessage('quote_add_symbols', [this.sessionId, getTVSymbol(symbol)]);
+        this.sendMessage('quote_add_symbols', [this.sessionId, tvSymbol]);
       }
     }
   }
@@ -230,12 +263,18 @@ export class TradingViewSocket {
       try {
         const parsed = JSON.parse(payload);
         if (parsed.m === 'qsd' && parsed.p && parsed.p[1]) {
-          const tvName = parsed.p[1].n;
-          const status = parsed.p[1].s; // "ok" or "error"
-          const data = parsed.p[1].v;
+          const entry = parsed.p[1];
+          const tvName = entry.n;
+          const status = entry.s; 
+          const data = entry.v;
           
-          if (status === 'ok' && data && this.onDataCallback) {
-            const ourSymbol = getOurSymbol(tvName);
+          if (status === 'error') {
+            console.error(`[TV Live Tunnel] Error for symbol ${tvName}:`, entry.errmsg || 'Unknown error');
+            continue;
+          }
+
+          if (data && this.onDataCallback) {
+            const ourSymbol = this.tvToOurSymbolMap.get(tvName) || getOurSymbol(tvName);
             
             const update: Partial<MarketPrice> = {};
             if (data.lp !== undefined) update.price = data.lp;
@@ -250,13 +289,13 @@ export class TradingViewSocket {
             
             update.lastUpdate = Date.now();
             
-            if (Object.keys(update).length > 1) { // >1 because lastUpdate is always set
+            if (Object.keys(update).length > 1) { 
               this.onDataCallback(ourSymbol, update);
             }
           }
         }
       } catch (err) {
-        // console.warn("Failed to parse TV message:", payload);
+        // Ignore JSON errors
       }
     }
   }

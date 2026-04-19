@@ -150,11 +150,10 @@ const COINGECKO_CACHE_TTL_MS = 30_000;
 
 /** Forex symbols handled via open.er-api.com (free, no key). */
 const FOREX_SYMBOLS = new Set([
-  'EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD',
-  'USDCAD', 'NZDUSD', 'EURGBP', 'EURJPY', 'GBPJPY',
-  'EURCHF', 'AUDCAD', 'AUDCHF', 'AUDNZD', 'CADJPY',
-  'CHFJPY', 'EURAUD', 'EURCAD', 'EURNZD', 'GBPAUD',
-  'GBPCAD', 'GBPCHF', 'GBPNZD', 'NZDCAD', 'NZDCHF', 'NZDJPY',
+  'EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'USDJPY', 'USDCHF', 'USDCAD',
+  'EURGBP', 'EURJPY', 'GBPJPY', 'EURCHF', 'EURAUD', 'EURCAD', 'EURNZD',
+  'GBPAUD', 'GBPCAD', 'GBPCHF', 'GBPNZD', 'AUDCAD', 'AUDCHF', 'AUDNZD',
+  'CADJPY', 'CADCHF', 'CHFJPY', 'NZDCAD', 'NZDCHF', 'NZDJPY', 'USDSGD'
 ]);
 
 /**
@@ -199,11 +198,10 @@ const STATIC_BASE: Record<string, number> = {
   'MSFT-P-370': 7.34, 'AMZN-C-155': 9.12, 'META-C-350': 13.45,
   'IWM-P-195': 5.67,
   // ── Options (chain-level symbols used in UI) ────────────────────────────
-  'SPY-OPT': 14.25,  'QQQ-OPT': 16.80,  'AAPL-OPT': 7.45,
-  'TSLA-OPT': 22.30, 'NVDA-OPT': 19.60, 'AMD-OPT': 8.15,
-  'META-OPT': 15.90, 'AMZN-OPT': 11.35, 'GOOGL-OPT': 9.75,
-  'MSFT-OPT': 12.50, 'VIX-OPT': 3.40,   'GLD-OPT': 6.80,
   'IWM-OPT': 5.25,   'EEM-OPT': 2.90,   'TLT-OPT': 3.65,
+  // ── Altcoins ────────────────────────────────────────────────────────────
+  SHIBUSDT: 0.000006, PEPEUSD: 0.000001, DOGEUSD: 0.12, XRPUSD: 0.62,
+  SOLUSD: 102, ADAUSD: 0.64, DOTUSD: 7.82, TRXUSD: 0.11, TONUSD: 2.15,
 };
 
 // ============================================================
@@ -293,8 +291,8 @@ function buildFallbackPrice(symbol: string): MarketPrice {
     }
   }
 
-  const isCrypto = symbol.includes('BTC') || symbol.includes('ETH');
-  const { bid, ask } = makeSpread(base, false, isCrypto);
+  const isCrypto = symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('USD') && !FOREX_SYMBOLS.has(symbol) || symbol.includes('SHIB') || symbol.includes('PEPE');
+  const { bid, ask } = makeSpread(base, false, !!isCrypto);
 
   return {
     symbol,
