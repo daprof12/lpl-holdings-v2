@@ -654,6 +654,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           toast.error("Warning: DB Session log failed (Check console)");
         }
 
+        // Refresh all app data in background to ensure lists (activities, etc) are fresh
+        loadInitialData().catch(console.error);
+
         return true;
       }
     } catch (err) {
