@@ -150,7 +150,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const loadInitialData = async () => {
     try {
       console.log('🔄 Loading initial auth data from relational database...');
-      
+
       // 1. Fetch all datasets from relational tables
       const [dbUsers, dbAccounts, dbWallets, dbSubscribers] = await Promise.all([
         api.users.getAll(),
@@ -158,7 +158,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         api.investmentWallets.getAll(),
         api.subscribers.getAll()
       ]);
-      
+
       if (dbUsers && Array.isArray(dbUsers)) {
         console.log('Processed DB Users:', dbUsers.length);
         const safeFloat = (val: any) => {
@@ -172,7 +172,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const ta = dbAccounts?.find((acc: any) => acc.user_id === u.id) || {};
           const iw = dbWallets?.find((w: any) => w.user_id === u.id) || {};
           const sub = dbSubscribers?.find((s: any) => s.user_id === u.id && s.status === 'active') || {};
-          
+
           return {
             id: u.id,
             email: u.email || '',
@@ -205,10 +205,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             passwordHash: u.password_hash
           };
         });
-        
+
         setUsers(processedUsers);
         localStorage.setItem('gross_users', JSON.stringify(processedUsers));
-        
+
         setCurrentUser(prevUser => {
           if (!prevUser) return null;
           const freshUser = processedUsers.find(u => u.id === prevUser.id);
@@ -557,12 +557,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       // 1. Fetch user by email from relational DB
       const user = await api.users.getByEmail(email);
-      
+
       if (!user) return false;
 
-      // 2. Validate password (in a real app, this would be a hash check on the server)
-      // For now, we'll keep the logic of checking against the returned password_hash
+      // 2. Validate password
       if (user.password_hash === password) {
+        // 3. Fetch related user data to populate the profile fully
+        const [ta, iw, subs] = await Promise.all([
+          api.tradingAccounts.getByUserId(user.id),
+          api.investmentWallets.getByUserId(user.id),
+          api.subscribers.getByUserId(user.id)
+        ]);
+
+        const activeSub = subs?.find((s: any) => s.status === 'active');
+        const safeFloat = (val: any) => {
+          if (val === null || val === undefined || val === '') return 0;
+          const parsed = parseFloat(val);
+          return isNaN(parsed) ? 0 : parsed;
+        };
+
         const processedUser: UserProfile = {
           id: user.id,
           email: user.email,
@@ -573,14 +586,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           phone: user.phone,
           kycStatus: user.kyc_status === 'approved' ? 'verified' : user.kyc_status === 'rejected' ? 'rejected' : 'not_started',
           accountType: user.account_type || 'standard',
-          balance: parseFloat(user.balance || 0),
-          liveBalance: parseFloat(user.balance || 0),
+          subscriptionPlan: activeSub?.plan || user.subscription_plan || '',
+          balance: Math.max(safeFloat((ta as any)?.balance), safeFloat(user.balance)),
+          liveBalance: Math.max(safeFloat((ta as any)?.balance), safeFloat(user.balance)),
+          credit: Math.max(safeFloat((ta as any)?.credit), safeFloat(user.credit)),
+          bonus: Math.max(safeFloat((ta as any)?.bonus), safeFloat(user.bonus)),
           isVerified: user.email_verified || false,
           phoneVerified: user.phone_verified || false,
           createdAt: new Date(user.created_at || Date.now()),
           enabledDepositMethods: user.enabled_deposit_methods || [],
           enabledWithdrawalMethods: user.enabled_withdrawal_methods || [],
           cryptoWallets: user.crypto_wallets || {},
+          hasInvestmentAccess: user.has_investment_access ?? false,
+          hasAutoTradeAccess: user.has_auto_trade_access ?? false,
+          hasSignalAccess: user.has_signal_access ?? false,
+          investmentBalances: {
+            ipo: Math.max(safeFloat((iw as any)?.ipo), safeFloat(user.ipo_balance), safeFloat(user.investment_balances?.ipo)),
+            ecn: Math.max(safeFloat((iw as any)?.ecn), safeFloat(user.ecn_balance), safeFloat(user.investment_balances?.ecn)),
+            portfolio: Math.max(safeFloat((iw as any)?.portfolio), safeFloat(user.portfolio_balance), safeFloat(user.investment_balances?.portfolio)),
+          },
           passwordHash: user.password_hash,
         };
 
@@ -625,7 +649,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           location: ipInfo.location,
           userAgent: ua
         });
-        
+
         if (!logRes.success) {
           toast.error("Warning: DB Session log failed (Check console)");
         }
@@ -641,7 +665,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = () => {
     const lastUser = currentUser;
     setCurrentUser(null);
-    
+
     // Wipe every possible session key
     sessionStorage.removeItem('gross_current_user');
     sessionStorage.removeItem('gross_current_user_isolated');
@@ -649,7 +673,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('adminLoginAsUser');
     localStorage.removeItem('gross_users');
     localStorage.removeItem('gross_notifications');
-    
+
     if (lastUser) {
       // Async wrapper to fetch IP before logging
       (async () => {
@@ -664,7 +688,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               location: data.city && data.country_name ? `${data.city}, ${data.country_name}` : 'Unknown'
             };
           }
-        } catch (e) {}
+        } catch (e) { }
 
         const browserMatch = ua.match(/(firefox|msie|chrome|safari|trident|edge|opera)/i);
         const deviceMatch = ua.match(/(iphone|ipod|ipad|android|windows phone|macintosh|windows|linux)/i);
@@ -691,11 +715,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // 2. Create user in database
       // Generate a valid UUID v4 for the new user
-      const userId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const userId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
         var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
       });
-      
+
       const now = Date.now();
       const signupData = {
         id: userId,
@@ -724,19 +748,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // 3. Initialize Trading Account and Investment Wallet
       await Promise.all([
-        supabase.from('trading_accounts').insert({ 
-          user_id: userId, 
-          balance: 0, 
-          equity: 0, 
-          margin: 0, 
+        supabase.from('trading_accounts').insert({
+          user_id: userId,
+          balance: 0,
+          equity: 0,
+          margin: 0,
           free_margin: 0,
           currency: 'USD'
         }),
-        supabase.from('investment_wallets').insert({ 
-          user_id: userId, 
-          ipo: 0, 
-          ecn: 0, 
-          portfolio: 0 
+        supabase.from('investment_wallets').insert({
+          user_id: userId,
+          ipo: 0,
+          ecn: 0,
+          portfolio: 0
         })
       ]);
 
@@ -764,21 +788,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const dbUpdates: any = {
         updated_at: Date.now()
       };
-      
+
       if (updates.firstName || updates.lastName) {
         const currentUserData = users.find(u => u.id === userId);
         const firstName = updates.firstName !== undefined ? updates.firstName : (currentUserData?.firstName || '');
         const lastName = updates.lastName !== undefined ? updates.lastName : (currentUserData?.lastName || '');
         dbUpdates.name = `${firstName} ${lastName}`.trim();
       }
-      
+
       if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
       if (updates.country !== undefined) dbUpdates.country = updates.country;
       if (updates.role !== undefined) dbUpdates.role = updates.role;
       if (updates.accountType !== undefined) dbUpdates.account_type = updates.accountType;
       if (updates.kycStatus !== undefined) {
-        dbUpdates.kyc_status = updates.kycStatus === 'verified' ? 'approved' : 
-                               updates.kycStatus === 'rejected' ? 'rejected' : 'pending';
+        dbUpdates.kyc_status = updates.kycStatus === 'verified' ? 'approved' :
+          updates.kycStatus === 'rejected' ? 'rejected' : 'pending';
       }
       if (updates.isVerified !== undefined) dbUpdates.email_verified = updates.isVerified;
       if (updates.phoneVerified !== undefined) dbUpdates.phone_verified = updates.phoneVerified;
@@ -786,12 +810,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (updates.hasInvestmentAccess !== undefined) dbUpdates.has_investment_access = updates.hasInvestmentAccess;
       if (updates.hasAutoTradeAccess !== undefined) dbUpdates.has_auto_trade_access = updates.hasAutoTradeAccess;
       if (updates.hasSignalAccess !== undefined) dbUpdates.has_signal_access = updates.hasSignalAccess;
-      
+
       // Map financial balances to database columns
       if (updates.liveBalance !== undefined) dbUpdates.balance = updates.liveBalance;
       if (updates.bonus !== undefined) dbUpdates.bonus = updates.bonus;
       if (updates.credit !== undefined) dbUpdates.credit = updates.credit;
-      
+
       if (updates.investmentBalances !== undefined) {
         dbUpdates.portfolio_balance = updates.investmentBalances.portfolio;
         dbUpdates.ipo_balance = updates.investmentBalances.ipo;
@@ -800,7 +824,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // 2. Update in Relational DB
       await api.users.update(userId, dbUpdates);
-      
+
       // 3. Update local state
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...updates } : u));
       if (currentUser?.id === userId) {
@@ -808,10 +832,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       toast.success('Profile updated successfully');
-      
+
       // Dispatch global event for other components to refresh
       window.dispatchEvent(new Event('usersUpdated'));
-      
+
       // Refresh only the specific user data instead of the whole database
       const refreshedUser = await api.users.getById(userId);
       if (refreshedUser) {
@@ -918,7 +942,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (type === 'balance') {
         await api.users.updateBalance(userId, amount);
       }
-      
+
       // Log activity
       await supabase.from('activity_logs').insert({
         actor_id: userId,
@@ -1063,7 +1087,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         related_id: notification.relatedId,
         metadata: (notification as any).metadata || {}
       });
-      
+
       // Refresh local notifications if needed
       window.dispatchEvent(new Event('usersUpdated'));
     } catch (err) {
