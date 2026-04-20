@@ -93,7 +93,7 @@ export default function SignalsFeed() {
 📈 Direction: ${signal.type}
 💰 Entry: $${formatCurrency(signal.entryPrice)}
 🛑 Stop Loss: $${formatCurrency(signal.stopLoss)}
-🎯 Take Profits: ${signal.takeProfit.map((tp: number, i: number) => `TP${i + 1}: $${formatCurrency(tp)}`).join(', ')}
+🎯 Take Profits: ${Array.isArray(signal.takeProfit) ? signal.takeProfit.map((tp: number, i: number) => `TP${i + 1}: $${formatCurrency(tp)}`).join(', ') : 'N/A'}
 ⏰ Timeframe: ${signal.timeframe}
 🎓 Provider: ${signal.provider} (${signal.providerRating}★)
 ✅ Confidence: ${signal.confidence}
@@ -211,16 +211,16 @@ export default function SignalsFeed() {
               </div>
 
               <div className="text-right">
-                <div className={`text-2xl font-bold ${signal.pnl > 0
+                <div className={`text-2xl font-bold ${(signal.pnl || 0) > 0
                     ? 'text-green-600 dark:text-green-400'
-                    : signal.pnl < 0
+                    : (signal.pnl || 0) < 0
                       ? 'text-red-600 dark:text-red-400'
                       : 'text-gray-600 dark:text-gray-400'
                   }`}>
-                  {signal.pnl > 0 ? '+' : ''}${signal.pnl.toFixed(2)}
+                  {signal.pnl > 0 ? '+' : ''}${(signal.pnl || 0).toFixed(2)}
                 </div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">
-                  {signal.pnlPercent > 0 ? '+' : ''}{signal.pnlPercent.toFixed(2)}%
+                  {signal.pnlPercent > 0 ? '+' : ''}${(signal.pnlPercent || 0).toFixed(2)}%
                 </div>
               </div>
             </div>
@@ -247,7 +247,7 @@ export default function SignalsFeed() {
               <div className="col-span-2">
                 <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Take Profit Targets</div>
                 <div className="flex gap-2">
-                  {signal.takeProfit.map((tp, index) => (
+                  {Array.isArray(signal.takeProfit) && signal.takeProfit.map((tp, index) => (
                     <div key={index} className="px-2 py-1 bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded text-sm font-semibold">
                       TP{index + 1}: ${formatCurrency(tp)}
                     </div>
@@ -340,7 +340,7 @@ export default function SignalsFeed() {
                 <div className="text-sm text-red-600 dark:text-red-400 mb-1">Stop Loss</div>
                 <div className="text-xl font-bold text-red-600 dark:text-red-400">${formatCurrency(selectedSignal.stopLoss)}</div>
                 <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                  Risk: {Math.abs(((selectedSignal.stopLoss - selectedSignal.entryPrice) / selectedSignal.entryPrice) * 100).toFixed(2)}%
+                  Risk: {selectedSignal.entryPrice ? Math.abs(((selectedSignal.stopLoss - selectedSignal.entryPrice) / selectedSignal.entryPrice) * 100).toFixed(2) : '0.00'}%
                 </div>
               </div>
 
@@ -348,13 +348,13 @@ export default function SignalsFeed() {
               <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
                 <div className="text-sm text-green-600 dark:text-green-400 mb-3">Take Profit Targets</div>
                 <div className="space-y-2">
-                  {selectedSignal.takeProfit.map((tp: number, index: number) => (
+                  {Array.isArray(selectedSignal.takeProfit) && selectedSignal.takeProfit.map((tp: number, index: number) => (
                     <div key={index} className="flex items-center justify-between">
                       <span className="font-semibold text-green-600 dark:text-green-400">TP {index + 1}</span>
                       <div className="text-right">
                         <div className="font-bold">${formatCurrency(tp)}</div>
                         <div className="text-xs text-gray-600 dark:text-gray-400">
-                          +{Math.abs(((tp - selectedSignal.entryPrice) / selectedSignal.entryPrice) * 100).toFixed(2)}%
+                          +{selectedSignal.entryPrice ? Math.abs(((tp - selectedSignal.entryPrice) / selectedSignal.entryPrice) * 100).toFixed(2) : '0.00'}%
                         </div>
                       </div>
                     </div>
@@ -370,16 +370,16 @@ export default function SignalsFeed() {
                     : 'bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700'
                 }`}>
                 <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Current P&L</div>
-                <div className={`text-2xl font-bold ${selectedSignal.pnl > 0
+                <div className={`text-2xl font-bold ${(selectedSignal.pnl || 0) > 0
                     ? 'text-green-600 dark:text-green-400'
-                    : selectedSignal.pnl < 0
+                    : (selectedSignal.pnl || 0) < 0
                       ? 'text-red-600 dark:text-red-400'
                       : 'text-gray-600 dark:text-gray-400'
                   }`}>
-                  {selectedSignal.pnl > 0 ? '+' : ''}${selectedSignal.pnl.toFixed(2)}
+                  {selectedSignal.pnl > 0 ? '+' : ''}${(selectedSignal.pnl || 0).toFixed(2)}
                 </div>
                 <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  {selectedSignal.pnlPercent > 0 ? '+' : ''}{selectedSignal.pnlPercent.toFixed(2)}%
+                  {selectedSignal.pnlPercent > 0 ? '+' : ''}${(selectedSignal.pnlPercent || 0).toFixed(2)}%
                 </div>
               </div>
 

@@ -60,7 +60,7 @@ export default function CopyTrading() {
           <div className="bg-white dark:bg-slate-800 rounded-lg p-4">
             <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Profit</div>
             <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-              +${copyTrades.reduce((sum, t) => sum + t.profit, 0).toFixed(2)}
+              +${copyTrades.reduce((sum, t) => sum + (t.profit || 0), 0).toFixed(2)}
             </div>
           </div>
           <div className="bg-white dark:bg-slate-800 rounded-lg p-4">
@@ -112,10 +112,10 @@ export default function CopyTrading() {
               <div className="flex items-center gap-4">
                 <div className="text-right">
                   <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    +${trade.profit.toFixed(2)}
+                    +${(trade.profit || 0).toFixed(2)}
                   </div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">
-                    +{trade.profitPercent.toFixed(2)}%
+                    +${(trade.profitPercent || 0).toFixed(2)}%
                   </div>
                 </div>
 

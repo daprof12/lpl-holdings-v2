@@ -17,7 +17,7 @@ export default function MySignals() {
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
           <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Total P/L</div>
           <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-            +${mySignals.reduce((sum, s) => sum + s.pnl, 0).toFixed(2)}
+            +${mySignals.reduce((sum, s) => sum + (s.pnl || 0), 0).toFixed(2)}
           </div>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">

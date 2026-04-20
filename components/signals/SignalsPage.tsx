@@ -107,7 +107,7 @@ export default function SignalsPage() {
             </div>
             <div className="text-2xl font-bold">{stats.profitableSignals}</div>
             <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-              {((stats.profitableSignals / stats.activeSignals) * 100).toFixed(0)}% win rate
+              {stats.activeSignals > 0 ? ((stats.profitableSignals / stats.activeSignals) * 100).toFixed(0) : '0'}% win rate
             </div>
           </div>
         </div>
