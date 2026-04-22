@@ -146,6 +146,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     watchlist: []
   });
 
+  // Utility: safely parse a float from any value
+  const safeFloat = (val: any) => {
+    if (val === null || val === undefined || val === '') return 0;
+    const parsed = parseFloat(val);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   // Load from database as primary
   const loadInitialData = async () => {
     try {
@@ -161,11 +168,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (dbUsers && Array.isArray(dbUsers)) {
         console.log('Processed DB Users:', dbUsers.length);
-        const safeFloat = (val: any) => {
-          if (val === null || val === undefined || val === '') return 0;
-          const parsed = parseFloat(val);
-          return isNaN(parsed) ? 0 : parsed;
-        };
+        // safeFloat is defined at component scope above
 
         const processedUsers: UserProfile[] = dbUsers.map((u: any) => {
           // Manually join with account and wallet data
@@ -570,11 +573,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         ]);
 
         const activeSub = subs?.find((s: any) => s.status === 'active');
-        const safeFloat = (val: any) => {
-          if (val === null || val === undefined || val === '') return 0;
-          const parsed = parseFloat(val);
-          return isNaN(parsed) ? 0 : parsed;
-        };
+        // safeFloat is defined at component scope above
 
         const processedUser: UserProfile = {
           id: user.id,

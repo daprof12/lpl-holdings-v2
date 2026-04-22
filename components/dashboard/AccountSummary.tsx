@@ -34,7 +34,7 @@ export default function AccountSummary() {
   const cards = [
     {
       title: 'Total Balance',
-      value: `$${account.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `$${(account.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: Wallet,
       color: 'from-blue-500 to-blue-600',
       bgColor: 'bg-blue-50 dark:bg-blue-900/20',
@@ -60,7 +60,7 @@ export default function AccountSummary() {
     },
     {
       title: 'Equity',
-      value: `$${account.equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `$${(account.equity || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: DollarSign,
       color: 'from-purple-500 to-purple-600',
       bgColor: 'bg-purple-50 dark:bg-purple-900/20',
@@ -69,7 +69,7 @@ export default function AccountSummary() {
     },
     {
       title: 'Margin Used',
-      value: `$${account.margin.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `$${(account.margin || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: PieChart,
       color: 'from-orange-500 to-orange-600',
       bgColor: 'bg-orange-50 dark:bg-orange-900/20',
@@ -77,7 +77,7 @@ export default function AccountSummary() {
     },
     {
       title: 'Available Funds',
-      value: `$${account.availableFunds.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `$${(account.availableFunds || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: Activity,
       color: 'from-green-500 to-green-600',
       bgColor: 'bg-green-50 dark:bg-green-900/20',
@@ -96,7 +96,7 @@ export default function AccountSummary() {
     },
     {
       title: 'Total P/L',
-      value: `${isPnLPositive ? '+' : ''}$${totalPnL.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `${isPnLPositive ? '+' : ''}$${(totalPnL || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: isPnLPositive ? TrendingUp : TrendingDown,
       color: isPnLPositive ? 'from-green-500 to-emerald-600' : 'from-red-500 to-red-600',
       bgColor: isPnLPositive ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20',

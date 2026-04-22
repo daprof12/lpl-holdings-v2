@@ -69,7 +69,7 @@ export default function InvestmentsPage() {
     console.log(`Depositing $${amount} to ${accountType} account`);
   };
 
-  const [hasAccess, setHasAccess] = useState<boolean>(false);
+  const [hasAccess, setHasAccess] = useState<boolean>(currentUser?.hasInvestmentAccess || false);
   const [activeTab, setActiveTab] = useState<'IPO' | 'ECN'>('IPO');
   const [historyTab, setHistoryTab] = useState<'history' | 'requests'>('history');
   const [historyTypeTab, setHistoryTypeTab] = useState<'IPO' | 'ECN'>('IPO');
@@ -568,7 +568,7 @@ export default function InvestmentsPage() {
                       )}
                     </td>
                     )}
-                    <td className="px-4 py-3">{offer.availableUnits.toLocaleString()} / {offer.totalUnits.toLocaleString()}</td>
+                    <td className="px-4 py-3">{(offer.availableUnits || 0).toLocaleString()} / {(offer.totalUnits || 0).toLocaleString()}</td>
                     <td className="px-4 py-3">
                       <Button
                         size="sm"

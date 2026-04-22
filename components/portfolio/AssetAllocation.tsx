@@ -222,7 +222,7 @@ export default function AssetAllocation() {
                       {holding.type}
                     </span>
                   </td>
-                  <td className="py-4 px-4 text-right">{holding.shares.toLocaleString()}</td>
+                  <td className="py-4 px-4 text-right">{(holding.shares || 0).toLocaleString()}</td>
                   <td className="py-4 px-4 text-right font-semibold">
                     {formatCurrency(holding.value)}
                   </td>
@@ -278,7 +278,7 @@ export default function AssetAllocation() {
                 </div>
                 <div>
                   <div className="text-gray-600 dark:text-gray-400 text-xs">Units</div>
-                  <div className="font-semibold">{holding.shares.toLocaleString()}</div>
+                  <div className="font-semibold">{(holding.shares || 0).toLocaleString()}</div>
                 </div>
                 <div>
                   <div className="text-gray-600 dark:text-gray-400 text-xs">P/L</div>

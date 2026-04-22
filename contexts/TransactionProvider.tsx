@@ -328,7 +328,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       if (transaction.type === 'deposit') {
         // Deposit rejected: no balance change needed — was never credited
         await api.deposits.update(refId, {
-          status: 'failed',
+          status: 'rejected',
           reviewed_by: adminId,
           rejection_reason: notes || null,
           admin_notes: notes || null,

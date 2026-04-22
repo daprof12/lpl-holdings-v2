@@ -838,7 +838,7 @@ export const api = {
       return data;
     },
     update: async (id: string, updates: any) => {
-      const { data, error } = await supabase.from('password_resets').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+      const { data, error } = await supabase.from('password_resets').update({ ...updates, updated_at: Date.now() }).eq('id', id).select().single();
       if (error) throw error;
       return data;
     }

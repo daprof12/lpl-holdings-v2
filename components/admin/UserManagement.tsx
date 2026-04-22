@@ -294,8 +294,10 @@ export default function UserManagement() {
         credit: parseFloat(formData.credit) || 0
       });
 
-      // Update password if changed via special dialog or if needed
-      // (Password updates should ideally go through a dedicated reset password flow)
+      // Update password if changed in edit mode
+      if (formData.password && formData.password !== user.passwordHash) {
+        await api.users.update(selectedUserId, { password_hash: formData.password });
+      }
 
       // Notify user when subscription plan changes and update subscribers table
       if (formData.subscriptionPlan && formData.subscriptionPlan !== prevPlan) {
@@ -337,6 +339,7 @@ export default function UserManagement() {
 
       toast.success('User updated successfully');
       setShowDialog(false);
+      await refreshData();
     } catch (err) {
       console.error('Failed to save user:', err);
       toast.error('Failed to save user updates');

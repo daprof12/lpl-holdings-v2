@@ -336,7 +336,7 @@ export default function CryptoDeposit({ walletType = 'live', methods }: { wallet
           {amount && parseFloat(amount) > 0 && (
             <div className="mt-2 text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
               {currentPrice > 0 ? (
-                <>≈ {cryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 8, maximumFractionDigits: 8 })} {selectedCrypto}</>
+                <>≈ {(cryptoAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 8, maximumFractionDigits: 8 })} {selectedCrypto}</>
               ) : (
                 <span className="flex items-center gap-1">
                   <Loader2 className="w-3 h-3 animate-spin" />
@@ -507,7 +507,7 @@ export default function CryptoDeposit({ walletType = 'live', methods }: { wallet
                 </div>
               )}
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                Send exactly {cryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 8, maximumFractionDigits: 8 })} {selectedCrypto} to receive ${parseFloat(amount).toFixed(2)} in your account
+                Send exactly {(cryptoAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 8, maximumFractionDigits: 8 })} {selectedCrypto} to receive ${parseFloat(amount).toFixed(2)} in your account
               </div>
             </div>
           </div>
@@ -570,7 +570,7 @@ export default function CryptoDeposit({ walletType = 'live', methods }: { wallet
                       {depositDate.toLocaleDateString()} {depositDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      ≈ ${deposit.usdEquivalent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ≈ ${(deposit.usdEquivalent || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                   </div>
                   <div className="flex flex-col items-end">
@@ -642,9 +642,9 @@ export default function CryptoDeposit({ walletType = 'live', methods }: { wallet
                   <div className="pt-2 border-t border-blue-200 dark:border-blue-700 flex justify-between">
                     <span className="font-bold">Crypto to Send:</span>
                     <span className="font-bold text-lg">
-                      {currentPrice > 0 ? (
-                        `${cryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 8, maximumFractionDigits: 8 })} ${selectedCrypto}`
-                      ) : (
+                        {currentPrice > 0 ? (
+                          `${(cryptoAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 8, maximumFractionDigits: 8 })} ${selectedCrypto}`
+                        ) : (
                         <span className="flex items-center gap-1 text-sm text-gray-400">
                           <Loader2 className="w-4 h-4 animate-spin" />
                           Fetching...

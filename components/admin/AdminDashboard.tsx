@@ -107,12 +107,12 @@ export default function AdminDashboard() {
 
         // Update stats
         setStats([
-          { label: 'Total Users', value: totalUsers.toLocaleString(), change: userGrowth, icon: Users, color: 'blue' },
-          { label: 'Active Trades', value: activeTrades.toLocaleString(), change: tradeGrowth, icon: TrendingUp, color: 'green' },
-          { label: 'Active Signals', value: activeSignals.toString(), change: signalChange, icon: Signal, color: 'purple' },
-          { label: 'Subscriptions', value: activeSubscriptions.toLocaleString(), change: subscriptionGrowth, icon: CreditCard, color: 'orange' },
-          { label: 'Total Assets', value: totalAssets.toLocaleString(), change: assetChange, icon: Briefcase, color: 'indigo' },
-          { label: 'Open Tickets', value: openTickets.toString(), change: ticketChange, icon: Headphones, color: 'red' },
+          { label: 'Total Users', value: (totalUsers || 0).toLocaleString(), change: userGrowth, icon: Users, color: 'blue' },
+          { label: 'Active Trades', value: (activeTrades || 0).toLocaleString(), change: tradeGrowth, icon: TrendingUp, color: 'green' },
+          { label: 'Active Signals', value: (activeSignals || 0).toString(), change: signalChange, icon: Signal, color: 'purple' },
+          { label: 'Subscriptions', value: (activeSubscriptions || 0).toLocaleString(), change: subscriptionGrowth, icon: CreditCard, color: 'orange' },
+          { label: 'Total Assets', value: (totalAssets || 0).toLocaleString(), change: assetChange, icon: Briefcase, color: 'indigo' },
+          { label: 'Open Tickets', value: (openTickets || 0).toString(), change: ticketChange, icon: Headphones, color: 'red' },
           { label: 'Revenue (MTD)', value: formattedRevenue, change: revenueGrowth, icon: DollarSign, color: 'emerald' },
           { label: 'Platform Health', value: `${platformHealth}%`, change: healthChange, icon: Activity, color: 'cyan' },
         ]);

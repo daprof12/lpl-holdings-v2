@@ -273,7 +273,7 @@ export default function UserSubscription() {
                         <h3 className="text-2xl font-bold">{plan.name}</h3>
                       </div>
                       <div className="flex items-baseline gap-1">
-                        <span className="text-4xl font-bold">${plan.price.toLocaleString()}</span>
+                        <span className="text-4xl font-bold">${(plan.price || 0).toLocaleString()}</span>
                         <span className="text-sm opacity-80 pl-1">
                           one-time
                         </span>
@@ -313,7 +313,7 @@ export default function UserSubscription() {
                                 : 'bg-slate-800 hover:bg-slate-900 dark:bg-slate-600 dark:hover:bg-slate-500 !text-white'
                             }`}
                           >
-                            Upgrade for ${plan.price.toLocaleString()}
+                            Upgrade for ${(plan.price || 0).toLocaleString()}
                           </Button>
                         )}
                       </div>
@@ -360,7 +360,7 @@ export default function UserSubscription() {
                   <div className="flex justify-between items-center">
                     <span className="text-gray-600 dark:text-gray-400">Upgrade Cost:</span>
                     <span className="text-lg font-bold text-red-500">
-                      -${selectedPlan.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      -${(selectedPlan.price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
@@ -369,7 +369,7 @@ export default function UserSubscription() {
                   <div className="flex justify-between items-center">
                     <span className="text-gray-600 dark:text-gray-400 font-medium">Remaining Balance:</span>
                     <span className={`text-lg font-bold ${(currentUser?.liveBalance || 0) < selectedPlan.price ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
-                      ${Math.max(0, (currentUser?.liveBalance || 0) - selectedPlan.price).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      ${Math.max(0, (currentUser?.liveBalance || 0) - (selectedPlan.price || 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
@@ -380,7 +380,7 @@ export default function UserSubscription() {
                   <div className="flex items-start gap-3">
                     <Info className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-red-800 dark:text-red-200 font-medium leading-relaxed">
-                      Insufficient live wallet balance. Please make a deposit of at least <span className="font-bold text-red-900 dark:text-red-100">${(selectedPlan.price - (currentUser?.liveBalance || 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span> to proceed with this upgrade.
+                      Insufficient live wallet balance. Please make a deposit of at least <span className="font-bold text-red-900 dark:text-red-100">${((selectedPlan.price || 0) - (currentUser?.liveBalance || 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span> to proceed with this upgrade.
                     </p>
                   </div>
                 </div>

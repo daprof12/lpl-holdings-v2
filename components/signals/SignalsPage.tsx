@@ -15,7 +15,7 @@ export default function SignalsPage() {
   const { currentUser } = useAuth();
   const [activeSignals, setActiveSignals] = useState(24);
   const [followedProviders, setFollowedProviders] = useState(8);
-  const [hasAccess, setHasAccess] = useState<boolean>(false);
+  const [hasAccess, setHasAccess] = useState<boolean>(currentUser?.hasSignalAccess || false);
 
   // Check user access
   useEffect(() => {

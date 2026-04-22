@@ -18,7 +18,7 @@ export default function AutoTraderPage() {
   const { history, positions } = useTrading();
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-  const [hasAccess, setHasAccess] = useState<boolean>(false);
+  const [hasAccess, setHasAccess] = useState<boolean>(currentUser?.hasAutoTradeAccess || false);
 
   // Calculate real stats from actual trading data
   const stats = useMemo(() => {

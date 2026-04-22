@@ -11,12 +11,13 @@
  * For very small numbers, shows up to 8 decimal places.
  */
 export const formatNumber = (num: number): string => {
-  const absNum = Math.abs(num);
+  const n = typeof num === 'number' && !isNaN(num) ? num : 0;
+  const absNum = Math.abs(n);
   if (absNum === 0) return '0.00';
-  if (absNum < 0.0001) return num.toFixed(8);
-  if (absNum < 0.01) return num.toFixed(6);
-  if (absNum < 1) return num.toFixed(4);
-  return num.toFixed(2);
+  if (absNum < 0.0001) return n.toFixed(8);
+  if (absNum < 0.01) return n.toFixed(6);
+  if (absNum < 1) return n.toFixed(4);
+  return n.toFixed(2);
 };
 
 /**
@@ -25,14 +26,15 @@ export const formatNumber = (num: number): string => {
  *      0.00001 → "0.00001000"
  */
 export const formatCurrency = (num: number): string => {
-  const absNum = Math.abs(num);
+  const n = typeof num === 'number' && !isNaN(num) ? num : 0;
+  const absNum = Math.abs(n);
   let decimals = 2;
   
   if (absNum > 0 && absNum < 0.0001) decimals = 8;
   else if (absNum > 0 && absNum < 0.01)    decimals = 6;
   else if (absNum > 0 && absNum < 1)       decimals = 4;
 
-  return num.toLocaleString('en-US', {
+  return n.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: decimals,
   });
@@ -61,7 +63,8 @@ export const formatPrice = (num: number): string => {
  *      0.0001   → "0.0001%"
  */
 export const formatPercentage = (num: number): string => {
-  const val = parseFloat(num.toFixed(4)); // cap at 4 dp
+  const n = typeof num === 'number' && !isNaN(num) ? num : 0;
+  const val = parseFloat(n.toFixed(4)); // cap at 4 dp
   return (
     val.toLocaleString('en-US', {
       minimumFractionDigits: 2,
@@ -75,7 +78,8 @@ export const formatPercentage = (num: number): string => {
  * Format a percentage value without the % sign (useful when the sign is added by the caller).
  */
 export const formatPct = (num: number): string => {
-  const val = parseFloat(num.toFixed(4));
+  const n = typeof num === 'number' && !isNaN(num) ? num : 0;
+  const val = parseFloat(n.toFixed(4));
   return val.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
@@ -101,8 +105,9 @@ export const formatLargeNumber = (num: number): string => {
  *      -1234.5  → "-1,234.50"
  */
 export const formatPnL = (num: number): string => {
-  const sign = num >= 0 ? '+' : '';
-  return `${sign}${formatCurrency(num)}`;
+  const n = typeof num === 'number' && !isNaN(num) ? num : 0;
+  const sign = n >= 0 ? '+' : '';
+  return `${sign}${formatCurrency(n)}`;
 };
 
 /**
