@@ -142,13 +142,45 @@ function getOurSymbol(tvSymbol: string): string {
   return symbol;
 }
 
-// WebSocket endpoints to try (in order of priority)
-const WS_ENDPOINTS = [
+// ── WebSocket Proxy Configuration ──────────────────────────────────────
+// On localhost, TradingView accepts the connection directly.
+// On production (Vercel), TradingView blocks the Origin, so we route
+// through a small WebSocket proxy that spoofs the Origin header.
+//
+// Deploy the proxy from ws-proxy/ to Render.com and set this URL:
+const WS_PROXY_URL = import.meta.env.VITE_WS_PROXY_URL || '';
+
+const isLocalhost = typeof window !== 'undefined' && (
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1'
+);
+
+// Direct TradingView endpoints (work on localhost only)
+const TV_DIRECT_ENDPOINTS = [
   'wss://data.tradingview.com/socket.io/websocket?from=chart/',
   'wss://data.tradingview.com/socket.io/websocket?from=chart',
   'wss://widgetdata.tradingview.com/socket.io/websocket?from=widgetpage',
   'wss://prodata.tradingview.com/socket.io/websocket?from=chart',
 ];
+
+function getEndpoints(): string[] {
+  if (isLocalhost) {
+    // On localhost: connect directly (TradingView allows localhost Origin)
+    return TV_DIRECT_ENDPOINTS;
+  }
+  
+  // On production: use proxy first, then try direct as fallback
+  if (WS_PROXY_URL) {
+    const proxyWs = WS_PROXY_URL.replace(/^http/, 'ws'); // https://x → wss://x
+    return [proxyWs, ...TV_DIRECT_ENDPOINTS];
+  }
+  
+  // No proxy configured — try direct endpoints (may get blocked)
+  console.warn('[TV Live Tunnel] No WS_PROXY_URL configured — direct connection may fail on production');
+  return TV_DIRECT_ENDPOINTS;
+}
+
+const WS_ENDPOINTS = getEndpoints();
 
 export class TradingViewSocket {
   private ws: WebSocket | null = null;
