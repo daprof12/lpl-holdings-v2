@@ -326,163 +326,33 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
   // Pending updates from WebSocket to prevent excessive React re-renders
   const pendingUpdatesRef = useRef<Record<string, MarketPrice>>({});
 
-  // ── Detect environment ─────────────────────────────────────────────────
-  const isLocalhost = typeof window !== 'undefined' && (
-    window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1' ||
-    window.location.hostname === '0.0.0.0'
-  );
-
-  // ── REST API polling (used on production, fallback on localhost) ───────
-  const pollRestAPIs = useCallback(async () => {
-    const symbols = Array.from(subscribedRef.current);
-    if (symbols.length === 0) return;
-
-    // 1. Binance — crypto (no CORS, no API key needed)
-    const cryptoSymbols = symbols.filter(s => BINANCE_PAIR[s]);
-    if (cryptoSymbols.length > 0) {
-      const promises = cryptoSymbols.map(async (sym) => {
-        try {
-          const pair = BINANCE_PAIR[sym];
-          const resp = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${pair}`);
-          if (resp.ok) {
-            const d = await resp.json();
-            const price = parseFloat(d.lastPrice);
-            const { bid, ask } = makeSpread(price, false, true);
-            pendingUpdatesRef.current[sym] = {
-              symbol: sym,
-              price,
-              change: parseFloat(d.priceChange),
-              changePercent: parseFloat(d.priceChangePercent),
-              high: parseFloat(d.highPrice),
-              low: parseFloat(d.lowPrice),
-              open: parseFloat(d.openPrice),
-              volume: formatVolume(parseFloat(d.volume)),
-              bid, ask,
-              lastUpdate: Date.now(),
-            };
-          }
-        } catch { /* skip */ }
-      });
-      await Promise.allSettled(promises);
-    }
-
-    // 2. Forex — open.er-api.com (single batch call, free, no key)
-    const forexSymbols = symbols.filter(s => FOREX_SYMBOLS.has(s));
-    if (forexSymbols.length > 0) {
-      try {
-        const resp = await fetch('https://open.er-api.com/v6/latest/USD');
-        if (resp.ok) {
-          const data = await resp.json();
-          if (data.rates) {
-            for (const sym of forexSymbols) {
-              const price = computeForexPrice(sym, data.rates);
-              if (price) {
-                const existing = pricesRef.current[sym] || buildFallbackPrice(sym);
-                const change = price - existing.open;
-                const changePct = existing.open > 0 ? (change / existing.open) * 100 : 0;
-                const { bid, ask } = makeSpread(price, true, false);
-                pendingUpdatesRef.current[sym] = {
-                  ...existing, symbol: sym, price, change,
-                  changePercent: changePct, bid, ask, lastUpdate: Date.now(),
-                };
-              }
-            }
-          }
-        }
-      } catch { /* skip */ }
-    }
-
-    // 3. CoinGecko — crypto not covered by Binance (batch)
-    const geckoSymbols = symbols.filter(s => COINGECKO_ID[s] && !BINANCE_PAIR[s]);
-    if (geckoSymbols.length > 0) {
-      try {
-        const ids = geckoSymbols.map(s => COINGECKO_ID[s]).join(',');
-        const resp = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=false`);
-        if (resp.ok) {
-          const coins = await resp.json();
-          for (const coin of coins) {
-            const sym = COINGECKO_ID_TO_SYMBOL[coin.id];
-            if (sym) {
-              const price = coin.current_price;
-              const { bid, ask } = makeSpread(price, false, true);
-              pendingUpdatesRef.current[sym] = {
-                symbol: sym, price,
-                change: coin.price_change_24h || 0,
-                changePercent: coin.price_change_percentage_24h || 0,
-                high: coin.high_24h || price,
-                low: coin.low_24h || price,
-                open: price - (coin.price_change_24h || 0),
-                volume: formatVolume(coin.total_volume || 0),
-                bid, ask, lastUpdate: Date.now(),
-              };
-            }
-          }
-        }
-      } catch { /* skip */ }
-    }
-
-    // 4. Stocks / Indices / Commodities — micro random-walk from last-known or static price
-    const coveredSet = new Set([...cryptoSymbols, ...forexSymbols, ...geckoSymbols]);
-    const uncovered = symbols.filter(s => !coveredSet.has(s));
-    for (const sym of uncovered) {
-      const existing = pricesRef.current[sym] || buildFallbackPrice(sym);
-      const base = existing.price || STATIC_BASE[sym] || 100;
-      const drift = base * (Math.random() - 0.5) * 0.001;
-      const newPrice = Math.max(0.001, base + drift);
-      const change = newPrice - existing.open;
-      const changePct = existing.open > 0 ? (change / existing.open) * 100 : 0;
-      const { bid, ask } = makeSpread(newPrice, FOREX_SYMBOLS.has(sym), false);
-      pendingUpdatesRef.current[sym] = {
-        ...existing, symbol: sym, price: newPrice, change,
-        changePercent: changePct,
-        high: Math.max(existing.high, newPrice),
-        low: Math.min(existing.low, newPrice),
-        bid, ask, lastUpdate: Date.now(),
-      };
-    }
-  }, []);
-
-  // ── Main data source setup ────────────────────────────────────────────
+  // ── Setup TradingView WebSocket ───────────────────────────────────────
   useEffect(() => {
-    let restPollTimer: ReturnType<typeof setInterval> | null = null;
-
-    if (isLocalhost) {
-      // ─── LOCALHOST: Use TradingView WebSocket (it works here) ────────
-      console.log('[MarketData] Localhost — using TradingView WebSocket');
-      const tvSocket = new TradingViewSocket();
-      tvSocketRef.current = tvSocket;
-
-      tvSocket.setOnDataCallback((symbol, update) => {
-        const existing = pendingUpdatesRef.current[symbol] || pricesRef.current[symbol] || buildFallbackPrice(symbol);
-        const newPrice = { ...existing, ...update };
-        if (update.price !== undefined && existing.open) {
-          newPrice.change = newPrice.price - newPrice.open;
-          if (newPrice.open > 0) {
-            newPrice.changePercent = (newPrice.change / newPrice.open) * 100;
-          }
+    // Initialize TV WebSocket singleton
+    const tvSocket = new TradingViewSocket();
+    tvSocketRef.current = tvSocket;
+    
+    tvSocket.setOnDataCallback((symbol, update) => {
+      // Merge partial update into existing price or pending update
+      const existing = pendingUpdatesRef.current[symbol] || pricesRef.current[symbol] || buildFallbackPrice(symbol);
+      const newPrice = { ...existing, ...update };
+      
+      // Calculate change and changePercent if missing from update but we got a new price
+      if (update.price !== undefined && existing.open) {
+        newPrice.change = newPrice.price - newPrice.open;
+        if (newPrice.open > 0) {
+          newPrice.changePercent = (newPrice.change / newPrice.open) * 100;
         }
-        pendingUpdatesRef.current[symbol] = newPrice;
-      });
+      }
+      
+      pendingUpdatesRef.current[symbol] = newPrice;
+    });
 
-      // If WS fails even on localhost, fall back to REST
-      tvSocket.onFallback(() => {
-        if (!restPollTimer) {
-          console.log('[MarketData] WS failed on localhost — REST fallback');
-          pollRestAPIs();
-          restPollTimer = setInterval(pollRestAPIs, 10_000);
-        }
-      });
+    tvSocket.connect();
 
-      tvSocket.connect();
-    } else {
-      // ─── PRODUCTION: Skip WebSocket entirely, REST only ─────────────
-      console.log('[MarketData] Production — REST API polling only (no WebSocket)');
-      pollRestAPIs();
-      restPollTimer = setInterval(pollRestAPIs, 8_000);
-    }
-
-    // Flush pending updates to React state every 500ms
+    // Setup an interval to flush pending WebSocket updates to React state
+    // We do this to decouple high-frequency WS messages from React re-renders, 
+    // keeping UI smooth (e.g., 500ms flush).
     flushIntervalRef.current = setInterval(() => {
       if (Object.keys(pendingUpdatesRef.current).length > 0) {
         setPrices(prev => {
@@ -495,11 +365,10 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
     }, 500);
 
     return () => {
-      tvSocketRef.current?.cleanup();
+      tvSocket.cleanup();
       if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
-      if (restPollTimer) clearInterval(restPollTimer);
     };
-  }, [isLocalhost, pollRestAPIs]);
+  }, []);
 
   // ── Subscription management ──────────────────────────────────────────────
   

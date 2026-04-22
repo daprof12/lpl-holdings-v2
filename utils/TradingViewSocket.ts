@@ -1,6 +1,5 @@
 // TradingView Live Tunnel API
 // Connects to TradingView's free internal websocket to stream real-time price data
-// Includes robust reconnection with exponential backoff for production deployments
 
 import { MarketPrice } from '../contexts/MarketDataContext';
 import { CATALOGUE } from './assetCatalogue';
@@ -143,14 +142,13 @@ function getOurSymbol(tvSymbol: string): string {
   return symbol;
 }
 
-// ============================================================
-// RECONNECTION CONFIGURATION
-// ============================================================
-
-const RECONNECT_BASE_MS      = 2_000;    // Start at 2 seconds
-const RECONNECT_MAX_MS        = 120_000;  // Cap at 2 minutes
-const RECONNECT_MAX_ATTEMPTS  = 50;       // After this many failures, signal fallback mode
-const HEARTBEAT_TIMEOUT_MS    = 45_000;   // If no heartbeat for 45s, assume dead connection
+// WebSocket endpoints to try (in order of priority)
+const WS_ENDPOINTS = [
+  'wss://data.tradingview.com/socket.io/websocket?from=chart/',
+  'wss://data.tradingview.com/socket.io/websocket?from=chart',
+  'wss://widgetdata.tradingview.com/socket.io/websocket?from=widgetpage',
+  'wss://prodata.tradingview.com/socket.io/websocket?from=chart',
+];
 
 export class TradingViewSocket {
   private ws: WebSocket | null = null;
@@ -159,66 +157,65 @@ export class TradingViewSocket {
   private subscribedSymbols: Set<string> = new Set();
   private tvToOurSymbolMap: Map<string, string> = new Map();
   public isConnected: boolean = false;
-
-  // Reconnection state
   private reconnectTimer: any = null;
+  private keepAliveTimer: any = null;
   private reconnectAttempts: number = 0;
-  private intentionallyClosed: boolean = false;
-
-  // Heartbeat monitoring
-  private lastHeartbeat: number = 0;
-  private heartbeatCheckTimer: any = null;
-
-  // Visibility tracking
+  private maxReconnectDelay: number = 60000; // Max 60s between retries
+  private baseReconnectDelay: number = 2000;  // Start at 2s
+  private currentEndpointIndex: number = 0;
+  private isDestroyed: boolean = false;
+  private lastMessageTime: number = 0;
   private visibilityHandler: (() => void) | null = null;
-
-  // Fallback mode — signals to consumers that WS is persistently failing
-  public isFallbackMode: boolean = false;
-  private onFallbackCallback: (() => void) | null = null;
 
   constructor() {
     this.sessionId = 'qs_' + Math.random().toString(36).substring(2, 15);
-    this.setupVisibilityTracking();
+    this.setupVisibilityHandler();
   }
 
   /**
-   * When the tab becomes visible again and we're disconnected, try reconnecting
+   * Pause/resume the socket when the browser tab is hidden/visible.
+   * This prevents Vercel/CDN idle-timeout disconnects when the user
+   * switches tabs and also avoids reconnect storms.
    */
-  private setupVisibilityTracking() {
-    if (typeof document === 'undefined') return;
-
+  private setupVisibilityHandler() {
     this.visibilityHandler = () => {
-      if (document.visibilityState === 'visible' && !this.isConnected && !this.intentionallyClosed) {
-        console.log('[TV Live Tunnel] Tab became visible — attempting reconnection');
-        // Reset backoff when user returns to tab
-        this.reconnectAttempts = Math.max(0, this.reconnectAttempts - 3);
-        this.scheduleReconnect();
+      if (document.hidden) {
+        // Tab hidden — stop keepalive (let it disconnect naturally)
+        this.stopKeepAlive();
+      } else {
+        // Tab visible again — reconnect if needed
+        if (!this.isConnected && !this.isDestroyed) {
+          console.log('[TV Live Tunnel] Tab visible — reconnecting...');
+          this.reconnectAttempts = 0; // Reset backoff on manual visibility trigger
+          this.reconnect();
+        } else {
+          this.startKeepAlive();
+        }
       }
     };
     document.addEventListener('visibilitychange', this.visibilityHandler);
   }
 
   public connect() {
+    if (this.isDestroyed) return;
     if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) return;
-    if (this.intentionallyClosed) return;
 
-    console.log(`[TV Live Tunnel] Connecting... (attempt ${this.reconnectAttempts + 1})`);
+    const endpoint = WS_ENDPOINTS[this.currentEndpointIndex % WS_ENDPOINTS.length];
+    console.log(`[TV Live Tunnel] Connecting to endpoint ${this.currentEndpointIndex % WS_ENDPOINTS.length + 1}/${WS_ENDPOINTS.length}...`);
     
     try {
-      this.ws = new WebSocket('wss://data.tradingview.com/socket.io/websocket?from=chart');
+      this.ws = new WebSocket(endpoint);
     } catch (err) {
       console.error('[TV Live Tunnel] Failed to create WebSocket:', err);
-      this.handleConnectionFailure();
+      this.scheduleReconnect();
       return;
     }
     
     this.ws.onopen = () => {
       console.log('[TV Live Tunnel] Connected ✓');
       this.isConnected = true;
-      this.isFallbackMode = false;
-      this.reconnectAttempts = 0; // Reset on successful connection
-      this.lastHeartbeat = Date.now();
-      
+      this.reconnectAttempts = 0; // Reset backoff on successful connection
+      this.lastMessageTime = Date.now();
       if (this.reconnectTimer) {
         clearTimeout(this.reconnectTimer);
         this.reconnectTimer = null;
@@ -238,15 +235,19 @@ export class TradingViewSocket {
         const batchSize = 30;
         for (let i = 0; i < tvSymbols.length; i += batchSize) {
           const batch = tvSymbols.slice(i, i + batchSize);
-          this.sendMessage('quote_add_symbols', [this.sessionId, ...batch]);
+          // Stagger batch sends to avoid server rate limits
+          setTimeout(() => {
+            this.sendMessage('quote_add_symbols', [this.sessionId, ...batch]);
+          }, i / batchSize * 200);
         }
       }
 
-      // Start heartbeat monitoring
-      this.startHeartbeatMonitor();
+      // Start keepalive pings
+      this.startKeepAlive();
     };
 
     this.ws.onmessage = (event) => {
+      this.lastMessageTime = Date.now();
       this.handleMessage(event.data.toString());
     };
 
@@ -256,97 +257,86 @@ export class TradingViewSocket {
       console.log(`[TV Live Tunnel] Disconnected (code: ${code}, reason: ${reason})`);
       this.isConnected = false;
       this.ws = null;
-      this.stopHeartbeatMonitor();
-      
-      if (!this.intentionallyClosed) {
-        this.handleConnectionFailure();
+      this.stopKeepAlive();
+
+      if (!this.isDestroyed) {
+        // If the close code indicates a server rejection (403, 1008, etc.),
+        // try the next endpoint
+        if (code === 1006 || code === 1008 || code === 4003) {
+          this.currentEndpointIndex++;
+          console.log(`[TV Live Tunnel] Trying next endpoint...`);
+        }
+        this.scheduleReconnect();
       }
     };
 
-    this.ws.onerror = (err) => {
-      console.error('[TV Live Tunnel] WebSocket Error:', err);
-      // onerror is always followed by onclose, so don't reconnect here
+    this.ws.onerror = (_err) => {
+      // Don't log the raw Event object — it contains no useful info in browsers
+      console.warn('[TV Live Tunnel] Connection error — will retry');
     };
   }
 
   /**
-   * Handle a connection failure — exponential backoff with jitter
+   * Send periodic "no-op" pings to keep the connection alive
+   * and detect stale connections early.
    */
-  private handleConnectionFailure() {
-    this.reconnectAttempts++;
+  private startKeepAlive() {
+    this.stopKeepAlive();
+    this.keepAliveTimer = setInterval(() => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
-    if (this.reconnectAttempts >= RECONNECT_MAX_ATTEMPTS && !this.isFallbackMode) {
-      console.warn(`[TV Live Tunnel] Max reconnect attempts (${RECONNECT_MAX_ATTEMPTS}) reached. Switching to REST API fallback mode.`);
-      this.isFallbackMode = true;
-      this.onFallbackCallback?.();
-      // Keep trying occasionally (every 2 minutes) in case TV comes back
+      // If no message received in 30s, the connection is probably dead
+      const elapsed = Date.now() - this.lastMessageTime;
+      if (elapsed > 30000) {
+        console.warn('[TV Live Tunnel] No data for 30s — forcing reconnect');
+        this.ws.close();
+        return;
+      }
+
+      // Send a lightweight heartbeat to keep the connection open through proxies/CDNs
+      this.sendHeartbeat('~h~1');
+    }, 15000); // Every 15 seconds
+  }
+
+  private stopKeepAlive() {
+    if (this.keepAliveTimer) {
+      clearInterval(this.keepAliveTimer);
+      this.keepAliveTimer = null;
     }
-
-    this.scheduleReconnect();
   }
 
   /**
-   * Schedule a reconnection with exponential backoff + jitter
+   * Exponential backoff with jitter: 2s, 4s, 8s, 16s, … up to 60s
    */
   private scheduleReconnect() {
+    if (this.isDestroyed) return;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    if (this.intentionallyClosed) return;
 
-    // Don't try to reconnect if tab is hidden (save resources)
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    // Don't reconnect while tab is hidden
+    if (document.hidden) {
       console.log('[TV Live Tunnel] Tab hidden — deferring reconnect until visible');
       return;
     }
 
-    // Exponential backoff: 2s, 4s, 8s, 16s, 32s, 64s, 120s (capped)
-    const baseDelay = Math.min(
-      RECONNECT_BASE_MS * Math.pow(2, this.reconnectAttempts - 1),
-      RECONNECT_MAX_MS
+    const delay = Math.min(
+      this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts),
+      this.maxReconnectDelay
     );
-    // Add jitter (±25%) to prevent thundering herd
-    const jitter = baseDelay * (0.75 + Math.random() * 0.5);
-    const delay = Math.round(jitter);
-
-    console.log(`[TV Live Tunnel] Reconnecting in ${(delay / 1000).toFixed(1)}s (attempt ${this.reconnectAttempts})`);
+    // Add random jitter (±25%) to prevent thundering herd
+    const jitter = delay * 0.25 * (Math.random() * 2 - 1);
+    const actualDelay = Math.round(delay + jitter);
     
+    this.reconnectAttempts++;
+    console.log(`[TV Live Tunnel] Reconnecting in ${(actualDelay / 1000).toFixed(1)}s (attempt ${this.reconnectAttempts})`);
+
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
-    }, delay);
+    }, actualDelay);
   }
 
-  /**
-   * Monitor heartbeats — TV sends ~h~ pings every ~30s.
-   * If we don't receive one in 45s, force-close and reconnect.
-   */
-  private startHeartbeatMonitor() {
-    this.stopHeartbeatMonitor();
-    this.lastHeartbeat = Date.now();
-
-    this.heartbeatCheckTimer = setInterval(() => {
-      const elapsed = Date.now() - this.lastHeartbeat;
-      if (elapsed > HEARTBEAT_TIMEOUT_MS && this.isConnected) {
-        console.warn(`[TV Live Tunnel] No heartbeat for ${(elapsed / 1000).toFixed(0)}s — forcing reconnect`);
-        this.ws?.close();
-      }
-    }, 15_000); // Check every 15 seconds
-  }
-
-  private stopHeartbeatMonitor() {
-    if (this.heartbeatCheckTimer) {
-      clearInterval(this.heartbeatCheckTimer);
-      this.heartbeatCheckTimer = null;
-    }
-  }
-
-  /**
-   * Register a callback that fires when WS is persistently failing
-   * and the consumer should switch to REST API polling.
-   */
-  public onFallback(callback: () => void) {
-    this.onFallbackCallback = callback;
-    // If already in fallback mode, fire immediately
-    if (this.isFallbackMode) callback();
+  private reconnect() {
+    this.scheduleReconnect();
   }
 
   public setOnDataCallback(callback: SymbolDataCallback) {
@@ -393,8 +383,7 @@ export class TradingViewSocket {
       if (!payload || payload.length === 0 || !isNaN(Number(payload))) continue; // Skip length indicators
 
       if (payload.startsWith('~h~')) {
-        // Heartbeat — respond and update last-seen timestamp
-        this.lastHeartbeat = Date.now();
+        // Heartbeat
         this.sendHeartbeat(payload);
         continue;
       }
@@ -408,7 +397,7 @@ export class TradingViewSocket {
           const data = entry.v;
           
           if (status === 'error') {
-            console.error(`[TV Live Tunnel] Error for symbol ${tvName}:`, entry.errmsg || 'Unknown error');
+            // Only log once per symbol, not on every tick
             continue;
           }
 
@@ -434,14 +423,14 @@ export class TradingViewSocket {
           }
         }
       } catch (err) {
-        // Ignore JSON errors
+        // Ignore JSON parse errors for non-JSON frames
       }
     }
   }
   
   public cleanup() {
-    this.intentionallyClosed = true;
-    
+    this.isDestroyed = true;
+    this.stopKeepAlive();
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -450,10 +439,7 @@ export class TradingViewSocket {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.stopHeartbeatMonitor();
-
-    // Remove visibility listener
-    if (this.visibilityHandler && typeof document !== 'undefined') {
+    if (this.visibilityHandler) {
       document.removeEventListener('visibilitychange', this.visibilityHandler);
       this.visibilityHandler = null;
     }
@@ -468,6 +454,3 @@ function formatVolume(n: number): string {
   if (n >= 1e3)  return `${(n / 1e3).toFixed(2)}K`;
   return n.toFixed(0);
 }
-
-// Re-export MarketPrice type for consumers
-export type { MarketPrice };
