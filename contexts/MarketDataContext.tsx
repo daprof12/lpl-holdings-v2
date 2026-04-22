@@ -348,6 +348,126 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
       pendingUpdatesRef.current[symbol] = newPrice;
     });
 
+    // REST API fallback polling (Binance + CoinGecko + Forex)
+    // Activated when the TV WebSocket is persistently failing (e.g. on Vercel/production)
+    let restPollTimer: ReturnType<typeof setInterval> | null = null;
+
+    const startRestFallback = () => {
+      if (restPollTimer) return; // Already running
+      console.log('[MarketData] Starting REST API fallback polling (WebSocket unavailable)');
+
+      const pollRestAPIs = async () => {
+        const symbols = Array.from(subscribedRef.current);
+        if (symbols.length === 0) return;
+
+        // 1. Poll Binance for crypto prices
+        const cryptoSymbols = symbols.filter(s => BINANCE_PAIR[s]);
+        for (const sym of cryptoSymbols) {
+          try {
+            const pair = BINANCE_PAIR[sym];
+            const resp = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${pair}`);
+            if (resp.ok) {
+              const d = await resp.json();
+              const price = parseFloat(d.lastPrice);
+              const change = parseFloat(d.priceChange);
+              const changePct = parseFloat(d.priceChangePercent);
+              const high = parseFloat(d.highPrice);
+              const low = parseFloat(d.lowPrice);
+              const open = parseFloat(d.openPrice);
+              const vol = parseFloat(d.volume);
+              const { bid, ask } = makeSpread(price, false, true);
+              
+              pendingUpdatesRef.current[sym] = {
+                symbol: sym,
+                price,
+                change,
+                changePercent: changePct,
+                high,
+                low,
+                open,
+                volume: formatVolume(vol),
+                bid,
+                ask,
+                lastUpdate: Date.now(),
+              };
+            }
+          } catch { /* silently skip */ }
+        }
+
+        // 2. Poll forex via open.er-api.com (1 batch call)
+        const forexSymbols = symbols.filter(s => FOREX_SYMBOLS.has(s));
+        if (forexSymbols.length > 0) {
+          try {
+            const resp = await fetch('https://open.er-api.com/v6/latest/USD');
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data.rates) {
+                for (const sym of forexSymbols) {
+                  const price = computeForexPrice(sym, data.rates);
+                  if (price) {
+                    const existing = pricesRef.current[sym] || buildFallbackPrice(sym);
+                    const change = price - existing.open;
+                    const changePct = existing.open > 0 ? (change / existing.open) * 100 : 0;
+                    const { bid, ask } = makeSpread(price, true, false);
+                    
+                    pendingUpdatesRef.current[sym] = {
+                      ...existing,
+                      symbol: sym,
+                      price,
+                      change,
+                      changePercent: changePct,
+                      bid,
+                      ask,
+                      lastUpdate: Date.now(),
+                    };
+                  }
+                }
+              }
+            }
+          } catch { /* silently skip */ }
+        }
+
+        // 3. CoinGecko batch fallback for crypto not on Binance
+        const geckoSymbols = symbols.filter(s => COINGECKO_ID[s] && !BINANCE_PAIR[s]);
+        if (geckoSymbols.length > 0) {
+          try {
+            const ids = geckoSymbols.map(s => COINGECKO_ID[s]).join(',');
+            const resp = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=false`);
+            if (resp.ok) {
+              const coins = await resp.json();
+              for (const coin of coins) {
+                const sym = COINGECKO_ID_TO_SYMBOL[coin.id];
+                if (sym) {
+                  const price = coin.current_price;
+                  const { bid, ask } = makeSpread(price, false, true);
+                  pendingUpdatesRef.current[sym] = {
+                    symbol: sym,
+                    price,
+                    change: coin.price_change_24h || 0,
+                    changePercent: coin.price_change_percentage_24h || 0,
+                    high: coin.high_24h || price,
+                    low: coin.low_24h || price,
+                    open: price - (coin.price_change_24h || 0),
+                    volume: formatVolume(coin.total_volume || 0),
+                    bid,
+                    ask,
+                    lastUpdate: Date.now(),
+                  };
+                }
+              }
+            }
+          } catch { /* silently skip */ }
+        }
+      };
+
+      // Poll immediately, then every 10 seconds
+      pollRestAPIs();
+      restPollTimer = setInterval(pollRestAPIs, 10_000);
+    };
+
+    // Register the fallback callback
+    tvSocket.onFallback(startRestFallback);
+
     tvSocket.connect();
 
     // Setup an interval to flush pending WebSocket updates to React state
@@ -367,6 +487,7 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
     return () => {
       tvSocket.cleanup();
       if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
+      if (restPollTimer) clearInterval(restPollTimer);
     };
   }, []);
 
