@@ -166,12 +166,12 @@ export default function TradeManagement() {
             asset: h.asset_name || h.symbol,
             category: h.asset_category || getAssetCategory(h.symbol),
             type: (h.side === 'buy' || h.type === 'buy') ? 'long' : 'short',
-            entryPrice: parseFloat(h.entry_price || h.price || 0),
-            currentPrice: parseFloat(h.exit_price || h.entry_price || h.price || 0),
-            quantity: parseFloat(h.amount || h.volume || 0),
+            entryPrice: parseFloat(h.entry_price || h.price || 0) || 0,
+            currentPrice: parseFloat(h.exit_price || h.entry_price || h.price || 0) || 0,
+            quantity: parseFloat(h.amount || h.volume || 0) || 0,
             leverage: h.leverage || 1,
             margin: 0,
-            pnl: parseFloat(h.profit || 0),
+            pnl: parseFloat(h.profit || 0) || 0,
             status: 'closed',
             openedAt: new Date(h.created_at).toISOString().replace('T', ' ').substring(0, 19),
             closedAt: new Date(h.closed_at || h.created_at).toISOString().replace('T', ' ').substring(0, 19),
@@ -191,11 +191,11 @@ export default function TradeManagement() {
             asset: o.asset_name || o.symbol,
             category: o.asset_category || getAssetCategory(o.symbol),
             type: (o.side === 'buy' || o.type === 'buy') ? 'long' : 'short',
-            entryPrice: parseFloat(o.price || o.entry_price || 0), // In orders, price is the target entry
-            currentPrice: parseFloat(o.price || o.entry_price || 0),
-            quantity: parseFloat(o.amount || o.units || o.volume || 0),
+            entryPrice: parseFloat(o.price || o.entry_price || 0) || 0, // In orders, price is the target entry
+            currentPrice: parseFloat(o.price || o.entry_price || 0) || 0,
+            quantity: parseFloat(o.amount || o.units || o.volume || 0) || 0,
             leverage: o.leverage || 1,
-            margin: (parseFloat(o.amount || o.units || o.volume || 0) * parseFloat(o.price || o.entry_price || 0)) / (o.leverage || 1),
+            margin: (parseFloat(o.amount || o.units || o.volume || 0) * parseFloat(o.price || o.entry_price || 0)) / (o.leverage || 1) || 0,
             pnl: 0,
             status: 'order',
             openedAt: new Date(o.created_at).toISOString().replace('T', ' ').substring(0, 19),
@@ -278,16 +278,16 @@ export default function TradeManagement() {
                         (!dateTo || new Date(trade.openedAt) <= new Date(dateTo));
     return matchesSearch && matchesStatus && matchesCategory && matchesMode && matchesDate;
   }).map(trade => {
-    // Dynamically inject live market prices into the table display
-    if (trade.status === 'open') {
+    // Dynamically inject live market prices into the table display for both open positions and pending orders
+    if (trade.status === 'open' || trade.status === 'order') {
       const priceData = getPrice(trade.symbol);
       if (priceData && priceData.price) {
         const livePrice = priceData.price;
         const priceDiff = trade.type === 'long'
           ? livePrice - trade.entryPrice
           : trade.entryPrice - livePrice;
-        // P&L is price difference * number of units. Leverage is already accounted for in the initial position size.
-        const livePnl = priceDiff * trade.quantity;
+        // P&L = priceDiff * units. Leveraged exposure is represented by the quantity (units).
+        const livePnl = trade.status === 'open' ? priceDiff * trade.quantity : 0;
         return { ...trade, currentPrice: livePrice, pnl: livePnl };
       }
     }
@@ -304,6 +304,10 @@ export default function TradeManagement() {
       
       // Fetch current price immediately
       const updatePrice = () => {
+        // Only auto-update price from feed if the trade is still OPEN or an ORDER.
+        // Once CLOSED, the price is static (the exit price) and should be editable by admin.
+        if (formData.status === 'closed') return;
+
         const priceData = getPrice(symbol);
         if (priceData && priceData.price) {
           setFormData(prev => ({
@@ -856,13 +860,26 @@ export default function TradeManagement() {
 
                 <div>
                   <label className="block text-sm font-semibold mb-2">Current/Exit Price</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.currentPrice}
-                    onChange={(e) => setFormData({ ...formData, currentPrice: e.target.value })}
-                    placeholder="Current price"
-                  />
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      step="0.00000001"
+                      value={formData.currentPrice}
+                      onChange={(e) => setFormData({ ...formData, currentPrice: e.target.value })}
+                      placeholder="Current price"
+                      className={`${formData.status !== 'closed' ? 'bg-gray-50 dark:bg-slate-900/50 cursor-not-allowed text-blue-600 dark:text-blue-400 font-semibold' : ''}`}
+                      disabled={formData.status !== 'closed'}
+                    />
+                    {formData.status !== 'closed' && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                        <span className="text-[10px] font-bold text-green-600 uppercase">Live</span>
+                      </div>
+                    )}
+                  </div>
+                  {formData.status !== 'closed' && (
+                    <p className="text-[10px] text-gray-500 mt-1">Live market price (not editable for open trades)</p>
+                  )}
                 </div>
               </div>
 
@@ -972,12 +989,12 @@ export default function TradeManagement() {
                     const entry = parseFloat(formData.entryPrice) || 0;
                     const current = parseFloat(formData.currentPrice) || 0;
                     const qty = parseFloat(formData.quantity) || 0;
-                    const lev = parseFloat(formData.leverage) || 1;
+                    // Note: No leverage multiplier here. P&L = PriceDiff * Quantity (Exposure).
                     const priceDiff = selectedTrade.type === 'long' ? current - entry : entry - current;
-                    const pnl = priceDiff * qty * lev;
+                    const pnl = priceDiff * qty;
                     return (
                       <span className={pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
-                        {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
+                        {pnl >= 0 ? '+' : ''}${pnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     );
                   })()}

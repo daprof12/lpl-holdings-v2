@@ -46,6 +46,7 @@ export default function NotificationManagement() {
     title: '',
     message: '',
     channels: ['in-app'],
+    isVisible: false, // Default to disabled as requested
   });
 
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
@@ -166,7 +167,7 @@ export default function NotificationManagement() {
         title: createForm.title,
         message: createForm.message,
         channels: createForm.channels,
-        is_visible: false
+        is_visible: createForm.isVisible
       });
       
       toast.success('Notification created successfully');
@@ -177,6 +178,7 @@ export default function NotificationManagement() {
         title: '',
         message: '',
         channels: ['in-app'],
+        isVisible: false,
       });
       fetchNotifications();
     } catch (error) {
@@ -683,6 +685,22 @@ export default function NotificationManagement() {
                 placeholder="Enter notification message"
                 className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm min-h-[100px]"
               />
+            </div>
+            <div className="flex items-center gap-2 py-2">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={createForm.isVisible}
+                onClick={() => setCreateForm({ ...createForm, isVisible: !createForm.isVisible })}
+                className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent
+                  transition-all duration-200 ease-in-out
+                  ${createForm.isVisible ? 'bg-green-500' : 'bg-gray-300 dark:bg-slate-600'}`}
+              >
+                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ${createForm.isVisible ? 'translate-x-4' : 'translate-x-0'}`} />
+              </button>
+              <Label className="cursor-pointer" onClick={() => setCreateForm({ ...createForm, isVisible: !createForm.isVisible })}>
+                Visible to User (Off by default)
+              </Label>
             </div>
           </div>
           <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-slate-700">
