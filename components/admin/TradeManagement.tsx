@@ -93,7 +93,7 @@ export default function TradeManagement() {
     setHistory
   } = useTrading();
   const { users } = useAuth();
-  const { getPrice, subscribeToSymbol, unsubscribeFromSymbol } = useMarketData();
+  const { prices, getPrice, subscribeToSymbol, unsubscribeFromSymbol } = useMarketData();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed' | 'order'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -128,9 +128,14 @@ export default function TradeManagement() {
 
         if (Array.isArray(openPositions)) {
           // Only show 'open' status in the open trades list
-          setDbOpenTrades(openPositions
-            .filter((pos: any) => pos.status === 'open')
-            .map((pos: any) => ({
+          const openTradesFiltered = openPositions.filter((pos: any) => pos.status === 'open');
+          
+          // Ensure we actively subscribe to the live websocket stream for these symbols
+          openTradesFiltered.forEach((pos: any) => {
+            if (pos.symbol) subscribeToSymbol(pos.symbol);
+          });
+          
+          setDbOpenTrades(openTradesFiltered.map((pos: any) => ({
               id: pos.id,
               user: getUserEmail(pos.user_id),
               symbol: pos.symbol,
@@ -161,10 +166,10 @@ export default function TradeManagement() {
             asset: h.asset_name || h.symbol,
             category: h.asset_category || getAssetCategory(h.symbol),
             type: (h.side === 'buy' || h.type === 'buy') ? 'long' : 'short',
-            entryPrice: parseFloat(h.entry_price),
-            currentPrice: parseFloat(h.exit_price || h.entry_price),
-            quantity: parseFloat(h.amount),
-            leverage: 1,
+            entryPrice: parseFloat(h.entry_price || h.price || 0),
+            currentPrice: parseFloat(h.exit_price || h.entry_price || h.price || 0),
+            quantity: parseFloat(h.amount || h.volume || 0),
+            leverage: h.leverage || 1,
             margin: 0,
             pnl: parseFloat(h.profit || 0),
             status: 'closed',
@@ -670,10 +675,10 @@ export default function TradeManagement() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="font-mono">${trade.entryPrice ? formatCurrency(trade.entryPrice) : 'N/A'}</div>
+                    <div className="font-mono">${typeof trade.entryPrice === 'number' && !isNaN(trade.entryPrice) ? formatCurrency(trade.entryPrice) : 'N/A'}</div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="font-mono">${trade.currentPrice ? formatCurrency(trade.currentPrice) : 'N/A'}</div>
+                    <div className="font-mono">${typeof trade.currentPrice === 'number' && !isNaN(trade.currentPrice) ? formatCurrency(trade.currentPrice) : 'N/A'}</div>
                   </td>
                   <td className="px-6 py-4">
                     <div>{trade.quantity}</div>
@@ -682,7 +687,7 @@ export default function TradeManagement() {
                     <div>{trade.leverage}x</div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="font-mono">${trade.margin ? formatCurrency(trade.margin) : 'N/A'}</div>
+                    <div className="font-mono">${typeof trade.margin === 'number' && !isNaN(trade.margin) ? formatCurrency(trade.margin) : 'N/A'}</div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="font-mono">{trade.openedAt}</div>
