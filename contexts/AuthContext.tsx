@@ -1084,7 +1084,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         type: notification.type,
         title: notification.title,
         message: notification.message,
-        is_visible: notification.isVisibleToUser ?? true,
+        is_visible: notification.isVisibleToUser ?? false,
         channels: notification.channels || ['in-app'],
         related_id: notification.relatedId,
         metadata: (notification as any).metadata || {}
