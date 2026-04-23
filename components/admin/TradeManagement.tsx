@@ -30,6 +30,7 @@ import { getMarketStatus } from '../../utils/tradingHours';
 interface Trade {
   id: string;
   user: string;
+  symbol: string;
   asset: string;
   category: string;
   type: 'long' | 'short';
@@ -132,6 +133,7 @@ export default function TradeManagement() {
             .map((pos: any) => ({
               id: pos.id,
               user: getUserEmail(pos.user_id),
+              symbol: pos.symbol,
               asset: pos.asset_name || pos.symbol,
               category: pos.asset_category || getAssetCategory(pos.symbol),
               type: (pos.side === 'buy' || pos.type === 'buy') ? 'long' : 'short',
@@ -155,6 +157,7 @@ export default function TradeManagement() {
           setDbClosedTrades(closedHistory.map((h: any) => ({
             id: h.id,
             user: getUserEmail(h.user_id),
+            symbol: h.symbol,
             asset: h.asset_name || h.symbol,
             category: h.asset_category || getAssetCategory(h.symbol),
             type: (h.side === 'buy' || h.type === 'buy') ? 'long' : 'short',
@@ -179,6 +182,7 @@ export default function TradeManagement() {
           setDbPendingOrders(pendingOrders.map((o: any) => ({
             id: o.id,
             user: getUserEmail(o.user_id),
+            symbol: o.symbol,
             asset: o.asset_name || o.symbol,
             category: o.asset_category || getAssetCategory(o.symbol),
             type: (o.side === 'buy' || o.type === 'buy') ? 'long' : 'short',
@@ -268,6 +272,21 @@ export default function TradeManagement() {
     const matchesDate = (!dateFrom || new Date(trade.openedAt) >= new Date(dateFrom)) &&
                         (!dateTo || new Date(trade.openedAt) <= new Date(dateTo));
     return matchesSearch && matchesStatus && matchesCategory && matchesMode && matchesDate;
+  }).map(trade => {
+    // Dynamically inject live market prices into the table display
+    if (trade.status === 'open') {
+      const priceData = getPrice(trade.symbol);
+      if (priceData && priceData.price) {
+        const livePrice = priceData.price;
+        const priceDiff = trade.type === 'long'
+          ? livePrice - trade.entryPrice
+          : trade.entryPrice - livePrice;
+        // P&L is price difference * number of units. Leverage is already accounted for in the initial position size.
+        const livePnl = priceDiff * trade.quantity;
+        return { ...trade, currentPrice: livePrice, pnl: livePnl };
+      }
+    }
+    return trade;
   });
 
   // Auto-refresh current price from live market data when dialog is open
@@ -306,7 +325,7 @@ export default function TradeManagement() {
   const handleEdit = (trade: Trade) => {
     setSelectedTrade(trade);
     setFormData({
-      asset: trade.asset,
+      asset: trade.symbol,
       entryPrice: trade.entryPrice?.toString() || '',
       currentPrice: trade.currentPrice?.toString() || '',
       quantity: trade.quantity.toString(),
@@ -388,7 +407,7 @@ export default function TradeManagement() {
     const priceDiff = selectedTrade.type === 'long' 
       ? newCurrentPrice - newEntryPrice 
       : newEntryPrice - newCurrentPrice;
-    const calculatedPnl = priceDiff * newQuantity * newLeverage;
+    const calculatedPnl = priceDiff * newQuantity;
 
     const now = Date.now();
 

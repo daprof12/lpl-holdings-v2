@@ -323,7 +323,7 @@ export default function InvestmentsPage() {
             <Button 
               variant="outline" 
               className="gap-2"
-              onClick={() => navigate('/wallet')}
+              onClick={() => navigate('/wallet?tab=deposit&type=portfolio')}
             >
               <ArrowDownCircle className="w-4 h-4" />
               Deposit
@@ -331,7 +331,7 @@ export default function InvestmentsPage() {
             <Button 
               variant="outline" 
               className="gap-2"
-              onClick={() => navigate('/wallet')}
+              onClick={() => navigate('/wallet?tab=withdraw&type=portfolio')}
             >
               <ArrowUpCircle className="w-4 h-4" />
               Withdraw

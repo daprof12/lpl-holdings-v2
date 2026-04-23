@@ -16,8 +16,8 @@ const COMMODITIES_MAP: Record<string, string> = {
   'XAGUSD': 'TVC:SILVER',
   'XPTUSD': 'TVC:PLATINUM',
   'XPDUSD': 'TVC:PALLADIUM',
-  'WTIUSD': 'TVC:USOIL',
-  'USOIL': 'TVC:USOIL',
+  'WTIUSD': 'BLACKBULL:WTI',
+  'USOIL': 'BLACKBULL:WTI',
   'BCOUSD': 'TVC:UKOIL',
   'UKOIL': 'TVC:UKOIL',
   'NATGAS': 'TVC:NATGAS',
@@ -29,8 +29,8 @@ const REVERSE_COMMODITIES_MAP: Record<string, string> = {
   'TVC:SILVER': 'XAGUSD',
   'TVC:PLATINUM': 'XPTUSD',
   'TVC:PALLADIUM': 'XPDUSD',
-  'TVC:USOIL': 'WTIUSD',
-  'TVC:UKOIL': 'BCOUSD',
+  'BLACKBULL:WTI': 'USOIL',
+  'TVC:UKOIL': 'UKOIL',
   'TVC:NATGAS': 'NATGAS',
   'KRAKEN:USDTUSD': 'USDTUSD'
 };
@@ -79,7 +79,7 @@ function getTVSymbol(ourSymbol: string): string {
 
   const forex = ['EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'USDJPY', 'USDCHF', 'USDCAD', 'EURGBP', 'EURJPY', 'GBPJPY', 'EURCHF', 'AUDCAD', 'AUDCHF', 'AUDNZD', 'CADJPY', 'CHFJPY', 'EURAUD', 'EURCAD', 'EURNZD', 'GBPAUD', 'GBPCAD', 'GBPCHF', 'GBPNZD', 'NZDCAD', 'NZDCHF', 'NZDJPY'];
   const crypto = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE', 'AVAX', 'DOT', 'MATIC', 'LINK', 'LTC', 'BCH', 'UNI', 'AAVE', 'ATOM', 'FIL', 'NEAR', 'APT', 'ARB', 'OP', 'SUI', 'XMR', 'ALGO', 'VET', 'ICP', 'SHIB', 'PEPE', 'FLOKI', 'BONK', 'TRX', 'TON', 'STX', 'LDO', 'ETC', 'XLM', 'CRO', 'HBAR', 'NEAR', 'GRT', 'MKR', 'BSV', 'THETA', 'RNDR'];
-  
+
   // Try to find in catalogue for explicit exchange
   const catalogItem = CATALOGUE.find(i => i.symbol === ourSymbol);
   if (catalogItem && catalogItem.exchange && catalogItem.exchange !== 'FX') {
@@ -88,12 +88,12 @@ function getTVSymbol(ourSymbol: string): string {
       const base = ourSymbol.endsWith('USD') ? ourSymbol.slice(0, -3) : ourSymbol;
       return `BINANCE:${base}USDT`;
     }
-    
+
     // Futures usually need 1! for continuous front-month data
     if (catalogItem.category === 'Futures' && !ourSymbol.includes('1!')) {
       return `${exchange}:${ourSymbol}1!`;
     }
-    
+
     return `${exchange}:${ourSymbol}`;
   }
 
@@ -104,18 +104,18 @@ function getTVSymbol(ourSymbol: string): string {
     } else if (ourSymbol.endsWith('USD')) {
       base = ourSymbol.slice(0, -3);
     }
-    
+
     if (crypto.includes(base) || ourSymbol.length > 5) {
       if (ourSymbol === 'USDTUSD' || ourSymbol === 'USDCUSD') return 'CRYPTOCAP:USDT'; // Best effort for stablecoins
-      return `BINANCE:${base}USDT`; 
+      return `BINANCE:${base}USDT`;
     }
   }
-  
+
   if (forex.includes(ourSymbol)) return `OANDA:${ourSymbol}`;
-  
+
   if (STOCKS_NASDAQ.includes(ourSymbol)) return `NASDAQ:${ourSymbol}`;
   if (STOCKS_NYSE.includes(ourSymbol)) return `NYSE:${ourSymbol}`;
-  
+
   // Try treating as a stock or generic asset if not explicitly mapped
   return ourSymbol;
 }
@@ -132,13 +132,13 @@ function getOurSymbol(tvSymbol: string): string {
   }
 
   const parts = tvSymbol.split(':');
-  let symbol = parts[parts.length - 1]; 
-  
+  let symbol = parts[parts.length - 1];
+
   // Strip Futures continuous suffix
   if (symbol.endsWith('1!')) {
     symbol = symbol.slice(0, -2);
   }
-  
+
   return symbol;
 }
 
@@ -168,13 +168,13 @@ function getEndpoints(): string[] {
     // On localhost: connect directly (TradingView allows localhost Origin)
     return TV_DIRECT_ENDPOINTS;
   }
-  
+
   // On production: use proxy first, then try direct as fallback
   if (WS_PROXY_URL) {
     const proxyWs = WS_PROXY_URL.replace(/^http/, 'ws'); // https://x → wss://x
     return [proxyWs, ...TV_DIRECT_ENDPOINTS];
   }
-  
+
   // No proxy configured — try direct endpoints (may get blocked)
   console.warn('[TV Live Tunnel] No WS_PROXY_URL configured — direct connection may fail on production');
   return TV_DIRECT_ENDPOINTS;
@@ -234,7 +234,7 @@ export class TradingViewSocket {
 
     const endpoint = WS_ENDPOINTS[this.currentEndpointIndex % WS_ENDPOINTS.length];
     console.log(`[TV Live Tunnel] Connecting to endpoint ${this.currentEndpointIndex % WS_ENDPOINTS.length + 1}/${WS_ENDPOINTS.length}...`);
-    
+
     try {
       this.ws = new WebSocket(endpoint);
     } catch (err) {
@@ -242,7 +242,7 @@ export class TradingViewSocket {
       this.scheduleReconnect();
       return;
     }
-    
+
     this.ws.onopen = () => {
       console.log('[TV Live Tunnel] Connected ✓');
       this.isConnected = true;
@@ -252,7 +252,7 @@ export class TradingViewSocket {
         clearTimeout(this.reconnectTimer);
         this.reconnectTimer = null;
       }
-      
+
       this.sendMessage('set_auth_token', ['unauthorized_user_token']);
       this.sendMessage('quote_create_session', [this.sessionId]);
       this.sendMessage('quote_set_fields', [
@@ -357,7 +357,7 @@ export class TradingViewSocket {
     // Add random jitter (±25%) to prevent thundering herd
     const jitter = delay * 0.25 * (Math.random() * 2 - 1);
     const actualDelay = Math.round(delay + jitter);
-    
+
     this.reconnectAttempts++;
     console.log(`[TV Live Tunnel] Reconnecting in ${(actualDelay / 1000).toFixed(1)}s (attempt ${this.reconnectAttempts})`);
 
@@ -425,9 +425,9 @@ export class TradingViewSocket {
         if (parsed.m === 'qsd' && parsed.p && parsed.p[1]) {
           const entry = parsed.p[1];
           const tvName = entry.n;
-          const status = entry.s; 
+          const status = entry.s;
           const data = entry.v;
-          
+
           if (status === 'error') {
             // Only log once per symbol, not on every tick
             continue;
@@ -435,7 +435,7 @@ export class TradingViewSocket {
 
           if (data && this.onDataCallback) {
             const ourSymbol = this.tvToOurSymbolMap.get(tvName) || getOurSymbol(tvName);
-            
+
             const update: Partial<MarketPrice> = {};
             if (data.lp !== undefined) update.price = data.lp;
             if (data.ch !== undefined) update.change = data.ch;
@@ -446,10 +446,10 @@ export class TradingViewSocket {
             if (data.volume !== undefined) update.volume = formatVolume(data.volume);
             if (data.bid !== undefined) update.bid = data.bid;
             if (data.ask !== undefined) update.ask = data.ask;
-            
+
             update.lastUpdate = Date.now();
-            
-            if (Object.keys(update).length > 1) { 
+
+            if (Object.keys(update).length > 1) {
               this.onDataCallback(ourSymbol, update);
             }
           }
@@ -459,7 +459,7 @@ export class TradingViewSocket {
       }
     }
   }
-  
+
   public cleanup() {
     this.isDestroyed = true;
     this.stopKeepAlive();
@@ -481,8 +481,8 @@ export class TradingViewSocket {
 // Duplicate formatter from context to be used here
 function formatVolume(n: number): string {
   if (n >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
-  if (n >= 1e9)  return `${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6)  return `${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e3)  return `${(n / 1e3).toFixed(2)}K`;
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(2)}K`;
   return n.toFixed(0);
 }

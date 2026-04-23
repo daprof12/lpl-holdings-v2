@@ -32,10 +32,22 @@ export default function CardDeposit({ walletType = 'live', methods }: { walletTy
   // Get recent card deposits for current user
   const recentDeposits = user ? getRecentDeposits(user.id, 'card') : [];
 
-  // Get current processor
+  // Get current processor and calculate fee based on admin config
   const currentProcessor = methods.find(m => m.id === selectedProcessor);
-  const processingFeePercent = currentProcessor?.processingFee || 2.5;
-  const fee = parseFloat(amount) * (processingFeePercent / 100);
+  
+  const calculateDepositFee = (amt: number): number => {
+    if (!currentProcessor || !amt) return 0;
+    if (currentProcessor.depositFeeType === 'fixed') {
+      return currentProcessor.depositFee || 0;
+    }
+    // Percentage fee — use depositFee if set, fallback to processingFee for backward compat
+    const feePercent = currentProcessor.depositFee || currentProcessor.processingFee || 0;
+    return amt * (feePercent / 100);
+  };
+  
+  const feeType = currentProcessor?.depositFeeType || 'percentage';
+  const feeValue = currentProcessor?.depositFee || currentProcessor?.processingFee || 0;
+  const fee = parseFloat(amount) > 0 ? calculateDepositFee(parseFloat(amount)) : 0;
   const total = parseFloat(amount) + fee;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -235,7 +247,7 @@ export default function CardDeposit({ walletType = 'live', methods }: { walletTy
                 <span className="font-semibold">${parseFloat(amount).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600 dark:text-gray-400">Processing Fee ({processingFeePercent}%):</span>
+                <span className="text-gray-600 dark:text-gray-400">Processing Fee {feeType === 'percentage' ? `(${feeValue}%)` : '(Fixed)'}:</span>
                 <span className="font-semibold">${fee.toFixed(2)}</span>
               </div>
               <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-slate-600">

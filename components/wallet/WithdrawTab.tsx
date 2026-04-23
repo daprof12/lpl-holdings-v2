@@ -68,8 +68,8 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
           notes: m.processing_time,
           ...(m.details || {})
         })) : [];
-        const cryptoMethods = allMethods.filter((m: any) => m.type === 'crypto' && m.enabled && m.isWithdrawal);
-        const withdrawalConfigs = allMethods.filter((m: any) => m.isWithdrawal);
+        const cryptoMethods = allMethods.filter((m: any) => m.type === 'crypto' && m.enabled);
+        const withdrawalConfigs = allMethods.filter((m: any) => m.enabled);
         setAdminAllMethods(withdrawalConfigs);
         setAdminCryptoMethods(cryptoMethods);
         
@@ -303,7 +303,10 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
           return methodConfig.withdrawalFee || 0;
         } else {
           // Percentage fee
-          return (amt * (methodConfig.withdrawalFee || 0)) / 100;
+          const feePercent = methodConfig.withdrawalFee !== undefined 
+            ? methodConfig.withdrawalFee 
+            : (methodConfig.processingFee || 0);
+          return (amt * feePercent) / 100;
         }
       }
       // Fallback to default if no config found
@@ -314,7 +317,10 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
       const paypalConfig = adminAllMethods.find(m => m.type === 'paypal');
       if (paypalConfig) {
         if (paypalConfig.withdrawalFeeType === 'fixed') return paypalConfig.withdrawalFee || 0;
-        return (amt * (paypalConfig.withdrawalFee || 2)) / 100;
+        const feePercent = paypalConfig.withdrawalFee !== undefined 
+          ? paypalConfig.withdrawalFee 
+          : (paypalConfig.processingFee || 2);
+        return (amt * feePercent) / 100;
       }
       return amt * 0.02;
     }
@@ -323,7 +329,10 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
       const bankConfig = adminAllMethods.find(m => m.type === 'bank');
       if (bankConfig) {
         if (bankConfig.withdrawalFeeType === 'fixed') return bankConfig.withdrawalFee || 0;
-        return (amt * (bankConfig.withdrawalFee || 0)) / 100;
+        const feePercent = bankConfig.withdrawalFee !== undefined 
+          ? bankConfig.withdrawalFee 
+          : (bankConfig.processingFee || 0);
+        return (amt * feePercent) / 100;
       }
       return 25;
     }
@@ -1000,15 +1009,27 @@ export default function WithdrawTab({ availableBalance, walletType = 'live', onW
               <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">
                   Processing Fee
-                  {selectedMethod === 'crypto' && selectedCryptoType && selectedCryptoNetwork && (() => {
-                    const methodConfig = adminCryptoMethods.find(
-                      m => m.cryptoType === selectedCryptoType && m.network === selectedCryptoNetwork
-                    );
+                  {(() => {
+                    let methodConfig;
+                    if (selectedMethod === 'crypto' && selectedCryptoType && selectedCryptoNetwork) {
+                      methodConfig = adminCryptoMethods.find(m => 
+                        (m.cryptoAssets && Array.isArray(m.cryptoAssets) ? 
+                          m.cryptoAssets.some((a: any) => a.assetType === selectedCryptoType && a.network?.includes(selectedCryptoNetwork)) :
+                          (m.cryptoType === selectedCryptoType && m.network?.includes(selectedCryptoNetwork))
+                        )
+                      );
+                    } else if (selectedMethod === 'bank' || selectedMethod === 'e_wallet') {
+                       methodConfig = adminAllMethods.find(m => m.type === (selectedMethod === 'e_wallet' ? 'paypal' : 'bank'));
+                    }
+                    
                     if (methodConfig) {
                       if (methodConfig.withdrawalFeeType === 'fixed') {
                         return ' (Fixed)';
-                      } else if (methodConfig.withdrawalFee) {
-                        return ` (${methodConfig.withdrawalFee}%)`;
+                      } else {
+                        const feePercent = methodConfig.withdrawalFee !== undefined 
+                          ? methodConfig.withdrawalFee 
+                          : (methodConfig.processingFee || 0);
+                        return ` (${feePercent}%)`;
                       }
                     }
                     return '';

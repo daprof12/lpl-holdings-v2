@@ -20,7 +20,10 @@ export default function WalletPage() {
     const tab = searchParams.get('tab');
     return tab === 'withdraw' || tab === 'history' ? tab : 'deposit';
   });
-  const [selectedWalletType, setSelectedWalletType] = useState<'live' | 'portfolio'>('live');
+  const [selectedWalletType, setSelectedWalletType] = useState<'live' | 'portfolio'>(() => {
+    const type = searchParams.get('type');
+    return type === 'portfolio' ? 'portfolio' : 'live';
+  });
 
   // Portfolio balance from relational investment balances
   const portfolioBalance = currentUser?.investmentBalances?.portfolio || 0;

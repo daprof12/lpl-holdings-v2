@@ -58,6 +58,21 @@ export default function BankDeposit({ walletType = 'live', methods }: { walletTy
   // Get currently selected bank method
   const currentMethod = methods.find(m => m.id === selectedMethodId);
 
+  const calculateDepositFee = (amt: number): number => {
+    if (!currentMethod || !amt) return 0;
+    if (currentMethod.depositFeeType === 'fixed') {
+      return currentMethod.depositFee || 0;
+    }
+    // Percentage fee — use depositFee if set, fallback to processingFee for backward compat
+    const feePercent = currentMethod.depositFee || currentMethod.processingFee || 0;
+    return amt * (feePercent / 100);
+  };
+
+  const feeType = currentMethod?.depositFeeType || 'percentage';
+  const feeValue = currentMethod?.depositFee || currentMethod?.processingFee || 0;
+  const fee = parseFloat(amount) > 0 ? calculateDepositFee(parseFloat(amount)) : 0;
+  const total = parseFloat(amount) + fee;
+
   const handleCopy = (text: string, field: string) => {
     copyToClipboard(text)
       .then(() => {
@@ -334,6 +349,26 @@ export default function BankDeposit({ walletType = 'live', methods }: { walletTy
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Minimum: ${currentMethod?.minDeposit || 100} | Processing time: {currentMethod?.notes || '30 min - 2 hours after approval'}
             </p>
+
+            {/* Fee Breakdown */}
+            {amount && parseFloat(amount) >= (currentMethod?.minDeposit || 100) && (
+              <div className="mt-4 p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">Deposit Amount:</span>
+                  <span className="font-semibold">${parseFloat(amount).toFixed(2)}</span>
+                </div>
+                {fee > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600 dark:text-gray-400">Platform Fee {feeType === 'percentage' ? `(${feeValue}%)` : '(Fixed)'}:</span>
+                    <span className="font-semibold">${fee.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-slate-600 mt-2">
+                  <span className="font-semibold">Total to Send:</span>
+                  <span className="font-semibold text-lg text-blue-600 dark:text-blue-400">${total.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Upload Proof */}

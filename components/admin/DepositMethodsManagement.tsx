@@ -584,6 +584,33 @@ export default function DepositMethodsManagement() {
                     />
                   </div>
                 </div>
+
+                {/* Withdrawal Fee Configuration */}
+                <div className="grid md:grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <Label>Withdrawal Fee Type</Label>
+                    <select
+                      value={formData.withdrawalFeeType || 'percentage'}
+                      onChange={(e) => setFormData({ ...formData, withdrawalFeeType: e.target.value as 'percentage' | 'fixed' })}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                    >
+                      <option value="percentage">Percentage (%)</option>
+                      <option value="fixed">Fixed Amount (USD)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>
+                      Withdrawal Fee {formData.withdrawalFeeType === 'fixed' ? '(USD)' : '(%)'}
+                    </Label>
+                    <Input
+                      type="number"
+                      step={formData.withdrawalFeeType === 'fixed' ? '0.01' : '0.1'}
+                      placeholder={formData.withdrawalFeeType === 'fixed' ? 'e.g., 5.00' : 'e.g., 0.5'}
+                      value={formData.withdrawalFee || ''}
+                      onChange={(e) => setFormData({ ...formData, withdrawalFee: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
                 
                 <div>
                   <Label>Notes (Optional)</Label>
@@ -657,6 +684,61 @@ export default function DepositMethodsManagement() {
                     onChange={(e) => setFormData({ ...formData, bankAddress: e.target.value })}
                   />
                 </div>
+
+                {/* Deposit Fee Configuration */}
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <Label>Deposit Fee Type</Label>
+                    <select
+                      value={formData.depositFeeType || 'percentage'}
+                      onChange={(e) => setFormData({ ...formData, depositFeeType: e.target.value as 'percentage' | 'fixed' })}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                    >
+                      <option value="percentage">Percentage (%)</option>
+                      <option value="fixed">Fixed Amount (USD)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>
+                      Deposit Fee {formData.depositFeeType === 'fixed' ? '(USD)' : '(%)'}
+                    </Label>
+                    <Input
+                      type="number"
+                      step={formData.depositFeeType === 'fixed' ? '0.01' : '0.1'}
+                      placeholder={formData.depositFeeType === 'fixed' ? 'e.g., 25.00' : 'e.g., 1.5'}
+                      value={formData.depositFee || ''}
+                      onChange={(e) => setFormData({ ...formData, depositFee: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
+
+                {/* Withdrawal Fee Configuration */}
+                <div className="grid md:grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <Label>Withdrawal Fee Type</Label>
+                    <select
+                      value={formData.withdrawalFeeType || 'percentage'}
+                      onChange={(e) => setFormData({ ...formData, withdrawalFeeType: e.target.value as 'percentage' | 'fixed' })}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                    >
+                      <option value="percentage">Percentage (%)</option>
+                      <option value="fixed">Fixed Amount (USD)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>
+                      Withdrawal Fee {formData.withdrawalFeeType === 'fixed' ? '(USD)' : '(%)'}
+                    </Label>
+                    <Input
+                      type="number"
+                      step={formData.withdrawalFeeType === 'fixed' ? '0.01' : '0.1'}
+                      placeholder={formData.withdrawalFeeType === 'fixed' ? 'e.g., 25.00' : 'e.g., 1.5'}
+                      value={formData.withdrawalFee || ''}
+                      onChange={(e) => setFormData({ ...formData, withdrawalFee: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <Label>Notes (Optional)</Label>
                   <textarea
@@ -713,15 +795,58 @@ export default function DepositMethodsManagement() {
                     onChange={(e) => setFormData({ ...formData, merchantId: e.target.value })}
                   />
                 </div>
-                <div>
-                  <Label>Processing Fee (%)</Label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    placeholder="2.9"
-                    value={formData.processingFee || ''}
-                    onChange={(e) => setFormData({ ...formData, processingFee: parseFloat(e.target.value) })}
-                  />
+                {/* Deposit Fee Configuration */}
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <Label>Deposit Fee Type</Label>
+                    <select
+                      value={formData.depositFeeType || 'percentage'}
+                      onChange={(e) => setFormData({ ...formData, depositFeeType: e.target.value as 'percentage' | 'fixed' })}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                    >
+                      <option value="percentage">Percentage (%)</option>
+                      <option value="fixed">Fixed Amount (USD)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>
+                      Deposit Fee {formData.depositFeeType === 'fixed' ? '(USD)' : '(%)'}
+                    </Label>
+                    <Input
+                      type="number"
+                      step={formData.depositFeeType === 'fixed' ? '0.01' : '0.1'}
+                      placeholder={formData.depositFeeType === 'fixed' ? 'e.g., 5.00' : 'e.g., 2.9'}
+                      value={formData.depositFee || ''}
+                      onChange={(e) => setFormData({ ...formData, depositFee: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
+
+                {/* Withdrawal Fee Configuration */}
+                <div className="grid md:grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <Label>Withdrawal Fee Type</Label>
+                    <select
+                      value={formData.withdrawalFeeType || 'percentage'}
+                      onChange={(e) => setFormData({ ...formData, withdrawalFeeType: e.target.value as 'percentage' | 'fixed' })}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                    >
+                      <option value="percentage">Percentage (%)</option>
+                      <option value="fixed">Fixed Amount (USD)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>
+                      Withdrawal Fee {formData.withdrawalFeeType === 'fixed' ? '(USD)' : '(%)'}
+                    </Label>
+                    <Input
+                      type="number"
+                      step={formData.withdrawalFeeType === 'fixed' ? '0.01' : '0.1'}
+                      placeholder={formData.withdrawalFeeType === 'fixed' ? 'e.g., 5.00' : 'e.g., 2.9'}
+                      value={formData.withdrawalFee || ''}
+                      onChange={(e) => setFormData({ ...formData, withdrawalFee: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
                 </div>
                 <div>
                   <Label>Notes (Optional)</Label>
@@ -851,6 +976,33 @@ export default function DepositMethodsManagement() {
                     />
                   </div>
                 </div>
+
+                {/* Withdrawal Fee Configuration */}
+                <div className="grid md:grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <Label>Withdrawal Fee Type</Label>
+                    <select
+                      value={formData.withdrawalFeeType || 'percentage'}
+                      onChange={(e) => setFormData({ ...formData, withdrawalFeeType: e.target.value as 'percentage' | 'fixed' })}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                    >
+                      <option value="percentage">Percentage (%)</option>
+                      <option value="fixed">Fixed Amount (USD)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>
+                      Withdrawal Fee {formData.withdrawalFeeType === 'fixed' ? '(USD)' : '(%)'}
+                    </Label>
+                    <Input
+                      type="number"
+                      step={formData.withdrawalFeeType === 'fixed' ? '0.01' : '0.1'}
+                      placeholder={formData.withdrawalFeeType === 'fixed' ? 'e.g., 5.00' : 'e.g., 0.5'}
+                      value={formData.withdrawalFee || ''}
+                      onChange={(e) => setFormData({ ...formData, withdrawalFee: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
                 
                 <div>
                   <Label>Notes</Label>
@@ -923,6 +1075,61 @@ export default function DepositMethodsManagement() {
                     onChange={(e) => setFormData({ ...formData, bankAddress: e.target.value })}
                   />
                 </div>
+
+                {/* Deposit Fee Configuration */}
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <Label>Deposit Fee Type</Label>
+                    <select
+                      value={formData.depositFeeType || 'percentage'}
+                      onChange={(e) => setFormData({ ...formData, depositFeeType: e.target.value as 'percentage' | 'fixed' })}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                    >
+                      <option value="percentage">Percentage (%)</option>
+                      <option value="fixed">Fixed Amount (USD)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>
+                      Deposit Fee {formData.depositFeeType === 'fixed' ? '(USD)' : '(%)'}
+                    </Label>
+                    <Input
+                      type="number"
+                      step={formData.depositFeeType === 'fixed' ? '0.01' : '0.1'}
+                      placeholder={formData.depositFeeType === 'fixed' ? 'e.g., 25.00' : 'e.g., 1.5'}
+                      value={formData.depositFee || ''}
+                      onChange={(e) => setFormData({ ...formData, depositFee: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
+
+                {/* Withdrawal Fee Configuration */}
+                <div className="grid md:grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <Label>Withdrawal Fee Type</Label>
+                    <select
+                      value={formData.withdrawalFeeType || 'percentage'}
+                      onChange={(e) => setFormData({ ...formData, withdrawalFeeType: e.target.value as 'percentage' | 'fixed' })}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                    >
+                      <option value="percentage">Percentage (%)</option>
+                      <option value="fixed">Fixed Amount (USD)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>
+                      Withdrawal Fee {formData.withdrawalFeeType === 'fixed' ? '(USD)' : '(%)'}
+                    </Label>
+                    <Input
+                      type="number"
+                      step={formData.withdrawalFeeType === 'fixed' ? '0.01' : '0.1'}
+                      placeholder={formData.withdrawalFeeType === 'fixed' ? 'e.g., 25.00' : 'e.g., 1.5'}
+                      value={formData.withdrawalFee || ''}
+                      onChange={(e) => setFormData({ ...formData, withdrawalFee: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <Label>Notes (Optional)</Label>
                   <textarea
@@ -979,15 +1186,58 @@ export default function DepositMethodsManagement() {
                     onChange={(e) => setFormData({ ...formData, merchantId: e.target.value })}
                   />
                 </div>
-                <div>
-                  <Label>Processing Fee (%)</Label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    placeholder="2.9"
-                    value={formData.processingFee || ''}
-                    onChange={(e) => setFormData({ ...formData, processingFee: parseFloat(e.target.value) })}
-                  />
+                {/* Deposit Fee Configuration */}
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <Label>Deposit Fee Type</Label>
+                    <select
+                      value={formData.depositFeeType || 'percentage'}
+                      onChange={(e) => setFormData({ ...formData, depositFeeType: e.target.value as 'percentage' | 'fixed' })}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                    >
+                      <option value="percentage">Percentage (%)</option>
+                      <option value="fixed">Fixed Amount (USD)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>
+                      Deposit Fee {formData.depositFeeType === 'fixed' ? '(USD)' : '(%)'}
+                    </Label>
+                    <Input
+                      type="number"
+                      step={formData.depositFeeType === 'fixed' ? '0.01' : '0.1'}
+                      placeholder={formData.depositFeeType === 'fixed' ? 'e.g., 5.00' : 'e.g., 2.9'}
+                      value={formData.depositFee || ''}
+                      onChange={(e) => setFormData({ ...formData, depositFee: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
+
+                {/* Withdrawal Fee Configuration */}
+                <div className="grid md:grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <Label>Withdrawal Fee Type</Label>
+                    <select
+                      value={formData.withdrawalFeeType || 'percentage'}
+                      onChange={(e) => setFormData({ ...formData, withdrawalFeeType: e.target.value as 'percentage' | 'fixed' })}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                    >
+                      <option value="percentage">Percentage (%)</option>
+                      <option value="fixed">Fixed Amount (USD)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>
+                      Withdrawal Fee {formData.withdrawalFeeType === 'fixed' ? '(USD)' : '(%)'}
+                    </Label>
+                    <Input
+                      type="number"
+                      step={formData.withdrawalFeeType === 'fixed' ? '0.01' : '0.1'}
+                      placeholder={formData.withdrawalFeeType === 'fixed' ? 'e.g., 5.00' : 'e.g., 2.9'}
+                      value={formData.withdrawalFee || ''}
+                      onChange={(e) => setFormData({ ...formData, withdrawalFee: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
                 </div>
                 <div>
                   <Label>Notes (Optional)</Label>

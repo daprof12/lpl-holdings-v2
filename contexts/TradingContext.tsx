@@ -629,6 +629,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   ordersRef.current = orders;
 
   useEffect(() => {
+    let databaseSyncTick = 0;
     const PRICE_UPDATE_INTERVAL = 5000; // Same 5s as MarketDataContext
 
     const updateAllPositionPrices = () => {
@@ -805,6 +806,21 @@ export function TradingProvider({ children }: { children: ReactNode }) {
             margin: totalMargin,
             availableFunds,
           });
+
+          // BACKGROUND DATABASE SYNC (Throttle to every ~30s = 6 ticks of 5000ms)
+          databaseSyncTick++;
+          if (databaseSyncTick >= 6) {
+            databaseSyncTick = 0;
+            if (updatedPositions.length > 0) {
+              updatedPositions.forEach(p => {
+                api.positions.update(p.id, {
+                  current_price: p.currentPrice,
+                  profit: p.pnl,
+                  updated_at: Date.now()
+                }).catch(() => {});
+              });
+            }
+          }
         }
       };
 
