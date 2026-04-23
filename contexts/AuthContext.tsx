@@ -382,22 +382,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Listen for external updates to users/notifications (e.g., from TransactionProvider)
   useEffect(() => {
     const handleUsersUpdated = () => {
-      const storedUsers = localStorage.getItem('gross_users');
-      if (storedUsers) {
-        try {
-          const parsedUsers = JSON.parse(storedUsers);
-          setUsers(parsedUsers);
-          // Also update currentUser if logged in
-          if (currentUser) {
-            const updatedCurrentUser = parsedUsers.find((u: UserProfile) => u.id === currentUser.id);
-            if (updatedCurrentUser) {
-              setCurrentUser(updatedCurrentUser);
-            }
-          }
-        } catch (error) {
-          console.error('Failed to sync users after update:', error);
-        }
-      }
+      // Refresh user data from DB instead of localStorage to avoid stale state
+      loadInitialData();
+      
       // Also sync notifications
       const storedNotifications = localStorage.getItem('gross_notifications');
       if (storedNotifications) {
@@ -529,13 +516,77 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       )
       .subscribe();
 
+    // 5. Admin-only: Subscribe to ALL user changes to keep the management dashboard in sync
+    let adminUsersChannel: any = null;
+    if (currentUser?.role === 'admin') {
+      console.log('👑 Admin detected: subscribing to global user updates');
+      adminUsersChannel = supabase
+        .channel('admin-global-user-updates')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'users'
+          },
+          (payload) => {
+            console.log('⚡ Realtime Admin: User row changed', payload.eventType);
+            // Instead of full reload, we can merge the update
+            if (payload.new && (payload.new as any).id) {
+               const u = payload.new as any;
+               setUsers(prev => prev.map(old => old.id === u.id ? {
+                 ...old,
+                 hasInvestmentAccess: u.has_investment_access,
+                 hasAutoTradeAccess: u.has_auto_trade_access,
+                 hasSignalAccess: u.has_signal_access,
+                 isVerified: u.email_verified,
+                 phoneVerified: u.phone_verified,
+                 kycStatus: u.kyc_status === 'approved' ? 'verified' : u.kyc_status === 'rejected' ? 'rejected' : 'pending',
+                 liveBalance: parseFloat(u.balance || 0),
+                 investmentBalances: u.investment_balances || old.investmentBalances
+               } : old));
+            } else if (payload.eventType === 'DELETE') {
+               setUsers(prev => prev.filter(old => old.id !== payload.old.id));
+            } else {
+               loadInitialData();
+            }
+          }
+        )
+        .subscribe();
+    }
+
     return () => {
       supabase.removeChannel(userChannel);
       supabase.removeChannel(txChannel);
       supabase.removeChannel(walletChannel);
       supabase.removeChannel(activityChannel);
+      if (adminUsersChannel) supabase.removeChannel(adminUsersChannel);
     };
   }, [currentUser?.id]);
+
+  // Global Settings Realtime
+  useEffect(() => {
+    const globalChannel = supabase
+      .channel('global-settings-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'global_settings',
+          filter: 'id=eq.global_settings'
+        },
+        () => {
+          console.log('⚡ Realtime: Global settings updated');
+          window.dispatchEvent(new Event('globalSettingsUpdated'));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(globalChannel);
+    };
+  }, []);
 
   // Track online status via heartbeat - persists to DB
   useEffect(() => {
@@ -828,26 +879,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await api.users.update(userId, dbUpdates);
 
       // 3. Update local state
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...updates } : u));
+      const updatedUsers = users.map(u => u.id === userId ? { ...u, ...updates } : u);
+      setUsers(updatedUsers);
+      localStorage.setItem('gross_users', JSON.stringify(updatedUsers));
+
       if (currentUser?.id === userId) {
-        setCurrentUser(prev => prev ? { ...prev, ...updates } : null);
+        const updatedCurrentUser = { ...currentUser, ...updates };
+        setCurrentUser(updatedCurrentUser);
+        localStorage.setItem('gross_current_user', JSON.stringify(updatedCurrentUser));
+        sessionStorage.setItem('gross_current_user', JSON.stringify(updatedCurrentUser));
       }
 
       toast.success('Profile updated successfully');
 
       // Dispatch global event for other components to refresh
       window.dispatchEvent(new Event('usersUpdated'));
-
-      // Refresh only the specific user data instead of the whole database
-      const refreshedUser = await api.users.getById(userId);
-      if (refreshedUser) {
-        setUsers(prev => prev.map(u => u.id === userId ? {
-          ...u,
-          isVerified: refreshedUser.email_verified,
-          phoneVerified: refreshedUser.phone_verified,
-          kycStatus: refreshedUser.kyc_status === 'approved' ? 'verified' : refreshedUser.kyc_status === 'rejected' ? 'rejected' : 'not_started'
-        } : u));
-      }
     } catch (err) {
       console.error('Failed to update profile:', err);
       toast.error('Failed to sync profile update.');

@@ -51,7 +51,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     { icon: History, label: 'History', path: '/history', visible: true },
     { icon: Bot, label: 'AI Auto Trader', path: '/auto-trader', visible: currentUser?.hasAutoTradeAccess },
     { icon: Radio, label: 'Signals', path: '/signals', visible: currentUser?.hasSignalAccess },
-    { icon: TrendingDown, label: 'Investment Offers', path: '/investments', visible: true },
+    { icon: TrendingDown, label: 'Investment Offers', path: '/investments', visible: currentUser?.hasInvestmentAccess },
   ];
 
   const bottomItems = [

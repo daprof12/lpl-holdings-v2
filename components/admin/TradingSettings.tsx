@@ -60,6 +60,11 @@ export default function TradingSettings() {
     };
 
     loadSettings();
+
+    // Listen for realtime updates from other sessions
+    const handleGlobalUpdate = () => loadSettings();
+    window.addEventListener('globalSettingsUpdated', handleGlobalUpdate);
+    return () => window.removeEventListener('globalSettingsUpdated', handleGlobalUpdate);
   }, []);
 
   const handleSaveSettings = async () => {
@@ -77,6 +82,7 @@ export default function TradingSettings() {
 
       if (error) throw error;
       toast.success('Global trading settings saved to database');
+      window.dispatchEvent(new Event('globalSettingsUpdated'));
     } catch (err) {
       console.error('Save failed:', err);
       toast.error('Failed to save settings');
@@ -345,6 +351,7 @@ export default function TradingSettings() {
         trading_config: { ...settings, autoTradeEnabled: enabled, signalEnabled }
       });
       toast.success(`Auto Trade feature ${enabled ? 'enabled' : 'disabled'} globally`);
+      window.dispatchEvent(new Event('globalSettingsUpdated'));
     } catch (e) {
       toast.error('Failed to update auto trade setting');
     }
@@ -359,6 +366,7 @@ export default function TradingSettings() {
         trading_config: { ...settings, autoTradeEnabled, signalEnabled: enabled }
       });
       toast.success(`Signal feature ${enabled ? 'enabled' : 'disabled'} globally`);
+      window.dispatchEvent(new Event('globalSettingsUpdated'));
     } catch (e) {
       toast.error('Failed to update signal setting');
     }
