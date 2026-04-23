@@ -44,7 +44,7 @@ export default function OpenPositions() {
     const priceDiff = position.side === 'buy' 
       ? currentPrice - position.entryPrice 
       : position.entryPrice - currentPrice;
-    const pnl = priceDiff * position.units * position.leverage;
+    const pnl = priceDiff * position.units;
 
     // Remove from positions
     removePosition(position.id);
@@ -92,14 +92,21 @@ export default function OpenPositions() {
     const priceDiff = position.side === 'buy' 
       ? currentPrice - entryPrice 
       : entryPrice - currentPrice;
-    return priceDiff * position.units * position.leverage;
+    // P&L = priceDiff * units. (Leverage is used to calculate margin, not P&L if units is already the exposure)
+    return priceDiff * (position.units || 0);
   };
 
   const calculatePLPercent = (position: Position) => {
     const entryPrice = position.entryPrice || 0;
-    const pl = calculatePL(position);
-    if (entryPrice === 0 || position.units === 0) return '0.00';
-    return ((pl / (entryPrice * position.units)) * 100);
+    if (entryPrice === 0 || !position.units) return 0;
+    
+    const priceDiff = position.side === 'buy' 
+      ? (position.currentPrice || 0) - entryPrice 
+      : entryPrice - (position.currentPrice || 0);
+    
+    // ROE % = (PriceDiff / EntryPrice) * Leverage * 100
+    const leverage = position.leverage || 1;
+    return (priceDiff / entryPrice) * leverage * 100;
   };
 
   return (
@@ -139,7 +146,7 @@ export default function OpenPositions() {
               <tbody>
                 {positions.map((position) => {
                   const pl = calculatePL(position);
-                  const plPercent = parseFloat(calculatePLPercent(position));
+                  const plPercent = calculatePLPercent(position);
                   const isPositive = pl >= 0;
 
                   const rows = [
@@ -163,7 +170,7 @@ export default function OpenPositions() {
                       <td className="py-4 px-2 text-right font-semibold">${formatCurrency(position.currentPrice || 0)}</td>
                       <td className="py-4 px-2 text-right text-sm">{position.stopLoss ? `$${formatCurrency(position.stopLoss)}` : '-'}</td>
                       <td className="py-4 px-2 text-right text-sm">{position.takeProfit ? `$${formatCurrency(position.takeProfit)}` : '-'}</td>
-                      <td className="py-4 px-2">
+                      <td className="py-4 px-2 text-right">
                         <div className={`font-semibold ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                           {isPositive ? '+' : ''}${formatCurrency(pl)}
                         </div>
@@ -171,7 +178,7 @@ export default function OpenPositions() {
                           {isPositive ? '+' : ''}{formatPercentage(plPercent)}
                         </div>
                       </td>
-                      <td className="py-4 px-2">
+                      <td className="py-4 px-2 text-right">
                         <div className="flex gap-2 justify-end">
                           <button className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-slate-600" title="Modify" onClick={() => handleModify(position)}>
                             <Edit className="w-4 h-4" />
@@ -237,7 +244,7 @@ export default function OpenPositions() {
           <div className="lg:hidden space-y-4">
             {positions.map((position) => {
               const pl = calculatePL(position);
-              const plPercent = parseFloat(calculatePLPercent(position));
+              const plPercent = calculatePLPercent(position);
               const isPositive = pl >= 0;
 
               return (
