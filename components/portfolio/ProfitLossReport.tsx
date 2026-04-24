@@ -67,18 +67,41 @@ export default function ProfitLossReport({ timeframe }: ProfitLossReportProps) {
   const closedPositions = useMemo(() => {
     return history
       .filter(h => h.status === 'closed' && h.pnl !== undefined)
-      .map(h => ({
-        id: h.id,
-        asset: h.symbol,
-        type: h.side === 'buy' ? 'Long' : 'Short',
-        entry: h.entryPrice || h.price,
-        exit: h.price,
-        size: h.units,
-        pnl: h.pnl || 0,
-        pnlPercent: h.entryPrice ? (((h.price - h.entryPrice) / h.entryPrice) * 100) : 0,
-        duration: '0 days', // TODO: Calculate real duration
-        closeDate: new Date(h.timestamp).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-      }));
+      .map(h => {
+        const entry = h.entryPrice || h.price || 0;
+        const exit = h.price || 0;
+        const isShort = h.side === 'sell';
+        
+        // P/L ratio calculation
+        const diff = isShort ? (entry - exit) : (exit - entry);
+        const pnlPercent = entry > 0 ? (diff / entry) * 100 : 0;
+        
+        // Duration calculation
+        let durationStr = '0m';
+        if (h.entryTimestamp && h.timestamp) {
+          const durationMs = h.timestamp.getTime() - h.entryTimestamp.getTime();
+          const days = Math.floor(durationMs / (1000 * 60 * 60 * 24));
+          const hours = Math.floor((durationMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+          const mins = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+          
+          if (days > 0) durationStr = `${days}d ${hours}h`;
+          else if (hours > 0) durationStr = `${hours}h ${mins}m`;
+          else durationStr = `${mins}m`;
+        }
+
+        return {
+          id: h.id,
+          asset: h.symbol,
+          type: h.side === 'buy' ? 'Long' : 'Short',
+          entry: entry,
+          exit: exit,
+          size: h.units,
+          pnl: h.pnl || 0,
+          pnlPercent: pnlPercent,
+          duration: durationStr,
+          closeDate: new Date(h.timestamp).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+        };
+      });
   }, [history]);
 
   const totalProfit = closedPositions.filter(p => p.pnl > 0).reduce((sum, p) => sum + p.pnl, 0);
@@ -94,16 +117,16 @@ export default function ProfitLossReport({ timeframe }: ProfitLossReportProps) {
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
           <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Net P/L</div>
           <div className={`text-2xl font-semibold ${
-            netPnL > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+            netPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
           }`}>
-            {netPnL > 0 ? '+' : ''}${netPnL.toFixed(2)}
+            {netPnL >= 0 ? '+' : '-'}${formatCurrency(Math.abs(netPnL))}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
           <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Total Profit</div>
           <div className="text-2xl font-semibold text-green-600 dark:text-green-400">
-            +${totalProfit.toFixed(2)}
+            +${formatCurrency(totalProfit)}
           </div>
           <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
             {winningTrades} winning trades
@@ -113,7 +136,7 @@ export default function ProfitLossReport({ timeframe }: ProfitLossReportProps) {
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
           <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Total Loss</div>
           <div className="text-2xl font-semibold text-red-600 dark:text-red-400">
-            -${totalLoss.toFixed(2)}
+            -${formatCurrency(totalLoss)}
           </div>
           <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
             {losingTrades} losing trades
@@ -123,7 +146,7 @@ export default function ProfitLossReport({ timeframe }: ProfitLossReportProps) {
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
           <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Avg P/L per Trade</div>
           <div className="text-2xl font-semibold">
-            ${(netPnL / closedPositions.length).toFixed(2)}
+            ${closedPositions.length > 0 ? formatCurrency(netPnL / closedPositions.length) : '0.00'}
           </div>
         </div>
       </div>
@@ -310,21 +333,21 @@ export default function ProfitLossReport({ timeframe }: ProfitLossReportProps) {
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
           <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Largest Win</div>
           <div className="text-2xl font-semibold text-green-600 dark:text-green-400">
-            +${Math.max(...closedPositions.map(p => p.pnl)).toFixed(2)}
+            {closedPositions.length > 0 ? `+${formatCurrency(Math.max(...closedPositions.map(p => p.pnl), 0))}` : '$0.00'}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
           <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Largest Loss</div>
           <div className="text-2xl font-semibold text-red-600 dark:text-red-400">
-            ${Math.min(...closedPositions.map(p => p.pnl)).toFixed(2)}
+            {closedPositions.length > 0 ? `-${formatCurrency(Math.abs(Math.min(...closedPositions.map(p => p.pnl), 0)))}` : '$0.00'}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
           <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Profit Factor</div>
           <div className="text-2xl font-semibold">
-            {(totalProfit / totalLoss).toFixed(2)}
+            {totalLoss > 0 ? (totalProfit / totalLoss).toFixed(2) : (totalProfit > 0 ? '∞' : '1.00')}
           </div>
         </div>
       </div>

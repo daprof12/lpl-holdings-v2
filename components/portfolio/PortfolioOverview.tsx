@@ -15,7 +15,7 @@ export default function PortfolioOverview({ timeframe, portfolioData }: Portfoli
 
   // Generate portfolio growth data from actual history
   const portfolioGrowthData = useMemo(() => {
-    const startingBalance = 10250.50;
+    const startingBalance = portfolioData.totalInvested || 0;
     
     if (portfolioHistory && portfolioHistory.length > 0) {
       // Use actual portfolio history snapshots — deduplicate by date, keeping last snapshot per day
@@ -342,7 +342,7 @@ export default function PortfolioOverview({ timeframe, portfolioData }: Portfoli
 
         <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
           <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Sharpe Ratio</div>
-          <div className="text-xl font-semibold">1.87</div>
+          <div className="text-xl font-semibold">{portfolioData.sharpeRatio.toFixed(2)}</div>
         </div>
       </div>
     </div>

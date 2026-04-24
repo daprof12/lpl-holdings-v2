@@ -15,28 +15,30 @@ export default function PortfolioPage() {
 
   // Calculate real portfolio data from user's trading activity
   const portfolioData = useMemo(() => {
-    // Starting balance based on trading mode - now both start at 0
-    const startingBalance = account.balance;
+    // Starting balance is net deposits
+    const totalInvested = account.netDeposits > 0 ? account.netDeposits : 0;
     
     // Total portfolio value is the current equity
     const totalValue = account.equity;
-    
-    // Total invested is the starting balance
-    const totalInvested = startingBalance > 0 ? startingBalance : 1; // Avoid division by zero
     
     // Total P/L is realized + unrealized
     const totalProfitLoss = account.realizedPnL + account.unrealizedPnL;
     
     // Profit/Loss percentage
-    const profitLossPercent = ((totalProfitLoss / totalInvested) * 100);
+    const profitLossPercent = totalInvested > 0 ? ((totalProfitLoss / totalInvested) * 100) : 0;
     
-    // Day change - estimate based on recent positions (simplified)
-    const dayChange = account.unrealizedPnL * 0.1; // Rough estimate
-    const dayChangePercent = ((dayChange / totalValue) * 100);
+    // Recent performance - use realized P/L from today + change in unrealized
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     
-    // Week change - estimate
-    const weekChange = totalProfitLoss * 0.3; // Rough estimate
-    const weekChangePercent = ((weekChange / totalValue) * 100);
+    const todayRealized = history
+      .filter(h => h.status === 'closed' && new Date(h.timestamp).getTime() >= today)
+      .reduce((sum, h) => sum + (h.pnl || 0), 0);
+      
+    // Day change: realized today + (current unrealized - unrealized at start of day)
+    // Simplified: realized today + portion of current unrealized
+    const dayChange = todayRealized + (account.unrealizedPnL * 0.1); 
+    const dayChangePercent = totalValue > 0 ? ((dayChange / totalValue) * 100) : 0;
     
     // Count open and closed positions
     const openPositions = positions.length;
@@ -51,11 +53,14 @@ export default function PortfolioPage() {
       : 0;
     
     // Calculate average win and loss
-    const avgWin = winningTrades.length > 0
-      ? winningTrades.reduce((sum, t) => sum + (t.pnl || 0), 0) / winningTrades.length
+    const winningPayouts = winningTrades.map(t => t.pnl || 0);
+    const losingPayouts = losingTrades.map(t => Math.abs(t.pnl || 0));
+    
+    const avgWin = winningPayouts.length > 0
+      ? winningPayouts.reduce((sum, val) => sum + val, 0) / winningPayouts.length
       : 0;
-    const avgLoss = losingTrades.length > 0
-      ? Math.abs(losingTrades.reduce((sum, t) => sum + (t.pnl || 0), 0) / losingTrades.length)
+    const avgLoss = losingPayouts.length > 0
+      ? losingPayouts.reduce((sum, val) => sum + val, 0) / losingPayouts.length
       : 0;
     
     // Find best and worst trades
@@ -65,6 +70,14 @@ export default function PortfolioPage() {
     const worstTrade = closedTrades.length > 0
       ? Math.min(...closedTrades.map(t => t.pnl || 0))
       : 0;
+
+    // Calculate Sharpe Ratio (simplified: excess return / volatility proxy)
+    const returns = closedTrades.map(t => t.pnl || 0);
+    const avgReturn = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
+    const stdDev = returns.length > 1 
+      ? Math.sqrt(returns.map(x => Math.pow(x - avgReturn, 2)).reduce((a, b) => a + b) / returns.length)
+      : 1;
+    const sharpeRatio = stdDev !== 0 ? (avgReturn / stdDev) : 0;
     
     return {
       totalValue,
@@ -73,15 +86,14 @@ export default function PortfolioPage() {
       profitLossPercent,
       dayChange,
       dayChangePercent,
-      weekChange,
-      weekChangePercent,
       openPositions,
       closedPositions,
       winRate,
       avgWin,
       avgLoss,
       bestTrade,
-      worstTrade
+      worstTrade,
+      sharpeRatio
     };
   }, [account, positions, history, tradingMode]);
 
@@ -125,7 +137,7 @@ export default function PortfolioPage() {
             </div>
             <div className="text-3xl mb-2">${formatCurrency(portfolioData.totalValue)}</div>
             <div className="flex items-center gap-2 text-sm">
-              {portfolioData.dayChangePercent > 0 ? (
+              {portfolioData.dayChangePercent >= 0 ? (
                 <>
                   <TrendingUp className="w-4 h-4" />
                   <span>+${portfolioData.dayChange.toFixed(2)} ({formatPct(portfolioData.dayChangePercent)}%)</span>
@@ -147,26 +159,26 @@ export default function PortfolioPage() {
               <span className="text-sm text-gray-600 dark:text-gray-400">Total P/L</span>
             </div>
             <div className={`text-2xl mb-2 ${
-              portfolioData.totalProfitLoss > 0 
+              portfolioData.totalProfitLoss >= 0 
                 ? 'text-green-600 dark:text-green-400' 
                 : 'text-red-600 dark:text-red-400'
             }`}>
-              {portfolioData.totalProfitLoss > 0 ? '+' : ''}${formatCurrency(portfolioData.totalProfitLoss)}
+              {portfolioData.totalProfitLoss >= 0 ? '+' : ''}${formatCurrency(portfolioData.totalProfitLoss)}
             </div>
             <div className="text-sm text-gray-600 dark:text-gray-400">
-              {portfolioData.profitLossPercent > 0 ? '+' : ''}{formatPct(portfolioData.profitLossPercent)}% return
+              {portfolioData.profitLossPercent >= 0 ? '+' : ''}{formatPct(portfolioData.profitLossPercent)}% return
             </div>
           </div>
 
-          {/* Win Rate */}
+          {/* Sharpe Ratio */}
           <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
             <div className="flex items-center gap-2 mb-3">
               <Percent className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-              <span className="text-sm text-gray-600 dark:text-gray-400">Win Rate</span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">Sharpe Ratio</span>
             </div>
-            <div className="text-2xl mb-2">{formatPct(portfolioData.winRate)}%</div>
+            <div className="text-2xl mb-2">{portfolioData.sharpeRatio.toFixed(2)}</div>
             <div className="text-sm text-gray-600 dark:text-gray-400">
-              {Math.round(portfolioData.closedPositions * portfolioData.winRate / 100)} / {portfolioData.closedPositions} trades
+              Risk-adjusted return
             </div>
           </div>
 

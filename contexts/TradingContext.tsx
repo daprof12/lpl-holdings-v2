@@ -82,6 +82,7 @@ export interface Account {
   availableFunds: number;
   bonus: number;
   credit: number;
+  netDeposits: number; // Added for portfolio calculations
 }
 
 export interface PortfolioSnapshot {
@@ -141,6 +142,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     availableFunds: 0,
     bonus: 0,
     credit: 0,
+    netDeposits: 0,
   });
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioSnapshot[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
@@ -161,7 +163,9 @@ export function TradingProvider({ children }: { children: ReactNode }) {
         api.positions.getByUserId(userId),
         api.tradeHistory.getByUserId(userId),
         api.pendingOrders.getByUserId(userId),
-        api.tradingAccounts.getByUserId(userId)
+        api.tradingAccounts.getByUserId(userId),
+        api.deposits.getByUserId(userId),
+        api.withdrawals.getByUserId(userId)
       ]);
 
       // Transform and set positions
@@ -234,6 +238,19 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
       // Set account
       if (dbAccount || auth.currentUser) {
+        // Calculate net deposits from history
+        let netDeposits = 0;
+        if (Array.isArray(dbDeposits)) {
+          netDeposits += dbDeposits
+            .filter((d: any) => d.status === 'completed')
+            .reduce((sum: number, d: any) => sum + parseFloat(d.amount || 0), 0);
+        }
+        if (Array.isArray(dbWithdrawals)) {
+          netDeposits -= dbWithdrawals
+            .filter((w: any) => w.status === 'completed')
+            .reduce((sum: number, w: any) => sum + parseFloat(w.amount || 0), 0);
+        }
+
         setAccount({
           balance: parseFloat(dbAccount?.balance ?? auth.currentUser?.balance ?? auth.currentUser?.liveBalance ?? 0),
           equity: parseFloat(dbAccount?.equity || 0),
@@ -243,6 +260,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
           availableFunds: parseFloat(dbAccount?.available_funds || 0),
           bonus: parseFloat(dbAccount?.bonus ?? auth.currentUser?.bonus ?? 0),
           credit: parseFloat(dbAccount?.credit ?? auth.currentUser?.credit ?? 0),
+          netDeposits: netDeposits > 0 ? netDeposits : parseFloat(dbAccount?.balance || 0) - parseFloat(dbAccount?.realized_pnl || 0),
         });
       }
     } catch (error) {

@@ -135,7 +135,7 @@ export default function AssetAllocation() {
                   outerRadius={100}
                   paddingAngle={2}
                   dataKey="value"
-                  label={({ name, value }) => `${name}: ${formatPct(value)}%`}
+                  label={({ name, value }) => `${name}: ${value.toFixed(2)}%`}
                 >
                   {assetTypeData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
@@ -155,7 +155,7 @@ export default function AssetAllocation() {
                 </div>
                 <div className="text-right">
                   <div className="font-semibold">{formatCurrency(item.amount)}</div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">{formatPct(item.value)}%</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">{item.value.toFixed(2)}%</div>
                 </div>
               </div>
             ))}
@@ -228,13 +228,13 @@ export default function AssetAllocation() {
                   </td>
                   <td className="py-4 px-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <div className="w-20 bg-gray-200 dark:bg-slate-700 rounded-full h-2">
+                      <div className="w-20 bg-gray-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
                         <div 
                           className="bg-blue-600 h-2 rounded-full" 
-                          style={{ width: `${holding.allocation}%` }}
+                          style={{ width: `${Math.min(100, holding.allocation)}%` }}
                         />
                       </div>
-                      <span className="text-sm w-12">{formatPct(holding.allocation)}%</span>
+                      <span className="text-sm w-12 font-medium">{holding.allocation.toFixed(2)}%</span>
                     </div>
                   </td>
                   <td className="py-4 px-4 text-right">
@@ -274,7 +274,7 @@ export default function AssetAllocation() {
                 </div>
                 <div>
                   <div className="text-gray-600 dark:text-gray-400 text-xs">Allocation</div>
-                  <div className="font-semibold">{formatPct(holding.allocation)}%</div>
+                  <div className="font-semibold">{holding.allocation.toFixed(2)}%</div>
                 </div>
                 <div>
                   <div className="text-gray-600 dark:text-gray-400 text-xs">Units</div>
@@ -303,11 +303,18 @@ export default function AssetAllocation() {
             <h3 className="text-lg font-semibold">Diversification Score</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400">How well-diversified is your portfolio</p>
           </div>
-          <div className="text-4xl font-bold text-purple-600 dark:text-purple-400">8.2/10</div>
+          <div className="text-4xl font-bold text-purple-600 dark:text-purple-400">
+            {positions.length === 0 ? '0.0' : (
+              Math.min(10, (positions.length * 1.2) + (10 - (topHoldings[0]?.allocation || 0) / 10)).toFixed(1)
+            )}/10
+          </div>
         </div>
 
         <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-3 mb-4">
-          <div className="bg-gradient-to-r from-purple-600 to-blue-600 h-3 rounded-full" style={{ width: '82%' }} />
+          <div 
+            className="bg-gradient-to-r from-purple-600 to-blue-600 h-3 rounded-full transition-all duration-1000" 
+            style={{ width: `${positions.length === 0 ? 0 : Math.min(100, (positions.length * 12) + (100 - (topHoldings[0]?.allocation || 0) * 1.5))}%` }} 
+          />
         </div>
 
         <div className="grid md:grid-cols-3 gap-4 text-sm">

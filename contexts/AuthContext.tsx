@@ -921,15 +921,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const deleteUser = async (userId: string) => {
     try {
-      await fetch(`${serverUrl}/users/${userId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${publicAnonKey}` }
-      });
+      await api.users.delete(userId);
       setUsers(prev => prev.filter(u => u.id !== userId));
       toast.success('User deleted');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete failed:', err);
-      toast.error('Failed to delete user from database');
+      toast.error(`Failed to delete user from database: ${err.message || 'Unknown error'}`);
     }
   };
 

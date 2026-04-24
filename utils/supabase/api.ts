@@ -47,6 +47,11 @@ export const api = {
       if (error) throw error;
       return data;
     },
+    delete: async (id: string) => {
+      const { error } = await supabase.from('users').delete().eq('id', id);
+      if (error) throw error;
+      return true;
+    },
   },
 
   // Trading Accounts
