@@ -159,7 +159,8 @@ export function TradingProvider({ children }: { children: ReactNode }) {
    */
   const fetchAllTradingData = async (userId: string) => {
     try {
-      const [dbPositions, dbHistory, dbOrders, dbAccount] = await Promise.all([
+      const now = Date.now();
+      const [dbPositions, dbHistory, dbOrders, dbAccount, dbDeposits, dbWithdrawals] = await Promise.all([
         api.positions.getByUserId(userId),
         api.tradeHistory.getByUserId(userId),
         api.pendingOrders.getByUserId(userId),
@@ -251,20 +252,16 @@ export function TradingProvider({ children }: { children: ReactNode }) {
             .reduce((sum: number, w: any) => sum + parseFloat(w.amount || 0), 0);
         }
 
-        const taBal = parseFloat(dbAccount?.balance || 0);
-        const uBal = parseFloat(auth.currentUser?.liveBalance ?? auth.currentUser?.balance ?? 0);
-        const finalBalance = Math.max(taBal, uBal);
-
         setAccount({
-          balance: finalBalance,
-          equity: parseFloat(dbAccount?.equity || 0) || finalBalance, // Use balance as fallback if equity is 0
+          balance: parseFloat(dbAccount?.balance ?? auth.currentUser?.balance ?? auth.currentUser?.liveBalance ?? 0),
+          equity: parseFloat(dbAccount?.equity || 0),
           realizedPnL: parseFloat(dbAccount?.realized_pnl || 0),
           unrealizedPnL: parseFloat(dbAccount?.unrealized_pnl || 0),
           margin: parseFloat(dbAccount?.margin || 0),
-          availableFunds: parseFloat(dbAccount?.available_funds || 0) || finalBalance,
+          availableFunds: parseFloat(dbAccount?.available_funds || 0),
           bonus: parseFloat(dbAccount?.bonus ?? auth.currentUser?.bonus ?? 0),
           credit: parseFloat(dbAccount?.credit ?? auth.currentUser?.credit ?? 0),
-          netDeposits: netDeposits > 0 ? netDeposits : finalBalance - parseFloat(dbAccount?.realized_pnl || 0),
+          netDeposits: netDeposits > 0 ? netDeposits : parseFloat(dbAccount?.balance || 0) - parseFloat(dbAccount?.realized_pnl || 0),
         });
       }
     } catch (error) {
@@ -669,7 +666,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
           if (order.status !== 'pending') return order;
 
           const priceData = marketData.getPrice(order.symbol);
-          if (!priceData || !priceData.price) return;
+          if (!priceData || !priceData.price) return order;
 
           const currentPrice = priceData.price;
           let shouldFill = false;
