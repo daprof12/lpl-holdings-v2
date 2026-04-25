@@ -251,16 +251,20 @@ export function TradingProvider({ children }: { children: ReactNode }) {
             .reduce((sum: number, w: any) => sum + parseFloat(w.amount || 0), 0);
         }
 
+        const taBal = parseFloat(dbAccount?.balance || 0);
+        const uBal = parseFloat(auth.currentUser?.liveBalance ?? auth.currentUser?.balance ?? 0);
+        const finalBalance = Math.max(taBal, uBal);
+
         setAccount({
-          balance: parseFloat(dbAccount?.balance ?? auth.currentUser?.balance ?? auth.currentUser?.liveBalance ?? 0),
-          equity: parseFloat(dbAccount?.equity || 0),
+          balance: finalBalance,
+          equity: parseFloat(dbAccount?.equity || 0) || finalBalance, // Use balance as fallback if equity is 0
           realizedPnL: parseFloat(dbAccount?.realized_pnl || 0),
           unrealizedPnL: parseFloat(dbAccount?.unrealized_pnl || 0),
           margin: parseFloat(dbAccount?.margin || 0),
-          availableFunds: parseFloat(dbAccount?.available_funds || 0),
+          availableFunds: parseFloat(dbAccount?.available_funds || 0) || finalBalance,
           bonus: parseFloat(dbAccount?.bonus ?? auth.currentUser?.bonus ?? 0),
           credit: parseFloat(dbAccount?.credit ?? auth.currentUser?.credit ?? 0),
-          netDeposits: netDeposits > 0 ? netDeposits : parseFloat(dbAccount?.balance || 0) - parseFloat(dbAccount?.realized_pnl || 0),
+          netDeposits: netDeposits > 0 ? netDeposits : finalBalance - parseFloat(dbAccount?.realized_pnl || 0),
         });
       }
     } catch (error) {
