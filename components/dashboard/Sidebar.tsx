@@ -47,12 +47,11 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     { icon: LineChart, label: 'Markets', path: '/markets', visible: true },
     { icon: TrendingUp, label: 'Trading', path: '/trading', visible: true },
     { icon: Briefcase, label: 'Portfolio', path: '/portfolio', visible: true },
-    { icon: TrendingDown, label: 'Investments', path: '/investments', visible: true }, // Always visible
-
     { icon: Wallet, label: 'Deposit/Withdraw', path: '/wallet', visible: true },
     { icon: History, label: 'History', path: '/history', visible: true },
     { icon: Bot, label: 'AI Auto Trader', path: '/auto-trader', visible: currentUser?.hasAutoTradeAccess },
     { icon: Radio, label: 'Signals', path: '/signals', visible: currentUser?.hasSignalAccess },
+    { icon: TrendingDown, label: 'Investment Offers', path: '/investments', visible: true }, // Always visible and now at the end
   ];
 
   const bottomItems = [
