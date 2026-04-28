@@ -4,9 +4,10 @@ import { TrendingUp, TrendingDown } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useTrading } from '../../contexts/TradingContext';
 import { formatPercentage } from '../../utils/formatNumber';
+import { SkeletonChart } from '../ui/Skeleton';
 
 export default function PortfolioChart() {
-  const { account, history, portfolioHistory } = useTrading();
+  const { account, history, portfolioHistory, balanceLoaded } = useTrading();
   const [timeframe, setTimeframe] = useState<'1D' | '1W' | '1M' | '3M' | '1Y' | 'ALL'>('1W');
   const [chartType, setChartType] = useState<'area' | 'line'>('area');
   const gradientId = useId();
@@ -135,6 +136,10 @@ export default function PortfolioChart() {
   const isPositive = change >= 0;
 
   const timeframes: Array<'1D' | '1W' | '1M' | '3M' | '1Y' | 'ALL'> = ['1D', '1W', '1M', '3M', '1Y', 'ALL'];
+
+  if (!balanceLoaded) {
+    return <SkeletonChart />;
+  }
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">

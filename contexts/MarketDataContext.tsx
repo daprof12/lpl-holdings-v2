@@ -55,6 +55,10 @@ interface MarketDataContextType {
   isLoading: boolean;
   assetsLoading: boolean;
   refreshAssets: () => Promise<void>;
+  /** Returns true if the given symbol has received at least one real WebSocket price update */
+  isPriceLive: (symbol: string) => boolean;
+  /** True once any real WebSocket price data has been received (WS is working) */
+  pricesReady: boolean;
 }
 
 const MarketDataContext = createContext<MarketDataContextType | undefined>(undefined);
@@ -150,178 +154,20 @@ const ALL_COINGECKO_IDS = Object.values(COINGECKO_ID).join(',');
 /** CoinGecko batch cache TTL: 30 seconds (stays within free-tier rate limits) */
 const COINGECKO_CACHE_TTL_MS = 30_000;
 
-/** Forex symbols handled via open.er-api.com (free, no key). */
-const FOREX_SYMBOLS = new Set([
-  'EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'USDJPY', 'USDCHF', 'USDCAD',
-  'EURGBP', 'EURJPY', 'GBPJPY', 'EURCHF', 'EURAUD', 'EURCAD', 'EURNZD',
-  'GBPAUD', 'GBPCAD', 'GBPCHF', 'GBPNZD', 'AUDCAD', 'AUDCHF', 'AUDNZD',
-  'CADJPY', 'CADCHF', 'CHFJPY', 'NZDCAD', 'NZDCHF', 'NZDJPY', 'USDSGD'
-]);
-
-/**
- * Accurate base prices for stocks, indices, commodities, ETFs, futures (Feb 2026).
- * These seed the random-walk simulation so displayed values start realistically.
- */
-const STATIC_BASE: Record<string, number> = {
-  // ── Stocks ──────────────────────────────────────────────────────────────
-  AAPL: 228,    MSFT: 415,    GOOGL: 173,   GOOG:  173,   AMZN: 225,
-  TSLA: 330,    META: 645,    NVDA: 140,    JPM:   258,   V:    340,
-  WMT:   97,    JNJ:  155,    XOM:  108,    BAC:    47,   'BRK.B': 455,
-  UNH:  520,    MA:   535,    HD:   415,    PG:    168,   KO:    62,
-  ABBV: 195,    PFE:   26,    MRK:   87,    CVX:   152,   AVGO: 215,
-  LLY:  870,    COST: 1020,   ORCL: 180,    ACN:   350,   AMD:  115,
-  INTC:  20,    CRM:  330,    ADBE: 435,    NFLX: 1050,   DIS:  108,
-  PYPL:  83,    UBER:  82,    SHOP: 120,    SQ:     85,   SPOT: 650,
-  COIN: 280,    HOOD:  48,    PLTR: 120,    SNOW:  180,   DDOG: 130,
-  ZM:    78,    TWLO:  90,    NET:  135,    RBLX:   52,   GME:   25,
-  AMC:    4,
-  // ── ETFs ────��───────────────────────────────────────────────────────────
-  SPY:  595,    QQQ:  510,    VOO:  550,    VTI:   290,   IWM:  225,
-  // ── Futures ─────────────────────────────────────────────────────────────
-  ES:  5950,    NQ: 21000,    YM: 44000,    GC:   2900,   CL:    71,
-  // ── Commodities ─────────────────────────────────────────────────────────
-  XAUUSD: 2900, XAGUSD: 32,   USOIL: 71,    UKOIL: 75,
-  // ── Indices ─────────────────────────────────────────────────────────────
-  SPX:  5950,   DJI: 44000,   IXIC: 19800,  NDX: 21000,   RUT: 2250,
-  VIX:   17,    RUT2000: 2250,
-  // ── Economy ─────────────────────────────────────────────────────────────
-  DXY:  107,    TNX:  4.25,   'BTC.D': 58,
-  // ── Bonds ───────────────────────────────────────────────────────────────
-  TLT:   89,    IEF:   95,    SHY:   82,    AGG:    97,   LQD:  106,
-  // ── Crypto fallback (used when both Binance & CoinGecko are unreachable)
-  BTCUSD: 92385, ETHUSD: 3793, USDTUSD: 1.00, BNBUSD: 612, ADAUSD: 0.64, SOLUSD: 102,
-  XRPUSD: 0.62,  DOTUSD: 7.82, MATICUSD: 0.95, LINKUSD: 15.67, AVAXUSD: 38.92,
-  DOGEUSD: 0.12, LTCUSD: 74.56, BCHUSD: 245, UNIUSD: 6.23, AAVEUSD: 98,
-  ATOMUSD: 10.45, FILUSD: 5.89, NEARUSD: 5.80, APTUSD: 8.34, ARBUSD: 1.23,
-  OPUSD: 2.15, SUIUSD: 1.45, XMRUSD: 165.34, ALGOUSD: 0.32, VETUSD: 0.04, ICPUSD: 12.78,
-  // ── Options ─────────────────────────────────────────────────────────────
-  'SPY-C-460': 12.45, 'SPY-P-450': 8.90, 'QQQ-C-380': 15.67,
-  'AAPL-C-200': 6.78, 'TSLA-C-250': 18.90, 'NVDA-C-500': 24.56,
-  'MSFT-P-370': 7.34, 'AMZN-C-155': 9.12, 'META-C-350': 13.45,
-  'IWM-P-195': 5.67,
-  // ── Options (chain-level symbols used in UI) ────────────────────────────
-  'IWM-OPT': 5.25,   'EEM-OPT': 2.90,   'TLT-OPT': 3.65,
-  // ── Altcoins ────────────────────────────────────────────────────────────
-  SHIBUSDT: 0.000006, PEPEUSD: 0.000001, DOGEUSD: 0.12, XRPUSD: 0.62,
-  SOLUSD: 102, ADAUSD: 0.64, DOTUSD: 7.82, TRXUSD: 0.11, TONUSD: 2.15,
-};
-
-// ============================================================
-// HELPERS
-// ============================================================
-
-function formatVolume(n: number): string {
-  if (n >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
-  if (n >= 1e9)  return `${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6)  return `${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e3)  return `${(n / 1e3).toFixed(2)}K`;
-  return n.toFixed(0);
-}
-
-/** Compute a bid/ask spread appropriate for the asset class. */
-function makeSpread(price: number, isForex: boolean, isCrypto: boolean) {
-  const frac = isForex ? 0.00015 : isCrypto ? 0.0003 : 0.001;
-  const half = price * frac / 2;
-  return { bid: price - half, ask: price + half };
-}
-
-/**
- * Compute a forex pair price from a USD-base rate object.
- * rates['EUR'] = how many EUR per 1 USD (i.e. 1/EURUSD)
- */
-function computeForexPrice(symbol: string, rates: Record<string, number>): number | null {
-  const r = rates;
-  const inv = (k: string) => (r[k] ? 1 / r[k] : null);
-  const dir = (k: string) => r[k] ?? null;
-  const cross = (num: string, den: string) =>
-    r[num] && r[den] ? r[num] / r[den] : null;
-
-  switch (symbol) {
-    case 'EURUSD': return inv('EUR');
-    case 'GBPUSD': return inv('GBP');
-    case 'AUDUSD': return inv('AUD');
-    case 'NZDUSD': return inv('NZD');
-    case 'USDJPY': return dir('JPY');
-    case 'USDCHF': return dir('CHF');
-    case 'USDCAD': return dir('CAD');
-    case 'EURGBP': return cross('GBP', 'EUR');
-    case 'EURJPY': return cross('JPY', 'EUR');
-    case 'GBPJPY': return cross('JPY', 'GBP');
-    case 'EURCHF': return cross('CHF', 'EUR');
-    case 'EURAUD': return cross('AUD', 'EUR');
-    case 'EURCAD': return cross('CAD', 'EUR');
-    case 'EURNZD': return cross('NZD', 'EUR');
-    case 'GBPAUD': return cross('AUD', 'GBP');
-    case 'GBPCAD': return cross('CAD', 'GBP');
-    case 'GBPCHF': return cross('CHF', 'GBP');
-    case 'GBPNZD': return cross('NZD', 'GBP');
-    case 'AUDCAD': return cross('CAD', 'AUD');
-    case 'AUDCHF': return cross('CHF', 'AUD');
-    case 'AUDNZD': return cross('NZD', 'AUD');
-    case 'CADJPY': return cross('JPY', 'CAD');
-    case 'CHFJPY': return cross('JPY', 'CHF');
-    case 'NZDCAD': return cross('CAD', 'NZD');
-    case 'NZDCHF': return cross('CHF', 'NZD');
-    case 'NZDJPY': return cross('JPY', 'NZD');
-    default: return null;
-  }
-}
-
-// ============================================================
-// PROVIDER
-// ============================================================
-
-// Create a deterministic fallback price until the websocket pushes real data
-function buildFallbackPrice(symbol: string): MarketPrice {
-  let base = 100;
-  if (STATIC_BASE[symbol]) {
-    base = STATIC_BASE[symbol];
-  } else {
-    const hash = symbol.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    if (symbol.includes('AAPL')) base = 180;
-    else if (symbol.includes('TSLA')) base = 240;
-    else if (symbol.includes('MSFT')) base = 400;
-    else if (symbol.includes('GOOG')) base = 150;
-    else if (symbol.includes('AMZN')) base = 175;
-    else if (symbol.includes('NVDA')) base = 800;
-    else if (symbol.includes('SPX'))  base = 5100;
-    else if (symbol.includes('XAU'))  base = 2150;
-    else if (symbol.includes('XAG'))  base = 24;
-    else if (symbol.includes('OIL'))  base = 78;
-    else {
-      base = 10 + (hash % 1000); 
-    }
-  }
-
-  const isCrypto = symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('USD') && !FOREX_SYMBOLS.has(symbol) || symbol.includes('SHIB') || symbol.includes('PEPE');
-  const { bid, ask } = makeSpread(base, false, !!isCrypto);
-
-  return {
-    symbol,
-    price: base,
-    change: 0,
-    changePercent: 0,
-    high: base * 1.015,
-    low: base * 0.985,
-    open: base,
-    volume: formatVolume(500000),
-    bid,
-    ask,
-    lastUpdate: Date.now(),
-  };
-}
-
 export function MarketDataProvider({ children }: { children: ReactNode }) {
   const [prices, setPrices]           = useState<Record<string, MarketPrice>>({});
   const [assets, setAssets]           = useState<MarketAsset[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
   const [isLoading, setIsLoading]     = useState(false);
+  const [pricesReady, setPricesReady] = useState(false);
 
   // ── Refs (avoid stale-closure issues in intervals/callbacks) ────────────
   const pricesRef       = useRef<Record<string, MarketPrice>>({});  // mirrors state
   const tvSocketRef     = useRef<TradingViewSocket | null>(null);
   const flushIntervalRef= useRef<ReturnType<typeof setInterval> | null>(null);
   const subscribedRef   = useRef<Set<string>>(new Set());
+  /** Tracks which symbols have received at least one real WS price update */
+  const liveSymbolsRef  = useRef<Set<string>>(new Set());
 
   // Pending updates from WebSocket to prevent excessive React re-renders
   const pendingUpdatesRef = useRef<Record<string, MarketPrice>>({});
@@ -334,7 +180,7 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
     
     tvSocket.setOnDataCallback((symbol, update) => {
       // Merge partial update into existing price or pending update
-      const existing = pendingUpdatesRef.current[symbol] || pricesRef.current[symbol] || buildFallbackPrice(symbol);
+      const existing = pendingUpdatesRef.current[symbol] || pricesRef.current[symbol] || { symbol, price: 0, change: 0, changePercent: 0, high: 0, low: 0, open: 0, volume: '0', bid: 0, ask: 0, lastUpdate: 0 };
       const newPrice = { ...existing, ...update };
       
       // Calculate change and changePercent if missing from update but we got a new price
@@ -346,6 +192,13 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
       }
       
       pendingUpdatesRef.current[symbol] = newPrice;
+
+      // Track that this symbol has received real live data
+      if (!liveSymbolsRef.current.has(symbol)) {
+        liveSymbolsRef.current.add(symbol);
+        // Signal that at least one live price is available
+        if (!pricesReady) setPricesReady(true);
+      }
     });
 
     tvSocket.connect();
@@ -375,33 +228,8 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
   const subscribeToSymbol = useCallback((symbol: string) => {
     if (!symbol) return;
     
-    // Create immediate fallback to prevent showing $0.00 while weighting for WS connecting
-    if (!pricesRef.current[symbol] && !pendingUpdatesRef.current[symbol]) {
-      if (symbol === 'USDTUSD' || symbol === 'USDCUSD') {
-        const fallback: MarketPrice = {
-            symbol,
-            price: 1.00,
-            change: 0.00,
-            changePercent: 0.00,
-            volume: '5B',
-            high: 1.001,
-            low: 0.999,
-            lastUpdate: Date.now(),
-            open: 1.00,
-            bid: 0.999,
-            ask: 1.001
-        };
-        pricesRef.current[symbol] = fallback;
-        pendingUpdatesRef.current[symbol] = fallback;
-      } else {
-        const fallback = buildFallbackPrice(symbol);
-        pricesRef.current[symbol] = fallback;
-        pendingUpdatesRef.current[symbol] = fallback;
-      }
-      
-      // Force an immediate update
-      setPrices(prev => ({ ...prev, [symbol]: pricesRef.current[symbol] }));
-    }
+    // No fallback injection — components will show skeleton loaders
+    // until the WebSocket delivers real live data for this symbol.
 
     const isNew = !subscribedRef.current.has(symbol);
     if (isNew) {
@@ -551,6 +379,11 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
     return assets.filter(a => a.category === category);
   }, [assets]);
 
+  /** Returns true if the symbol has received at least one real WS price update */
+  const isPriceLive = useCallback((symbol: string): boolean => {
+    return liveSymbolsRef.current.has(symbol);
+  }, []);
+
   const value: MarketDataContextType = {
     prices,
     assets,
@@ -562,6 +395,8 @@ export function MarketDataProvider({ children }: { children: ReactNode }) {
     isLoading,
     assetsLoading,
     refreshAssets,
+    isPriceLive,
+    pricesReady,
   };
 
   return (

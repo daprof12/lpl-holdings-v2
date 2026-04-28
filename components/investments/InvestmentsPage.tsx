@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
-  Percent, 
-  Calendar, 
-  CheckCircle, 
-  Clock, 
+import {
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Percent,
+  Calendar,
+  CheckCircle,
+  Clock,
   AlertCircle,
   Zap,
   ArrowUpCircle,
@@ -32,8 +32,8 @@ import { formatCurrency } from '../../utils/formatNumber';
 export default function InvestmentsPage() {
   const navigate = useNavigate();
   const { currentUser, addFundsToAccount } = useAuth();
-  const { 
-    investmentOffers, 
+  const {
+    investmentOffers,
     addUserInvestment,
     getUserInvestments,
     getUserSellRequests,
@@ -74,14 +74,14 @@ export default function InvestmentsPage() {
   const [historyTab, setHistoryTab] = useState<'history' | 'requests'>('history');
   const [historyTypeTab, setHistoryTypeTab] = useState<'IPO' | 'ECN'>('IPO');
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   // Check user access
   useEffect(() => {
     if (currentUser) {
       setHasAccess(currentUser.hasInvestmentAccess || false);
     }
   }, [currentUser]);
-  
+
   // Local state for investment balances to ensure real-time updates
   const investmentBalances = currentUser?.investmentBalances || { portfolio: 0, ecn: 0, ipo: 0 };
   const portfolioBalance = investmentBalances.portfolio;
@@ -119,7 +119,7 @@ export default function InvestmentsPage() {
     }
 
     const balances = { portfolio: portfolioBalance, ecn: ecnBalance, ipo: ipoBalance };
-    
+
     if (balances[fromWallet] < amount) {
       showErrorToast('Insufficient balance');
       return;
@@ -144,25 +144,25 @@ export default function InvestmentsPage() {
     console.log('buyUnits:', buyUnits);
     console.log('paymentWallet:', paymentWallet);
     console.log('========================');
-    
+
     if (!currentUser) {
       console.error('User is not logged in');
       showErrorToast('Please log in to make a purchase');
       return;
     }
-    
+
     if (!selectedOffer) {
       console.error('No offer selected');
       showErrorToast('Please select an investment offer');
       return;
     }
-    
+
     setIsBuying(true);
-    
+
     try {
       const units = parseInt(buyUnits);
       console.log('Parsed units:', units);
-      
+
       if (!units || units <= 0 || isNaN(units)) {
         showErrorToast('Please enter valid units');
         setIsBuying(false);
@@ -182,11 +182,11 @@ export default function InvestmentsPage() {
       }
 
       const totalCost = units * selectedOffer.price;
-      const balances = { 
-        portfolio: portfolioBalance, 
-        ecn: ecnBalance, 
+      const balances = {
+        portfolio: portfolioBalance,
+        ecn: ecnBalance,
         ipo: ipoBalance,
-        wallet: currentUser?.liveBalance || 0 
+        wallet: currentUser?.liveBalance || 0
       };
 
       console.log('Total cost:', totalCost);
@@ -238,7 +238,7 @@ export default function InvestmentsPage() {
 
   const handleSellRequest = async () => {
     if (!selectedInvestment || !currentUser) return;
-    
+
     const units = parseInt(sellUnits);
     const availableToSell = selectedInvestment.availableUnitsToSell ?? selectedInvestment.units;
     if (!units || units <= 0 || units > availableToSell) {
@@ -282,7 +282,7 @@ export default function InvestmentsPage() {
   const filteredOffers = investmentOffers
     .filter(offer => offer.type === activeTab && offer.enabled)
     .filter(offer => offer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    offer.category.toLowerCase().includes(searchTerm.toLowerCase()));
+      offer.category.toLowerCase().includes(searchTerm.toLowerCase()));
 
   // Filter user investments
   const filteredUserInvestments = userInvestments
@@ -312,24 +312,24 @@ export default function InvestmentsPage() {
             <h1 className="text-3xl font-bold">Investments</h1>
           </div>
           <div className="flex gap-3">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="gap-2"
               onClick={() => navigate('/support')}
             >
               <HelpCircle className="w-4 h-4" />
               Support
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="gap-2"
               onClick={() => navigate('/wallet?tab=deposit&type=portfolio')}
             >
               <ArrowDownCircle className="w-4 h-4" />
               Deposit
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="gap-2"
               onClick={() => navigate('/wallet?tab=withdraw&type=portfolio')}
             >
@@ -351,10 +351,10 @@ export default function InvestmentsPage() {
                   Access Restricted
                 </h2>
                 <p className="text-gray-600 dark:text-gray-400 mb-6">
-                  You don't have access to Investment Offers. Please contact your admin or portfolio manager to enable this feature.
+                  You don't have access to Investment Offers. Please contact your Support or  your portfolio manager to enable this feature.
                 </p>
                 <div className="flex flex-col gap-3">
-                  <Button 
+                  <Button
                     className="w-full gap-2"
                     onClick={() => {
                       const params = new URLSearchParams({
@@ -368,7 +368,7 @@ export default function InvestmentsPage() {
                     }}
                   >
                     <Mail className="w-4 h-4" />
-                    Contact Portfolio Manager
+                    Contact Support
                   </Button>
                   <Button variant="outline" className="w-full" onClick={() => navigate('/dashboard')}>
                     Go to Dashboard
@@ -504,9 +504,8 @@ export default function InvestmentsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden ${
-                          offer.logo ? 'bg-transparent' : 'bg-gradient-to-br from-blue-500 to-purple-600'
-                        }`}>
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden ${offer.logo ? 'bg-transparent' : 'bg-gradient-to-br from-blue-500 to-purple-600'
+                          }`}>
                           {offer.logo ? (
                             <img src={offer.logo} alt={offer.name} className="w-full h-full object-contain" />
                           ) : (
@@ -518,9 +517,8 @@ export default function InvestmentsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
-                        <span className={`px-2 py-0.5 text-xs rounded-full inline-block w-fit ${
-                          PROFITABILITY_TIER_COLORS[offer.profitabilityTier as ProfitabilityTier] || 'bg-gray-100 dark:bg-gray-900/20 text-gray-600 dark:text-gray-400'
-                        }`}>
+                        <span className={`px-2 py-0.5 text-xs rounded-full inline-block w-fit ${PROFITABILITY_TIER_COLORS[offer.profitabilityTier as ProfitabilityTier] || 'bg-gray-100 dark:bg-gray-900/20 text-gray-600 dark:text-gray-400'
+                          }`}>
                           {PROFITABILITY_TIER_LABELS[offer.profitabilityTier as ProfitabilityTier] || 'Average Yield'}
                         </span>
                       </div>
@@ -529,11 +527,10 @@ export default function InvestmentsPage() {
                       <td className="px-4 py-3">{offer.period} days</td>
                     )}
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs ${
-                        offer.type === 'IPO' 
-                          ? 'bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400'
-                          : 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                      }`}>
+                      <span className={`px-2 py-1 rounded-full text-xs ${offer.type === 'IPO'
+                        ? 'bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400'
+                        : 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                        }`}>
                         {offer.category}
                       </span>
                     </td>
@@ -544,29 +541,28 @@ export default function InvestmentsPage() {
                       </div>
                     </td>
                     {activeTab !== 'IPO' && (
-                    <td className="px-4 py-3">
-                      {offer.type === 'ECN' && (offer as any).marketPrice ? (
-                        (() => {
-                          const marketPrice = (offer as any).marketPrice;
-                          const offerPrice = offer.price;
-                          const percentChange = offerPrice > 0 ? ((marketPrice - offerPrice) / offerPrice) * 100 : 0;
-                          const isAbove = percentChange >= 0;
-                          
-                          return (
-                            <div>
-                              <div className="font-semibold">${formatCurrency(marketPrice)}</div>
-                              <span className={`text-xs font-semibold ${
-                                isAbove ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-                              }`}>
-                                {isAbove ? '+' : ''}{percentChange.toFixed(2)}% {isAbove ? 'above offer' : 'below offer'}
-                              </span>
-                            </div>
-                          );
-                        })()
-                      ) : (
-                        <span className="text-gray-400 dark:text-gray-500">—</span>
-                      )}
-                    </td>
+                      <td className="px-4 py-3">
+                        {offer.type === 'ECN' && (offer as any).marketPrice ? (
+                          (() => {
+                            const marketPrice = (offer as any).marketPrice;
+                            const offerPrice = offer.price;
+                            const percentChange = offerPrice > 0 ? ((marketPrice - offerPrice) / offerPrice) * 100 : 0;
+                            const isAbove = percentChange >= 0;
+
+                            return (
+                              <div>
+                                <div className="font-semibold">${formatCurrency(marketPrice)}</div>
+                                <span className={`text-xs font-semibold ${isAbove ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                                  }`}>
+                                  {isAbove ? '+' : ''}{percentChange.toFixed(2)}% {isAbove ? 'above offer' : 'below offer'}
+                                </span>
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          <span className="text-gray-400 dark:text-gray-500">—</span>
+                        )}
+                      </td>
                     )}
                     <td className="px-4 py-3">{(offer.availableUnits || 0).toLocaleString()} / {(offer.totalUnits || 0).toLocaleString()}</td>
                     <td className="px-4 py-3">
@@ -662,9 +658,8 @@ export default function InvestmentsPage() {
                     <tr key={inv.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/30">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden ${
-                            inv.offerLogo ? 'bg-transparent' : 'bg-gradient-to-br from-blue-500 to-purple-600'
-                          }`}>
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden ${inv.offerLogo ? 'bg-transparent' : 'bg-gradient-to-br from-blue-500 to-purple-600'
+                            }`}>
                             {inv.offerLogo ? (
                               <img src={inv.offerLogo} alt={inv.offerName} className="w-full h-full object-contain" />
                             ) : (
@@ -673,9 +668,8 @@ export default function InvestmentsPage() {
                           </div>
                           <div>
                             <div className="font-medium">{inv.offerName}</div>
-                            <span className={`text-xs px-2 py-0.5 rounded ${
-                              inv.offerType === 'IPO' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'
-                            }`}>
+                            <span className={`text-xs px-2 py-0.5 rounded ${inv.offerType === 'IPO' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'
+                              }`}>
                               {inv.offerType}
                             </span>
                           </div>
@@ -684,16 +678,16 @@ export default function InvestmentsPage() {
                       <td className="px-4 py-3">{inv.units}</td>
                       <td className="px-4 py-3 font-semibold">${formatCurrency(inv.totalAmount)}</td>
                       <td className="px-4 py-3 font-semibold text-green-600 dark:text-green-400">
-                        {inv.offerType === 'IPO' && !inv.showValueAndDate 
-                          ? '—' 
+                        {inv.offerType === 'IPO' && !inv.showValueAndDate
+                          ? '—'
                           : `$${formatCurrency(getEffectiveValue(inv))}`}
                       </td>
                       {historyTypeTab === 'IPO' ? (
                         <>
                           <td className="px-4 py-3">{new Date(inv.startDate).toLocaleDateString()}</td>
                           <td className="px-4 py-3">
-                            {inv.offerType === 'IPO' && !inv.showValueAndDate 
-                              ? '—' 
+                            {inv.offerType === 'IPO' && !inv.showValueAndDate
+                              ? '—'
                               : new Date(inv.endDate).toLocaleDateString()}
                           </td>
                         </>
@@ -706,11 +700,10 @@ export default function InvestmentsPage() {
                         </td>
                       )}
                       <td className="px-4 py-3">
-                        <span className={`px-3 py-1 rounded-full text-xs capitalize ${
-                          inv.status === 'completed'
-                            ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
-                            : 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                        }`}>
+                        <span className={`px-3 py-1 rounded-full text-xs capitalize ${inv.status === 'completed'
+                          ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
+                          : 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                          }`}>
                           {inv.status}
                         </span>
                       </td>
@@ -766,9 +759,8 @@ export default function InvestmentsPage() {
                     <tr key={req.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/30">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden ${
-                            req.offerLogo ? 'bg-transparent' : 'bg-gradient-to-br from-blue-500 to-purple-600'
-                          }`}>
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden ${req.offerLogo ? 'bg-transparent' : 'bg-gradient-to-br from-blue-500 to-purple-600'
+                            }`}>
                             {req.offerLogo ? (
                               <img src={req.offerLogo} alt={req.offerName} className="w-full h-full object-contain" />
                             ) : (
@@ -777,9 +769,8 @@ export default function InvestmentsPage() {
                           </div>
                           <div>
                             <div className="font-medium">{req.offerName}</div>
-                            <span className={`text-xs px-2 py-0.5 rounded ${
-                              req.offerType === 'IPO' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'
-                            }`}>
+                            <span className={`text-xs px-2 py-0.5 rounded ${req.offerType === 'IPO' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'
+                              }`}>
                               {req.offerType}
                             </span>
                           </div>
@@ -790,13 +781,12 @@ export default function InvestmentsPage() {
                       <td className="px-4 py-3 uppercase">{req.paymentWallet}</td>
                       <td className="px-4 py-3">{new Date(req.createdAt).toLocaleDateString()}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-3 py-1 rounded-full text-xs capitalize ${
-                          req.status === 'approved'
-                            ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
-                            : req.status === 'rejected'
+                        <span className={`px-3 py-1 rounded-full text-xs capitalize ${req.status === 'approved'
+                          ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
+                          : req.status === 'rejected'
                             ? 'bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400'
                             : 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400'
-                        }`}>
+                          }`}>
                           {req.status}
                         </span>
                       </td>
@@ -926,9 +916,9 @@ export default function InvestmentsPage() {
                   </div>
                 )}
                 <div className="flex gap-3">
-                  <Button 
-                    onClick={handleSellRequest} 
-                    className="flex-1" 
+                  <Button
+                    onClick={handleSellRequest}
+                    className="flex-1"
                     disabled={isSelling}
                   >
                     {isSelling ? 'Processing...' : 'Sell Now'}

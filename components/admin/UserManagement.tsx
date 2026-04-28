@@ -271,6 +271,7 @@ export default function UserManagement() {
       await updateProfile(selectedUserId, {
         firstName: formData.firstName,
         lastName: formData.lastName,
+        email: formData.email,
         phone: formData.phone,
         country: formData.country,
         liveBalance: parseFloat(formData.balance) || 0,
@@ -346,10 +347,12 @@ export default function UserManagement() {
     }
   };
 
-  const handleDelete = (userId: string) => {
+  const handleDelete = async (userId: string) => {
     if (confirm('Are you sure you want to delete this user?')) {
-      deleteUser(userId);
-      toast.success('User deleted successfully');
+      const success = await deleteUser(userId);
+      if (success !== false) {
+        toast.success('User deleted successfully');
+      }
     }
   };
 
@@ -1326,8 +1329,8 @@ export default function UserManagement() {
                       <Label>Email</Label>
                       <Input
                         value={formData.email}
-                        disabled
-                        className="mt-2 bg-gray-100 dark:bg-slate-700"
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="mt-2"
                       />
                     </div>
                     <div>

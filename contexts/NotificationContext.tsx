@@ -395,7 +395,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       if (updates.title) dbUpdates.title = updates.title;
       if (updates.message) dbUpdates.message = updates.message;
       if (updates.status) dbUpdates.status = updates.status;
-      if (updates.sentAt) dbUpdates.sent_at = updates.sentAt;
+      if (updates.sentAt) dbUpdates.sent_at = updates.sentAt instanceof Date ? updates.sentAt.getTime() : new Date(updates.sentAt).getTime();
 
       await api.crm.update(id, dbUpdates);
       setCrmMessages(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
@@ -413,7 +413,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
         // In a real app the server would handle the sending logic
         // For now we'll simulate it by updating status and creating notifications
-        await api.crm.update(id, { status: 'sent', sent_at: new Date() });
+        await api.crm.update(id, { status: 'sent', sent_at: Date.now() });
         
         const notifType: NotificationType =
           message.type === 'promo'        ? 'promo'

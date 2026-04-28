@@ -107,6 +107,12 @@ interface TradingContextType {
   tradingMode: 'live' | 'paper';
   setTradingMode: (mode: 'live' | 'paper') => void;
 
+  // Loading state
+  /** True once all trading data (positions, orders, account) has been fetched from DB */
+  isHydrated: boolean;
+  /** True once the user's account balance has been loaded from DB */
+  balanceLoaded: boolean;
+
   // Actions
   addPosition: (position: Position) => void;
   removePosition: (positionId: string) => void;
@@ -146,6 +152,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   });
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioSnapshot[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [balanceLoaded, setBalanceLoaded] = useState(false);
   const [tradingMode, setTradingMode] = useState<'live' | 'paper'>('live');
   // Flag to prevent sync-back effect from re-writing values that just arrived via Realtime
   const skipNextSyncRef = useRef(false);
@@ -263,6 +270,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
           credit: parseFloat(dbAccount?.credit ?? auth.currentUser?.credit ?? 0),
           netDeposits: netDeposits > 0 ? netDeposits : parseFloat(dbAccount?.balance || 0) - parseFloat(dbAccount?.realized_pnl || 0),
         });
+        setBalanceLoaded(true);
       }
     } catch (error) {
       console.error('Error fetching all trading data:', error);
@@ -868,6 +876,8 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     setAccount,
     portfolioHistory,
     setPortfolioHistory,
+    isHydrated,
+    balanceLoaded,
     addPosition,
     removePosition,
     updatePosition,

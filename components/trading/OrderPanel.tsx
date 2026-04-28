@@ -20,6 +20,7 @@ import {
 } from '../ui/select';
 import { toast } from 'sonner';
 import { formatPercentage, formatCurrency, formatPrice, formatNumber } from '../../utils/formatNumber';
+import { Skeleton } from '../ui/Skeleton';
 
 interface OrderPanelProps {
   symbol: string;
@@ -543,12 +544,16 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
           <div className="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
             <div className="flex justify-between items-center text-sm">
               <span className="text-gray-600 dark:text-gray-400">Price</span>
-              <span className="text-lg">
-                {orderType === 'market' 
-                  ? formatPrice(orderSide === 'buy' ? activeAsk : activeBid)
-                  : formatPrice(parseFloat(limitPrice || '0'))
-                }
-              </span>
+              {!marketData.isPriceLive(activeSymbol) ? (
+                <Skeleton className="h-6 w-24" />
+              ) : (
+                <span className="text-lg">
+                  {orderType === 'market' 
+                    ? formatPrice(orderSide === 'buy' ? activeAsk : activeBid)
+                    : formatPrice(parseFloat(limitPrice || '0'))
+                  }
+                </span>
+              )}
             </div>
           </div>
 
@@ -790,6 +795,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
         ) : (
           <Button
             size="lg"
+            disabled={!marketData.isPriceLive(activeSymbol)}
             className={`w-full text-white ${
               orderSide === 'buy'
                 ? 'bg-gradient-to-br from-green-600 to-green-500 hover:from-green-700 hover:to-green-600'

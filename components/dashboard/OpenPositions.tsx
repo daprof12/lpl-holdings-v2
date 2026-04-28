@@ -2,14 +2,17 @@ import { useState } from 'react';
 import { TrendingUp, TrendingDown, X, Edit } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useTrading, Position } from '../../contexts/TradingContext';
+import { useMarketData } from '../../contexts/MarketDataContext';
 import { toast } from 'sonner';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import React from 'react';
 import { formatPercentage, formatCurrency } from '../../utils/formatNumber';
+import { SkeletonRow, SkeletonMobileCard, Skeleton } from '../ui/Skeleton';
 
 export default function OpenPositions() {
-  const { positions, removePosition, updatePosition, addHistory, account, updateAccount } = useTrading();
+  const { positions, removePosition, updatePosition, addHistory, account, updateAccount, isHydrated } = useTrading();
+  const { isPriceLive } = useMarketData();
   const [modifyingPosition, setModifyingPosition] = useState<string | null>(null);
   const [modifyStopLoss, setModifyStopLoss] = useState('');
   const [modifyTakeProfit, setModifyTakeProfit] = useState('');
@@ -119,7 +122,38 @@ export default function OpenPositions() {
         </div>
       </div>
 
-      {positions.length === 0 ? (
+      {!isHydrated ? (
+        /* Skeleton loading state */
+        <div>
+          <div className="hidden lg:block overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-slate-700">
+                  <th className="text-left py-3 px-2 text-sm text-gray-600 dark:text-gray-400">Symbol</th>
+                  <th className="text-left py-3 px-2 text-sm text-gray-600 dark:text-gray-400">Type</th>
+                  <th className="text-right py-3 px-2 text-sm text-gray-600 dark:text-gray-400">Volume</th>
+                  <th className="text-right py-3 px-2 text-sm text-gray-600 dark:text-gray-400">Entry</th>
+                  <th className="text-right py-3 px-2 text-sm text-gray-600 dark:text-gray-400">Current</th>
+                  <th className="text-right py-3 px-2 text-sm text-gray-600 dark:text-gray-400">SL</th>
+                  <th className="text-right py-3 px-2 text-sm text-gray-600 dark:text-gray-400">TP</th>
+                  <th className="text-right py-3 px-2 text-sm text-gray-600 dark:text-gray-400">P/L</th>
+                  <th className="text-right py-3 px-2 text-sm text-gray-600 dark:text-gray-400">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <SkeletonRow key={i} columns={9} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="lg:hidden space-y-4">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <SkeletonMobileCard key={i} />
+            ))}
+          </div>
+        </div>
+      ) : positions.length === 0 ? (
         <div className="text-center py-12">
           <TrendingUp className="w-12 h-12 mx-auto mb-4 text-gray-400" />
           <p className="text-gray-600 dark:text-gray-400 mb-4">No open positions</p>

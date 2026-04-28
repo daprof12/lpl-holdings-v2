@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useTrading, Position, Order, HistoryItem } from '../../contexts/TradingContext';
+import { useMarketData } from '../../contexts/MarketDataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
 import { Edit, AlertTriangle, X } from 'lucide-react';
 import { formatPercentage, formatTxnId, formatPrice, formatCurrency, formatNumber } from '../../utils/formatNumber';
+import { SkeletonMobileCard, Skeleton } from '../ui/Skeleton';
 
 // Derive market category from symbol
 const getCategory = (symbol: string): string => {
@@ -46,9 +48,11 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
     updatePosition,
     removeOrder,
     addHistory,
-    updateAccount
+    updateAccount,
+    isHydrated,
   } = useTrading();
   
+  const { isPriceLive } = useMarketData();
   const { currentUser } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'positions' | 'orders' | 'history'>('positions');
@@ -231,7 +235,13 @@ export default function PositionsAndOrders({ currentPrice, symbol, onEditPositio
       {/* Positions Tab */}
       {activeTab === 'positions' && (
         <div className="p-4">
-          {positions.length === 0 ? (
+          {!isHydrated ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <SkeletonMobileCard key={i} />
+              ))}
+            </div>
+          ) : positions.length === 0 ? (
             <div className="text-center py-8 text-gray-500 dark:text-gray-400">
               <p className="text-sm">There are no open positions in your trading account yet</p>
             </div>

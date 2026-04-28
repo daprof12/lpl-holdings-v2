@@ -93,9 +93,9 @@ interface AuthContextType {
   logout: () => void;
   signup: (data: SignupData) => Promise<any>;
   updateProfile: (userId: string, updates: Partial<UserProfile>) => void;
-  updateUser: (userId: string, updates: Partial<UserProfile>) => void;
+  updateUser: (userId: string, updates: Partial<UserProfile>) => Promise<void>;
   updatePassword: (userId: string, currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
-  deleteUser: (userId: string) => void;
+  deleteUser: (userId: string) => Promise<boolean>;
   logActivity: (activity: Omit<UserActivity, 'id' | 'userId' | 'timestamp'>) => void;
   addWalletTransaction: (transaction: Omit<WalletTransaction, 'id' | 'timestamp' | 'userName' | 'userEmail'>) => string;
   updateTransactionStatus: (transactionId: string, status: WalletTransaction['status'], notes?: string) => void;
@@ -849,6 +849,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         dbUpdates.name = `${firstName} ${lastName}`.trim();
       }
 
+      if (updates.email !== undefined) dbUpdates.email = updates.email;
       if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
       if (updates.country !== undefined) dbUpdates.country = updates.country;
       if (updates.role !== undefined) dbUpdates.role = updates.role;
@@ -919,14 +920,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const deleteUser = async (userId: string) => {
+  const deleteUser = async (userId: string): Promise<boolean> => {
     try {
       await api.users.delete(userId);
       setUsers(prev => prev.filter(u => u.id !== userId));
-      toast.success('User deleted');
+      // No toast here to prevent double toasts with UserManagement
+      return true;
     } catch (err: any) {
       console.error('Delete failed:', err);
       toast.error(`Failed to delete user from database: ${err.message || 'Unknown error'}`);
+      return false;
     }
   };
 

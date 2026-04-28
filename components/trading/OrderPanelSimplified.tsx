@@ -14,7 +14,9 @@ import {
 import { toast } from 'sonner';
 import { useTrading, Position, Order, HistoryItem } from '../../contexts/TradingContext';
 import { useSubscription } from '../../contexts/SubscriptionContext';
+import { useMarketData } from '../../contexts/MarketDataContext';
 import { getMaxLeverageForPlan } from '../../data/assets';
+import { Skeleton } from '../ui/Skeleton';
 
 interface OrderPanelProps {
   symbol: string;
@@ -43,6 +45,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
   } = useTrading();
 
   const { plan } = useSubscription();
+  const marketData = useMarketData();
 
   // Get leverage limit for current asset based on subscription plan
   const asset = marketData.assets.find(a => a.symbol === symbol);
@@ -215,12 +218,16 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
         <div className="mb-4 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
           <div className="flex justify-between items-center text-sm">
             <span className="text-gray-600 dark:text-gray-400">Price</span>
-            <span className="text-lg">
-              ${orderType === 'market' 
-                ? (orderSide === 'buy' ? ask : bid).toFixed(2)
-                : parseFloat(limitPrice || '0').toFixed(2)
-              }
-            </span>
+            {!marketData.isPriceLive(symbol) ? (
+              <Skeleton className="h-6 w-24" />
+            ) : (
+              <span className="text-lg">
+                ${orderType === 'market' 
+                  ? (orderSide === 'buy' ? ask : bid).toFixed(2)
+                  : parseFloat(limitPrice || '0').toFixed(2)
+                }
+              </span>
+            )}
           </div>
         </div>
 
@@ -371,6 +378,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
         {/* Place Order Button */}
         <Button
           size="lg"
+          disabled={!marketData.isPriceLive(symbol)}
           className={`w-full ${
             orderSide === 'buy'
               ? 'bg-gradient-to-br from-green-600 to-green-500 hover:from-green-700 hover:to-green-600'

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Send, 
   MessageSquare, 
@@ -82,6 +82,12 @@ export default function CRMMessaging() {
     fromEmail: '',
     fromName: '',
   });
+
+  useEffect(() => {
+    if (smtpConfig) {
+      setSmtpForm(smtpConfig);
+    }
+  }, [smtpConfig]);
 
   // Template form
   const [templateForm, setTemplateForm] = useState({

@@ -32,16 +32,16 @@ export default function WalletPage() {
   const walletBalance = useMemo(() => {
     // Use live account for wallet operations (deposits/withdrawals are real money)
     const accountData = account;
-    
+
     // Total balance is the account equity (balance + unrealized P&L)
     const totalBalance = accountData.equity;
-    
+
     // Available balance is free margin (can be used for new trades)
     const availableBalance = accountData.availableFunds;
-    
+
     // In orders is the margin used by open positions
     const inOrders = accountData.margin;
-    
+
     // Pending deposits/withdrawals from transaction context
     const userTransactions = currentUser ? getUserTransactions(currentUser.id) : [];
     const pendingDeposits = userTransactions
@@ -50,7 +50,7 @@ export default function WalletPage() {
     const pendingWithdrawals = userTransactions
       .filter(txn => txn.type === 'withdrawal' && txn.status === 'pending')
       .reduce((sum, txn) => sum + txn.usdEquivalent, 0);
-    
+
     return {
       totalBalance,
       availableBalance,
@@ -61,8 +61,8 @@ export default function WalletPage() {
   }, [account, currentUser, getUserTransactions]);
 
   // The effective available balance depends on selected wallet type
-  const effectiveAvailableBalance = selectedWalletType === 'live' 
-    ? walletBalance.availableBalance 
+  const effectiveAvailableBalance = selectedWalletType === 'live'
+    ? walletBalance.availableBalance
     : portfolioBalance;
 
   return (
@@ -98,7 +98,7 @@ export default function WalletPage() {
           <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm">
             <div className="flex items-center gap-2 mb-3">
               <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
-              <span className="text-sm text-gray-600 dark:text-gray-400">Available</span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">Free Margin</span>
             </div>
             <div className="text-2xl mb-1">${formatCurrency(walletBalance.availableBalance)}</div>
             <div className="text-xs text-gray-500 dark:text-gray-400">Ready to trade</div>
@@ -159,7 +159,7 @@ export default function WalletPage() {
           </TabsList>
 
           <TabsContent value="deposit">
-            <DepositTab 
+            <DepositTab
               availableBalance={effectiveAvailableBalance}
               walletType={selectedWalletType}
               onWalletTypeChange={setSelectedWalletType}
@@ -169,7 +169,7 @@ export default function WalletPage() {
           </TabsContent>
 
           <TabsContent value="withdraw">
-            <WithdrawTab 
+            <WithdrawTab
               availableBalance={effectiveAvailableBalance}
               walletType={selectedWalletType}
               onWalletTypeChange={setSelectedWalletType}

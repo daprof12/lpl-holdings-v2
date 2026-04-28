@@ -4,9 +4,11 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTrading } from '../../contexts/TradingContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useMarketData } from '../../contexts/MarketDataContext';
 import { LogoutModal } from '../ui/LogoutModal';
 import NotificationCenter from '../notifications/NotificationCenter';
 import { formatPercentage, formatCurrency } from '../../utils/formatNumber';
+import { SkeletonStat, Skeleton } from '../ui/Skeleton';
 
 interface TopBarProps {
   onMenuClick: () => void;
@@ -16,7 +18,8 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
   const { currentUser, logout } = useAuth();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoadingLogout, setIsLoadingLogout] = useState(false);
-  const { account } = useTrading();
+  const { account, balanceLoaded } = useTrading();
+  const { pricesReady } = useMarketData();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(false);
@@ -59,7 +62,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
     { label: 'Unrealized P&L', value: `${account.unrealizedPnL >= 0 ? '+' : ''}$${formatCurrency(account.unrealizedPnL)}`, color: account.unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' },
     { label: 'Margin', value: `$${formatCurrency(account.margin)}`, color: '' },
     { label: 'Margin Lvl', value: marginLevelValue, color: marginLevelColor() },
-    { label: 'Available', value: `$${formatCurrency(account.availableFunds)}`, color: 'text-blue-600 dark:text-blue-400 font-semibold' },
+    { label: 'Free Margin', value: `$${formatCurrency(account.availableFunds)}`, color: 'text-blue-600 dark:text-blue-400 font-semibold' },
   ];
 
   // Get subscription plan and styling
@@ -145,12 +148,19 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
           {/* Account Summary Stats — shown after search on xl+ screens */}
           <div className="flex items-center text-xs border-l border-gray-200 dark:border-slate-700 pl-1 min-w-0 overflow-x-auto scrollbar-hide">
             <div className="flex items-center divide-x divide-gray-200 dark:divide-slate-700">
-              {accountStats.map(({ label, value, color }) => (
-                <div key={label} className="flex flex-col px-2 md:px-3 leading-tight">
-                  <span className="text-gray-400 dark:text-gray-500 whitespace-nowrap text-[10px] md:text-xs">{label}</span>
-                  <span className={`font-semibold whitespace-nowrap text-[11px] md:text-xs ${color}`}>{value}</span>
-                </div>
-              ))}
+              {!balanceLoaded ? (
+                // Show skeleton stats while loading
+                Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonStat key={i} />
+                ))
+              ) : (
+                accountStats.map(({ label, value, color }) => (
+                  <div key={label} className="flex flex-col px-2 md:px-3 leading-tight">
+                    <span className="text-gray-400 dark:text-gray-500 whitespace-nowrap text-[10px] md:text-xs">{label}</span>
+                    <span className={`font-semibold whitespace-nowrap text-[11px] md:text-xs ${color}`}>{value}</span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -171,7 +181,11 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
             >
               <Wallet className="w-4 h-4" />
               <div className="flex flex-col items-start">
-                <span className="font-semibold">${formatCurrency(account.balance)}</span>
+                {balanceLoaded ? (
+                  <span className="font-semibold">${formatCurrency(account.balance)}</span>
+                ) : (
+                  <Skeleton className="h-5 w-16" />
+                )}
               </div>
               <ChevronDown className="w-4 h-4" />
             </button>
@@ -249,9 +263,9 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                       </div>
                     </div>
 
-                    {/* Available Funds */}
+                    {/* Free Margin */}
                     <div className="flex items-center justify-between py-2 border-t border-gray-200 dark:border-slate-700">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">Available Funds</span>
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Free Margin</span>
                       <span className="font-semibold text-blue-600 dark:text-blue-400">
                         ${formatCurrency(account.availableFunds)}
                       </span>

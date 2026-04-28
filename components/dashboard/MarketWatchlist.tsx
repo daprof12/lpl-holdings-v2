@@ -5,6 +5,7 @@ import { useMarketData } from '../../contexts/MarketDataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatPercentage, formatCurrency } from '../../utils/formatNumber';
 import { Plus, Sparkles, Star, TrendingUp, TrendingDown } from 'lucide-react';
+import { Skeleton } from '../ui/Skeleton';
 
 export default function MarketWatchlist() {
   const navigate = useNavigate();
@@ -200,15 +201,24 @@ export default function MarketWatchlist() {
                 </div>
 
                 <div className="text-right ml-4">
-                  <div className="font-semibold">${formatCurrency(item.price)}</div>
-                  <div className={`flex items-center justify-end gap-1 text-xs ${
-                    isPositive 
-                      ? 'text-green-600 dark:text-green-400' 
-                      : 'text-red-600 dark:text-red-400'
-                  }`}>
-                    {isPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                    {isPositive ? '+' : ''}{formatPercentage(item.change)}
-                  </div>
+                  {marketData.isPriceLive(item.symbol) ? (
+                    <>
+                      <div className="font-semibold">${formatCurrency(item.price)}</div>
+                      <div className={`flex items-center justify-end gap-1 text-xs ${
+                        isPositive 
+                          ? 'text-green-600 dark:text-green-400' 
+                          : 'text-red-600 dark:text-red-400'
+                      }`}>
+                        {isPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                        {isPositive ? '+' : ''}{formatPercentage(item.change)}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Skeleton className="h-4 w-16 mb-1" />
+                      <Skeleton className="h-3 w-12" />
+                    </>
+                  )}
                 </div>
               </div>
             );

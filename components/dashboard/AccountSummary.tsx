@@ -1,10 +1,13 @@
 import { Wallet, TrendingUp, TrendingDown, DollarSign, PieChart, Activity } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useTrading } from '../../contexts/TradingContext';
+import { useMarketData } from '../../contexts/MarketDataContext';
 import { formatPercentage } from '../../utils/formatNumber';
+import { SkeletonCard } from '../ui/Skeleton';
 
 export default function AccountSummary() {
-  const { account } = useTrading();
+  const { account, balanceLoaded, isHydrated } = useTrading();
+  const { pricesReady } = useMarketData();
 
   // Calculate margin level
   const marginLevel = account.margin > 0 && account.equity > 0
@@ -31,6 +34,9 @@ export default function AccountSummary() {
     ? formatPercentage((totalPnL / account.balance) * 100)
     : '0.00%';
 
+  // Whether price-dependent metrics are ready (need both balance AND live prices)
+  const metricsReady = balanceLoaded && pricesReady;
+
   const cards = [
     {
       title: 'Total Balance',
@@ -38,7 +44,9 @@ export default function AccountSummary() {
       icon: Wallet,
       color: 'from-blue-500 to-blue-600',
       bgColor: 'bg-blue-50 dark:bg-blue-900/20',
-      iconColor: 'text-blue-600 dark:text-blue-400'
+      iconColor: 'text-blue-600 dark:text-blue-400',
+      needsBalance: true,
+      needsPrices: false,
     },
     {
       title: 'Bonus Funds',
@@ -47,7 +55,9 @@ export default function AccountSummary() {
       color: 'from-emerald-500 to-emerald-600',
       bgColor: 'bg-emerald-50 dark:bg-emerald-900/20',
       iconColor: 'text-emerald-600 dark:text-emerald-400',
-      subtitle: 'Promotional funds'
+      subtitle: 'Promotional funds',
+      needsBalance: true,
+      needsPrices: false,
     },
     {
       title: 'Credit Line',
@@ -56,7 +66,9 @@ export default function AccountSummary() {
       color: 'from-blue-500 to-blue-600',
       bgColor: 'bg-blue-50 dark:bg-blue-900/20',
       iconColor: 'text-blue-600 dark:text-blue-400',
-      subtitle: 'Funds to be repaid'
+      subtitle: 'Funds to be repaid',
+      needsBalance: true,
+      needsPrices: false,
     },
     {
       title: 'Equity',
@@ -65,7 +77,9 @@ export default function AccountSummary() {
       color: 'from-purple-500 to-purple-600',
       bgColor: 'bg-purple-50 dark:bg-purple-900/20',
       iconColor: 'text-purple-600 dark:text-purple-400',
-      subtitle: `Total assets + Profit/Loss`
+      subtitle: `Total assets + Profit/Loss`,
+      needsBalance: true,
+      needsPrices: true,
     },
     {
       title: 'Margin Used',
@@ -73,15 +87,19 @@ export default function AccountSummary() {
       icon: PieChart,
       color: 'from-orange-500 to-orange-600',
       bgColor: 'bg-orange-50 dark:bg-orange-900/20',
-      iconColor: 'text-orange-600 dark:text-orange-400'
+      iconColor: 'text-orange-600 dark:text-orange-400',
+      needsBalance: true,
+      needsPrices: true,
     },
     {
-      title: 'Available Funds',
+      title: 'Free Margin',
       value: `$${(account.availableFunds || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: Activity,
       color: 'from-green-500 to-green-600',
       bgColor: 'bg-green-50 dark:bg-green-900/20',
-      iconColor: 'text-green-600 dark:text-green-400'
+      iconColor: 'text-green-600 dark:text-green-400',
+      needsBalance: true,
+      needsPrices: true,
     },
     {
       title: 'Margin Level',
@@ -92,7 +110,9 @@ export default function AccountSummary() {
       color: 'from-teal-500 to-teal-600',
       bgColor: 'bg-teal-50 dark:bg-teal-900/20',
       iconColor: 'text-teal-600 dark:text-teal-400',
-      subtitle: marginStatus
+      subtitle: marginStatus,
+      needsBalance: true,
+      needsPrices: true,
     },
     {
       title: 'Total P/L',
@@ -102,7 +122,9 @@ export default function AccountSummary() {
       bgColor: isPnLPositive ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20',
       iconColor: isPnLPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
       subtitle: `${isPnLPositive ? '+' : ''}${pnlPercentage}`,
-      change: parseFloat(pnlPercentage)
+      change: parseFloat(pnlPercentage),
+      needsBalance: true,
+      needsPrices: true,
     }
   ];
 
@@ -111,6 +133,22 @@ export default function AccountSummary() {
       {cards.map((card, index) => {
         const Icon = card.icon;
         
+        // Determine if this card should show skeleton
+        const showSkeleton = (card.needsBalance && !balanceLoaded) || (card.needsPrices && !metricsReady);
+
+        if (showSkeleton) {
+          return (
+            <motion.div
+              key={card.title}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+            >
+              <SkeletonCard />
+            </motion.div>
+          );
+        }
+
         return (
           <motion.div
             key={card.title}

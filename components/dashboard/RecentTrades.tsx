@@ -4,9 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { useTrading } from '../../contexts/TradingContext';
 import { formatPercentage, formatCurrency } from '../../utils/formatNumber';
 import { ArrowUpRight, TrendingUp, TrendingDown } from 'lucide-react';
+import { SkeletonMobileCard } from '../ui/Skeleton';
 
 export default function RecentTrades() {
-  const { history } = useTrading();
+  const { history, isHydrated } = useTrading();
   const navigate = useNavigate();
 
   // Filter to show only closed trades (not cancelled or pending)
@@ -63,7 +64,13 @@ export default function RecentTrades() {
         </Button>
       </div>
 
-      {recentTrades.length === 0 ? (
+      {!isHydrated ? (
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <SkeletonMobileCard key={i} />
+          ))}
+        </div>
+      ) : recentTrades.length === 0 ? (
         <div className="text-center py-12">
           <TrendingUp className="w-12 h-12 mx-auto mb-4 text-gray-400" />
           <p className="text-gray-600 dark:text-gray-400 mb-2">No trades yet</p>

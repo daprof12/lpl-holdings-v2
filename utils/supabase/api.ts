@@ -48,8 +48,33 @@ export const api = {
       return data;
     },
     delete: async (id: string) => {
-      const { error } = await supabase.from('users').delete().eq('id', id);
+      // Manually cascade-delete associated records to prevent foreign key constraint errors
+      await Promise.allSettled([
+        supabase.from('trading_accounts').delete().eq('user_id', id),
+        supabase.from('investment_wallets').delete().eq('user_id', id),
+        supabase.from('activity_logs').delete().eq('actor_id', id),
+        supabase.from('transactions').delete().eq('user_id', id),
+        supabase.from('trade_history').delete().eq('user_id', id),
+        supabase.from('positions').delete().eq('user_id', id),
+        supabase.from('pending_orders').delete().eq('user_id', id),
+        supabase.from('deposits').delete().eq('user_id', id),
+        supabase.from('withdrawals').delete().eq('user_id', id),
+        supabase.from('withdrawal_methods').delete().eq('user_id', id),
+        supabase.from('user_investments').delete().eq('user_id', id),
+        supabase.from('sell_requests').delete().eq('user_id', id),
+        supabase.from('support_tickets').delete().eq('user_id', id),
+        supabase.from('system_memos').delete().eq('user_id', id),
+        supabase.from('member_packages').delete().eq('user_id', id),
+      ]);
+
+      // Delete the user from the custom table
+      const { data, error } = await supabase.from('users').delete().eq('id', id).select();
+      
+      // If RLS blocks it (0 rows returned) and there's no error, we throw
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('RLS blocked deletion. Please run the `fix_users_delete_rls.sql` script in your Supabase SQL Editor to enable delete access.');
+      }
       return true;
     },
   },
@@ -206,12 +231,35 @@ export const api = {
 
   // SMTP Config
   smtpConfig: {
-    get: () => fetch(`${serverUrl}/smtp-config`, { headers }).then(r => r.json()),
-    update: (config: any) => fetch(`${serverUrl}/smtp-config`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(config)
-    }).then(r => r.json()),
+    get: async () => {
+      const { data, error } = await supabase
+        .from('smtp_config')
+        .select('*')
+        .eq('id', 'global_smtp')
+        .maybeSingle();
+      if (error) {
+        console.error('Error fetching SMTP config:', error);
+        return {};
+      }
+      return data || {};
+    },
+    update: async (config: any) => {
+      const payload = {
+        id: 'global_smtp',
+        ...config,
+        updated_at: Date.now()
+      };
+      const { data, error } = await supabase
+        .from('smtp_config')
+        .upsert(payload)
+        .select()
+        .single();
+      if (error) {
+        console.error('Error updating SMTP config:', error);
+        throw error;
+      }
+      return data;
+    },
   },
 
   // Positions
@@ -751,19 +799,33 @@ export const api = {
 
   // CRM Messaging
   crm: {
-    getAll: () => fetch(`${serverUrl}/crm-messages`, { headers }).then(r => r.json()),
-    getById: (id: string) => fetch(`${serverUrl}/crm-messages/${id}`, { headers }).then(r => r.json()),
-    create: (data: any) => fetch(`${serverUrl}/crm-messages`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    }).then(r => r.json()),
-    update: (id: string, updates: any) => fetch(`${serverUrl}/crm-messages/${id}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(updates)
-    }).then(r => r.json()),
-    delete: (id: string) => fetch(`${serverUrl}/crm-messages/${id}`, { method: 'DELETE', headers }).then(r => r.json()),
+    getAll: async () => {
+      const { data, error } = await supabase.from('crm_messages').select('*').order('created_at', { ascending: false });
+      return error ? [] : data;
+    },
+    getById: async (id: string) => {
+      const { data, error } = await supabase.from('crm_messages').select('*').eq('id', id).single();
+      if (error) throw error;
+      return data;
+    },
+    create: async (payload: any) => {
+      const { data, error } = await supabase.from('crm_messages').insert({
+        ...payload,
+        created_at: Date.now()
+      }).select().single();
+      if (error) throw error;
+      return data;
+    },
+    update: async (id: string, updates: any) => {
+      const { data, error } = await supabase.from('crm_messages').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase.from('crm_messages').delete().eq('id', id);
+      if (error) throw error;
+      return true;
+    },
   },
 
   // Email Templates
