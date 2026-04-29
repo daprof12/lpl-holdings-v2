@@ -4,7 +4,7 @@ import { TrendingUp, TrendingDown } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useTrading } from '../../contexts/TradingContext';
 import { formatPercentage } from '../../utils/formatNumber';
-import { SkeletonChart } from '../ui/Skeleton';
+import { SkeletonChart } from '../ui/skeleton';
 
 export default function PortfolioChart() {
   const { account, history, portfolioHistory, balanceLoaded } = useTrading();

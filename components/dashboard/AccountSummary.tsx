@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { useTrading } from '../../contexts/TradingContext';
 import { useMarketData } from '../../contexts/MarketDataContext';
 import { formatPercentage } from '../../utils/formatNumber';
-import { SkeletonCard } from '../ui/Skeleton';
+import { SkeletonCard } from '../ui/skeleton';
 
 export default function AccountSummary() {
   const { account, balanceLoaded, isHydrated } = useTrading();

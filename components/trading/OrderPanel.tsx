@@ -20,7 +20,7 @@ import {
 } from '../ui/select';
 import { toast } from 'sonner';
 import { formatPercentage, formatCurrency, formatPrice, formatNumber } from '../../utils/formatNumber';
-import { Skeleton } from '../ui/Skeleton';
+import { Skeleton } from '../ui/skeleton';
 
 interface OrderPanelProps {
   symbol: string;

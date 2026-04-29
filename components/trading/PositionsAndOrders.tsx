@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
 import { Edit, AlertTriangle, X } from 'lucide-react';
 import { formatPercentage, formatTxnId, formatPrice, formatCurrency, formatNumber } from '../../utils/formatNumber';
-import { SkeletonMobileCard, Skeleton } from '../ui/Skeleton';
+import { SkeletonMobileCard, Skeleton } from '../ui/skeleton';
 
 // Derive market category from symbol
 const getCategory = (symbol: string): string => {

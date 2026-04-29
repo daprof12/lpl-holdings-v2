@@ -8,7 +8,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import React from 'react';
 import { formatPercentage, formatCurrency } from '../../utils/formatNumber';
-import { SkeletonRow, SkeletonMobileCard, Skeleton } from '../ui/Skeleton';
+import { SkeletonRow, SkeletonMobileCard, Skeleton } from '../ui/skeleton';
 
 export default function OpenPositions() {
   const { positions, removePosition, updatePosition, addHistory, account, updateAccount, isHydrated } = useTrading();

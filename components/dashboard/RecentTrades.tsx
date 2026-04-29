@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTrading } from '../../contexts/TradingContext';
 import { formatPercentage, formatCurrency } from '../../utils/formatNumber';
 import { ArrowUpRight, TrendingUp, TrendingDown } from 'lucide-react';
-import { SkeletonMobileCard } from '../ui/Skeleton';
+import { SkeletonMobileCard } from '../ui/skeleton';
 
 export default function RecentTrades() {
   const { history, isHydrated } = useTrading();

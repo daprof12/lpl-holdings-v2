@@ -8,7 +8,7 @@ import { useMarketData } from '../../contexts/MarketDataContext';
 import { LogoutModal } from '../ui/LogoutModal';
 import NotificationCenter from '../notifications/NotificationCenter';
 import { formatPercentage, formatCurrency } from '../../utils/formatNumber';
-import { SkeletonStat, Skeleton } from '../ui/Skeleton';
+import { SkeletonStat, Skeleton } from '../ui/skeleton';
 
 interface TopBarProps {
   onMenuClick: () => void;

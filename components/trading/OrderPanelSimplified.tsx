@@ -16,7 +16,7 @@ import { useTrading, Position, Order, HistoryItem } from '../../contexts/Trading
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { useMarketData } from '../../contexts/MarketDataContext';
 import { getMaxLeverageForPlan } from '../../data/assets';
-import { Skeleton } from '../ui/Skeleton';
+import { Skeleton } from '../ui/skeleton';
 
 interface OrderPanelProps {
   symbol: string;

@@ -5,7 +5,7 @@ import { useMarketData } from '../../contexts/MarketDataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatPercentage, formatCurrency } from '../../utils/formatNumber';
 import { Plus, Sparkles, Star, TrendingUp, TrendingDown } from 'lucide-react';
-import { Skeleton } from '../ui/Skeleton';
+import { Skeleton } from '../ui/skeleton';
 
 export default function MarketWatchlist() {
   const navigate = useNavigate();
