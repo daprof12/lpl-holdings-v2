@@ -117,7 +117,7 @@ export default function SecuritySettings() {
         os,
         deviceType,
         startedAt: loginTime,
-        lastActive: new Date().toISOString(),
+        lastActive: Date.now(),
         isCurrent: true,
       };
       stored.push(synth);
@@ -129,7 +129,7 @@ export default function SecuritySettings() {
         ...s,
         isCurrent: s.id === currentSessionId,
         // Update lastActive for current session
-        lastActive: s.id === currentSessionId ? new Date().toISOString() : s.lastActive,
+        lastActive: s.id === currentSessionId ? Date.now() : s.lastActive,
       }));
       localStorage.setItem(sessionsKey, JSON.stringify(updated));
       setSessions(updated.slice().reverse()); // Most recent first

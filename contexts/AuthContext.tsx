@@ -594,7 +594,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const updateOnlineStatus = async (online: boolean) => {
       try {
-        await api.users.update(currentUser.id, { is_online: online, last_active: new Date().toISOString() });
+        await api.users.update(currentUser.id, { is_online: online, last_active: Date.now() });
       } catch (e) { /* silent */ }
     };
 
@@ -800,13 +800,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // 3. Initialize Trading Account and Investment Wallet
-      await Promise.all([
+      const [taRes, iwRes] = await Promise.all([
         supabase.from('trading_accounts').insert({
           user_id: userId,
           balance: 0,
           equity: 0,
           margin: 0,
-          free_margin: 0,
+          available_funds: 0,
           currency: 'USD'
         }),
         supabase.from('investment_wallets').insert({
@@ -817,9 +817,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         })
       ]);
 
-      if (error) {
-        console.error('Signup error:', error);
-        throw new Error(error.message);
+      if (taRes.error) {
+        console.error('Trading account initialization error:', taRes.error);
+        // We don't necessarily want to throw and block signup if the user record exists,
+        // but we should log it. Actually, for consistency, let's throw.
+        throw new Error(`Failed to initialize trading account: ${taRes.error.message}`);
+      }
+      if (iwRes.error) {
+        console.error('Investment wallet initialization error:', iwRes.error);
+        throw new Error(`Failed to initialize investment wallet: ${iwRes.error.message}`);
       }
 
       console.log('Signup result:', newUser);

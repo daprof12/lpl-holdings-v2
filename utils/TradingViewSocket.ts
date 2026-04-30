@@ -14,31 +14,66 @@ function createMessage(func: string, args: any[]) {
 const COMMODITIES_MAP: Record<string, string> = {
   'XAUUSD': 'TVC:GOLD',
   'XAGUSD': 'TVC:SILVER',
-  'XPTUSD': 'TVC:PLATINUM',
-  'XPDUSD': 'TVC:PALLADIUM',
-  'WTIUSD': 'BLACKBULL:WTI',
-  'USOIL': 'BLACKBULL:WTI',
-  'BCOUSD': 'TVC:UKOIL',
-  'UKOIL': 'TVC:UKOIL',
+  'XPTUSD': 'NYMEX:PL1!',
+  'XPDUSD': 'NYMEX:PA1!',
+  'WTIUSD': 'OANDA:WTICOUSD',
+  'USOIL': 'OANDA:WTICOUSD',
+  'BCOUSD': 'OANDA:BCOUSD',
+  'UKOIL': 'OANDA:BCOUSD',
+  'NGAS': 'TVC:NATGAS',
   'NATGAS': 'TVC:NATGAS',
+  'COPPER': 'COMEX:HG1!',
+  'WHEAT': 'CBOT:ZW1!',
+  'CORN': 'CBOT:ZC1!',
+  'SOYBEAN': 'CBOT:ZS1!',
+  'SUGAR': 'ICEUS:SB1!',
+  'COFFEE': 'ICEUS:KC1!',
+  'COCOA': 'ICEUS:CC1!',
+  'COTTON': 'ICEUS:CT1!',
+  'ALUM': 'LME:ALI1!',
+  'NICKEL': 'LME:NI1!',
+  'ZINC': 'LME:ZN1!',
+  'LEAD': 'LME:PB1!',
   'USDTUSD': 'KRAKEN:USDTUSD'
 };
 
 const REVERSE_COMMODITIES_MAP: Record<string, string> = {
   'TVC:GOLD': 'XAUUSD',
   'TVC:SILVER': 'XAGUSD',
-  'TVC:PLATINUM': 'XPTUSD',
-  'TVC:PALLADIUM': 'XPDUSD',
-  'BLACKBULL:WTI': 'USOIL',
-  'TVC:UKOIL': 'UKOIL',
-  'TVC:NATGAS': 'NATGAS',
+  'NYMEX:PL1!': 'XPTUSD',
+  'NYMEX:PA1!': 'XPDUSD',
+  'OANDA:WTICOUSD': 'USOIL',
+  'OANDA:BCOUSD': 'UKOIL',
+  'TVC:NATGAS': 'NGAS',
+  'COMEX:HG1!': 'COPPER',
+  'CBOT:ZW1!': 'WHEAT',
+  'CBOT:ZC1!': 'CORN',
+  'CBOT:ZS1!': 'SOYBEAN',
+  'ICEUS:SB1!': 'SUGAR',
+  'ICEUS:KC1!': 'COFFEE',
+  'ICEUS:CC1!': 'COCOA',
+  'ICEUS:CT1!': 'COTTON',
+  'LME:ALI1!': 'ALUM',
+  'LME:NI1!': 'NICKEL',
+  'LME:ZN1!': 'ZINC',
+  'LME:PB1!': 'LEAD',
   'KRAKEN:USDTUSD': 'USDTUSD'
 };
 
 const INDICES_MAP: Record<string, string> = {
-  'SPX': 'SP:SPX',
-  'NDX': 'NASDAQ:NDX',
-  'DJI': 'DJ:DJI',
+  'SPX': 'TVC:SPX',
+  'NDX': 'TVC:NDX',
+  'DJI': 'TVC:DJI',
+  'IXIC': 'TVC:IXIC',
+  'RUT': 'TVC:RUT',
+  'VIX': 'TVC:VIX',
+  'DXY': 'TVC:DXY',
+  'DAX': 'TVC:DAX',
+  'CAC40': 'TVC:PX1',
+  'FTSE': 'TVC:UKX',
+  'N225': 'TVC:NI225',
+  'HSI': 'TVC:HSI',
+  'ASX200': 'TVC:XJO',
   'US30': 'CAPITALCOM:US30',
   'UK100': 'CAPITALCOM:UK100',
   'GER30': 'CAPITALCOM:DE40',
@@ -46,22 +81,29 @@ const INDICES_MAP: Record<string, string> = {
   'FRA40': 'CAPITALCOM:FR40',
   'JPN225': 'CAPITALCOM:JP225',
   'AUS200': 'CAPITALCOM:AU200',
-  'IXIC': 'NASDAQ:IXIC',
-  'RUT': 'RUSSELL:RUT',
-  'RUT2000': 'RUSSELL:RUT',
-  'VIX': 'CBOE:VIX',
-  'DXY': 'TVC:DXY',
   'TNX': 'TVC:US10Y',
   'TYX': 'TVC:US30Y',
   'IRX': 'TVC:US03Y',
-  'HSI': 'HSI:HSI',
-  'N225': 'TSE:NI225',
-  'FTSE': 'FTSE:UK100',
 };
 
-const REVERSE_INDICES_MAP: Record<string, string> = Object.fromEntries(
-  Object.entries(INDICES_MAP).map(([sym, tvSym]) => [tvSym, sym])
-);
+const REVERSE_INDICES_MAP: Record<string, string> = {
+  'TVC:SPX': 'SPX',
+  'TVC:NDX': 'NDX',
+  'TVC:DJI': 'DJI',
+  'TVC:IXIC': 'IXIC',
+  'TVC:RUT': 'RUT',
+  'TVC:VIX': 'VIX',
+  'TVC:DXY': 'DXY',
+  'TVC:DAX': 'DAX',
+  'TVC:PX1': 'CAC40',
+  'TVC:UKX': 'FTSE',
+  'TVC:NI225': 'N225',
+  'TVC:HSI': 'HSI',
+  'TVC:XJO': 'ASX200',
+  'TVC:US10Y': 'TNX',
+  'TVC:US30Y': 'TYX',
+  'TVC:US03Y': 'IRX'
+};
 
 const STOCKS_NASDAQ = ['AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'TSLA', 'META', 'NVDA', 'NFLX', 'PYPL', 'INTC', 'CMCSA', 'PEP', 'CSCO', 'ADBE', 'TXN', 'AVGO', 'QCOM', 'HON', 'AMGN', 'SBUX', 'GILD', 'MDLZ', 'FISV', 'BKNG', 'CHTR', 'VRTX', 'REGN', 'ISRG', 'AMD', 'MU', 'LRCX', 'ATVI', 'ILMN', 'ADSK', 'MELI', 'CRWD', 'PLTR', 'SNOW', 'DDOG', 'ZM', 'TWLO', 'NET', 'RBLX', 'COIN', 'HOOD', 'QQQ', 'TLT', 'IEF', 'SHY'];
 const STOCKS_NYSE = ['JPM', 'V', 'JNJ', 'WMT', 'PG', 'MA', 'UNH', 'HD', 'BAC', 'DIS', 'CVX', 'KO', 'MRK', 'PFE', 'VZ', 'T', 'XOM', 'ABBV', 'CRM', 'NKE', 'MCD', 'DHR', 'PFE', 'LLY', 'NIO', 'BABA', 'GME', 'AMC', 'SQ', 'SPOT', 'SHOP', 'SPY', 'VOO', 'VTI', 'IWM', 'AGG', 'LQD'];
@@ -187,7 +229,7 @@ export class TradingViewSocket {
   private readonly sessionId: string;
   private onDataCallback: SymbolDataCallback | null = null;
   private subscribedSymbols: Set<string> = new Set();
-  private tvToOurSymbolMap: Map<string, string> = new Map();
+  private tvToOurSymbols: Map<string, Set<string>> = new Map();
   public isConnected: boolean = false;
   private reconnectTimer: any = null;
   private keepAliveTimer: any = null;
@@ -379,7 +421,13 @@ export class TradingViewSocket {
     if (!this.subscribedSymbols.has(symbol)) {
       this.subscribedSymbols.add(symbol);
       const tvSymbol = getTVSymbol(symbol);
-      this.tvToOurSymbolMap.set(tvSymbol, symbol);
+
+      // Track which local symbols map to this TV symbol (support aliases)
+      if (!this.tvToOurSymbols.has(tvSymbol)) {
+        this.tvToOurSymbols.set(tvSymbol, new Set());
+      }
+      this.tvToOurSymbols.get(tvSymbol)!.add(symbol);
+
       if (this.isConnected && this.ws) {
         this.sendMessage('quote_add_symbols', [this.sessionId, tvSymbol]);
       }
@@ -389,8 +437,17 @@ export class TradingViewSocket {
   public unsubscribe(symbol: string) {
     if (this.subscribedSymbols.has(symbol)) {
       this.subscribedSymbols.delete(symbol);
-      if (this.isConnected && this.ws) {
-        this.sendMessage('quote_remove_symbols', [this.sessionId, getTVSymbol(symbol)]);
+      const tvSymbol = getTVSymbol(symbol);
+
+      const ourSymbols = this.tvToOurSymbols.get(tvSymbol);
+      if (ourSymbols) {
+        ourSymbols.delete(symbol);
+        if (ourSymbols.size === 0) {
+          this.tvToOurSymbols.delete(tvSymbol);
+          if (this.isConnected && this.ws) {
+            this.sendMessage('quote_remove_symbols', [this.sessionId, tvSymbol]);
+          }
+        }
       }
     }
   }
@@ -434,7 +491,7 @@ export class TradingViewSocket {
           }
 
           if (data && this.onDataCallback) {
-            const ourSymbol = this.tvToOurSymbolMap.get(tvName) || getOurSymbol(tvName);
+            const symbolsToUpdate = this.tvToOurSymbols.get(tvName) || new Set([getOurSymbol(tvName)]);
 
             const update: Partial<MarketPrice> = {};
             if (data.lp !== undefined) update.price = data.lp;
@@ -450,7 +507,9 @@ export class TradingViewSocket {
             update.lastUpdate = Date.now();
 
             if (Object.keys(update).length > 1) {
-              this.onDataCallback(ourSymbol, update);
+              symbolsToUpdate.forEach(ourSymbol => {
+                this.onDataCallback!(ourSymbol, update);
+              });
             }
           }
         }

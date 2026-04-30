@@ -190,19 +190,37 @@ export default function CRMMessaging() {
     }
   };
 
-  const handleSaveTemplate = () => {
-    if (!templateForm.name.trim() || !templateForm.subject.trim()) {
+  const handleSaveTemplate = async () => {
+    // Trim values to ensure we don't save whitespace-only names/subjects
+    const templateName = templateForm.name?.trim();
+    const templateSubject = templateForm.subject?.trim();
+
+    if (!templateName || !templateSubject) {
       toast.error('Template name and subject are required');
       return;
     }
 
-    saveEmailTemplate({
-      id: editingTemplate?.id || `template-${Date.now()}`,
-      ...templateForm
-    });
+    try {
+      const payload = {
+        ...templateForm,
+        name: templateName,
+        subject: templateSubject
+      };
 
-    setShowTemplateDialog(false);
-    toast.success('Template saved successfully');
+      // If editing, use the existing ID; if cloning/creating, let the API/Supabase handle ID generation
+      if (editingTemplate?.id) {
+        payload.id = editingTemplate.id;
+      } else {
+        delete payload.id;
+      }
+
+      await saveEmailTemplate(payload);
+      
+      setShowTemplateDialog(false);
+      setEditingTemplate(null);
+    } catch (err: any) {
+      console.error('CRMMessaging: Save template failed:', err);
+    }
   };
 
   const handleFileUpload = (file: File, callback: (url: string) => void) => {

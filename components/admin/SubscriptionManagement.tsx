@@ -172,7 +172,7 @@ export default function SubscriptionManagement() {
             plan: subscriberFormData.plan,
             status: subscriberFormData.status,
             amount: amount,
-            updated_at: new Date().toISOString()
+            updated_at: Date.now()
           });
           setDbSubscribers(prev => prev.map(s => s.id === selectedSubscriber.dbId ? { ...s, ...updated } : s));
         } else {
@@ -181,8 +181,8 @@ export default function SubscriptionManagement() {
             plan: subscriberFormData.plan,
             status: subscriberFormData.status,
             amount: amount,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            created_at: Date.now(),
+            updated_at: Date.now()
           });
           if (newSub) setDbSubscribers(prev => [newSub, ...prev]);
         }

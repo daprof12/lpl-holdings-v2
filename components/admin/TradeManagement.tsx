@@ -15,6 +15,7 @@ import { useTrading } from '../../contexts/TradingContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../utils/supabase/client';
 import { api } from '../../utils/supabase/api';
+import { CATALOGUE } from '../../utils/assetCatalogue';
 import { useMarketData } from '../../contexts/MarketDataContext';
 import { toast } from 'sonner';
 import { Label } from '../ui/label';
@@ -26,6 +27,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { getMarketStatus } from '../../utils/tradingHours';
+import { Skeleton, SkeletonRow } from '../ui/skeleton';
 
 interface Trade {
   id: string;
@@ -56,22 +58,25 @@ interface Trade {
 const getAssetCategory = (symbol: string): string => {
   if (!symbol) return 'Other';
   const s = symbol.toUpperCase();
+  
+  // Try to find in catalogue first for reliable mapping
+  const catalogueItem = CATALOGUE.find(c => c.symbol === s);
+  if (catalogueItem) return catalogueItem.category;
+
+  // Fallback heuristic for new/unmapped symbols
   // Crypto
   if (s.includes('BTC') || s.includes('ETH') || s.includes('XRP') || 
       s.includes('LTC') || s.includes('ADA') || s.includes('DOT') ||
-      s.includes('DOGE') || s.includes('SOL')) {
+      s.includes('DOGE') || s.includes('SOL') || s.includes('BNB') || s.includes('USDT')) {
     return 'Crypto';
   }
   // Forex
+  if (s.length === 6 && !s.includes('USD') && !s.includes('JPY')) return 'Forex';
   if (['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'NZDUSD', 'USDCHF'].includes(s)) {
     return 'Forex';
   }
-  // Stocks
-  if (['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'V', 'NFLX', 'DIS'].includes(s)) {
-    return 'Stocks';
-  }
   // Commodities
-  if (s.includes('XAU') || s.includes('XAG') || s.includes('OIL') || s.includes('GC') || s.includes('CL')) {
+  if (['XAUUSD', 'XAGUSD', 'XPTUSD', 'XPDUSD', 'USOIL', 'UKOIL', 'BCOUSD', 'NGAS', 'NATGAS'].includes(s)) {
     return 'Commodities';
   }
   // Indices
@@ -638,112 +643,131 @@ export default function TradeManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-              {filteredTrades.map((trade) => (
-                <tr key={trade.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-mono">{formatTxnId(trade.id)}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm">{trade.user}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div>
-                      <div className="font-semibold">{trade.asset}</div>
-                      <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-semibold ${
-                        trade.category === 'Crypto' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' :
-                        trade.category === 'Forex' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
-                        trade.category === 'Stocks' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' :
-                        trade.category === 'Commodities' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
-                        trade.category === 'Indices' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
-                        trade.category === 'Funds' ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400' :
-                        trade.category === 'Futures' ? 'bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400' :
-                        'bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400'
+              {isLoading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <SkeletonRow key={i} columns={13} />
+                ))
+              ) : filteredTrades.map((trade) => {
+                const livePriceData = (trade.status === 'open' || trade.status === 'order') ? getPrice(trade.symbol) : null;
+                const isPriceLoading = (trade.status === 'open' || trade.status === 'order') && (!livePriceData || !livePriceData.price);
+                
+                return (
+                  <tr key={trade.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="text-sm font-mono">{formatTxnId(trade.id)}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm">{trade.user}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div>
+                        <div className="font-semibold">{trade.asset}</div>
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-semibold ${
+                          trade.category === 'Crypto' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' :
+                          trade.category === 'Forex' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                          trade.category === 'Stocks' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' :
+                          trade.category === 'Commodities' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
+                          trade.category === 'Indices' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                          trade.category === 'Funds' ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400' :
+                          trade.category === 'Futures' ? 'bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400' :
+                          'bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400'
+                        }`}>
+                          {trade.category}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        {trade.type === 'long' ? (
+                          <>
+                            <TrendingUp className="w-4 h-4 text-green-600" />
+                            <span className="text-green-600 dark:text-green-400 font-semibold">LONG</span>
+                          </>
+                        ) : (
+                          <>
+                            <TrendingDown className="w-4 h-4 text-red-600" />
+                            <span className="text-red-600 dark:text-red-400 font-semibold">SHORT</span>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="font-mono">${typeof trade.entryPrice === 'number' && !isNaN(trade.entryPrice) ? formatCurrency(trade.entryPrice) : 'N/A'}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="font-mono">
+                        {isPriceLoading ? (
+                          <Skeleton className="h-4 w-16" />
+                        ) : (
+                          `$${typeof trade.currentPrice === 'number' && !isNaN(trade.currentPrice) ? formatCurrency(trade.currentPrice) : 'N/A'}`
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div>{trade.quantity}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div>{trade.leverage}x</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="font-mono">${typeof trade.margin === 'number' && !isNaN(trade.margin) ? formatCurrency(trade.margin) : 'N/A'}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="font-mono">{trade.openedAt}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className={`font-semibold ${isPriceLoading ? '' : trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {isPriceLoading ? (
+                          <Skeleton className="h-4 w-12" />
+                        ) : (
+                          `${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}`
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        trade.status === 'open'
+                          ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                          : trade.status === 'order'
+                          ? 'bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400'
+                          : 'bg-gray-100 dark:bg-gray-900/20 text-gray-600 dark:text-gray-400'
                       }`}>
-                        {trade.category}
+                        {trade.status}
                       </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      {trade.type === 'long' ? (
-                        <>
-                          <TrendingUp className="w-4 h-4 text-green-600" />
-                          <span className="text-green-600 dark:text-green-400 font-semibold">LONG</span>
-                        </>
-                      ) : (
-                        <>
-                          <TrendingDown className="w-4 h-4 text-red-600" />
-                          <span className="text-red-600 dark:text-red-400 font-semibold">SHORT</span>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="font-mono">${typeof trade.entryPrice === 'number' && !isNaN(trade.entryPrice) ? formatCurrency(trade.entryPrice) : 'N/A'}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="font-mono">${typeof trade.currentPrice === 'number' && !isNaN(trade.currentPrice) ? formatCurrency(trade.currentPrice) : 'N/A'}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div>{trade.quantity}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div>{trade.leverage}x</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="font-mono">${typeof trade.margin === 'number' && !isNaN(trade.margin) ? formatCurrency(trade.margin) : 'N/A'}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="font-mono">{trade.openedAt}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className={`font-semibold ${trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                      trade.status === 'open'
-                        ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                        : trade.status === 'order'
-                        ? 'bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400'
-                        : 'bg-gray-100 dark:bg-gray-900/20 text-gray-600 dark:text-gray-400'
-                    }`}>
-                      {trade.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(trade)}
-                        title="Edit Trade"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      {trade.status === 'open' && (
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleForcClose(trade.id)}
-                          title="Force Close"
+                          onClick={() => handleEdit(trade)}
+                          title="Edit Trade"
                         >
-                          <X className="w-4 h-4 text-orange-600" />
+                          <Edit className="w-4 h-4" />
                         </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(trade.id)}
-                        title="Delete Trade"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {trade.status === 'open' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleForcClose(trade.id)}
+                            title="Force Close"
+                          >
+                            <X className="w-4 h-4 text-orange-600" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(trade.id)}
+                          title="Delete Trade"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -861,15 +885,19 @@ export default function TradeManagement() {
                 <div>
                   <label className="block text-sm font-semibold mb-2">Current/Exit Price</label>
                   <div className="relative">
-                    <Input
-                      type="number"
-                      step="0.00000001"
-                      value={formData.currentPrice}
-                      onChange={(e) => setFormData({ ...formData, currentPrice: e.target.value })}
-                      placeholder="Current price"
-                      className={`${formData.status !== 'closed' ? 'bg-gray-50 dark:bg-slate-900/50 cursor-not-allowed text-blue-600 dark:text-blue-400 font-semibold' : ''}`}
-                      disabled={formData.status !== 'closed'}
-                    />
+                    {formData.status !== 'closed' && (!getPrice(formData.asset) || !getPrice(formData.asset).price) ? (
+                      <Skeleton className="h-10 w-full" />
+                    ) : (
+                      <Input
+                        type="number"
+                        step="0.00000001"
+                        value={formData.currentPrice}
+                        onChange={(e) => setFormData({ ...formData, currentPrice: e.target.value })}
+                        placeholder="Current price"
+                        className={`${formData.status !== 'closed' ? 'bg-gray-50 dark:bg-slate-900/50 cursor-not-allowed text-blue-600 dark:text-blue-400 font-semibold' : ''}`}
+                        disabled={formData.status !== 'closed'}
+                      />
+                    )}
                     {formData.status !== 'closed' && (
                       <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>

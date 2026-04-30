@@ -136,7 +136,7 @@ export default function UserSubscription() {
         await api.subscribers.update(existingSubs[0].id, {
           plan: selectedPlan.name,
           amount: price,
-          updated_at: new Date().toISOString()
+          updated_at: Date.now()
         });
       } else {
         await api.subscribers.create({
@@ -144,8 +144,8 @@ export default function UserSubscription() {
           plan: selectedPlan.name,
           amount: price,
           status: 'active',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          created_at: Date.now(),
+          updated_at: Date.now()
         });
       }
     } catch (err) {

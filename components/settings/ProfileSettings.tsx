@@ -129,7 +129,7 @@ export default function ProfileSettings() {
     field === 'identity' ? setUploadingId(true) : setUploadingAddr(true);
     try {
       const dataUrl = await readFile(file);
-      const doc: KycDoc = { name: file.name, type: file.type, size: file.size, uploadedAt: new Date().toISOString(), dataUrl };
+      const doc: KycDoc = { name: file.name, type: file.type, size: file.size, uploadedAt: Date.now().toString(), dataUrl };
       const updated = { ...kycDocs, [field]: doc };
       setKycDocs(updated);
       saveKycDocs(currentUser.id, updated);
@@ -152,7 +152,7 @@ export default function ProfileSettings() {
       await api.kyc.create({
         userId: currentUser.id,
         status: 'pending',
-        submittedAt: new Date().toISOString(),
+        submittedAt: Date.now(),
         details: {
           identityDocName: kycDocs.identity.name,
           proofOfAddressDocName: kycDocs.proofOfAddress.name

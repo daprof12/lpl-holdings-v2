@@ -55,7 +55,7 @@ export default function KYCVerification() {
           userId: currentUser.id,
           documentType,
           status: 'pending',
-          submittedAt: new Date().toISOString(),
+          submittedAt: Date.now(),
         });
         // Also update the user profile status for quick access
         await api.users.update(currentUser.id, { kyc_status: 'pending' });

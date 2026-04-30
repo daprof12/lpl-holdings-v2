@@ -38,7 +38,32 @@ export const api = {
       return data;
     },
     update: async (id: string, updates: any) => {
-      const { data, error } = await supabase.from('users').update(updates).eq('id', id).select().maybeSingle();
+      const dbUpdates: any = {};
+      if (updates.name !== undefined) dbUpdates.name = updates.name;
+      if (updates.email !== undefined) dbUpdates.email = updates.email;
+      if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
+      if (updates.country !== undefined) dbUpdates.country = updates.country;
+      if (updates.role !== undefined) dbUpdates.role = updates.role;
+      if (updates.account_type !== undefined) dbUpdates.account_type = updates.account_type;
+      if (updates.kyc_status !== undefined) dbUpdates.kyc_status = updates.kyc_status;
+      if (updates.email_verified !== undefined) dbUpdates.email_verified = updates.email_verified;
+      if (updates.phone_verified !== undefined) dbUpdates.phone_verified = updates.phone_verified;
+      if (updates.is_online !== undefined) dbUpdates.is_online = updates.is_online;
+      if (updates.last_active !== undefined) {
+        dbUpdates.last_active = typeof updates.last_active === 'number' ? updates.last_active : new Date(updates.last_active).getTime();
+      }
+      if (updates.password_hash !== undefined) dbUpdates.password_hash = updates.password_hash;
+      if (updates.balance !== undefined) dbUpdates.balance = updates.balance;
+      if (updates.bonus !== undefined) dbUpdates.bonus = updates.bonus;
+      if (updates.credit !== undefined) dbUpdates.credit = updates.credit;
+      if (updates.portfolio_balance !== undefined) dbUpdates.portfolio_balance = updates.portfolio_balance;
+      if (updates.ipo_balance !== undefined) dbUpdates.ipo_balance = updates.ipo_balance;
+      if (updates.ecn_balance !== undefined) dbUpdates.ecn_balance = updates.ecn_balance;
+      if (updates.has_investment_access !== undefined) dbUpdates.has_investment_access = updates.has_investment_access;
+      if (updates.has_auto_trade_access !== undefined) dbUpdates.has_auto_trade_access = updates.has_auto_trade_access;
+      if (updates.has_signal_access !== undefined) dbUpdates.has_signal_access = updates.has_signal_access;
+
+      const { data, error } = await supabase.from('users').update(dbUpdates).eq('id', id).select().maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -86,12 +111,33 @@ export const api = {
       return error ? null : data;
     },
     update: async (userId: string, updates: any) => {
-      const { data, error } = await supabase.from('trading_accounts').update(updates).eq('user_id', userId).select().maybeSingle();
-      return error ? null : data;
+      const dbUpdates: any = {};
+      if (updates.balance !== undefined) dbUpdates.balance = updates.balance;
+      if (updates.equity !== undefined) dbUpdates.equity = updates.equity;
+      if (updates.margin !== undefined) dbUpdates.margin = updates.margin;
+      if (updates.available_funds !== undefined) dbUpdates.available_funds = updates.available_funds;
+      if (updates.bonus !== undefined) dbUpdates.bonus = updates.bonus;
+      if (updates.credit !== undefined) dbUpdates.credit = updates.credit;
+      if (updates.currency !== undefined) dbUpdates.currency = updates.currency;
+
+      const { data, error } = await supabase.from('trading_accounts').update(dbUpdates).eq('user_id', userId).select().maybeSingle();
+      if (error) throw error;
+      return data;
     },
     insert: async (data: any) => {
-      const { data: res, error } = await supabase.from('trading_accounts').insert(data).select().maybeSingle();
-      return error ? null : res;
+      const dbData: any = {
+        user_id: data.user_id || data.userId,
+        balance: data.balance || 0,
+        equity: data.equity || 0,
+        margin: data.margin || 0,
+        available_funds: data.available_funds || data.availableFunds || 0,
+        bonus: data.bonus || 0,
+        credit: data.credit || 0,
+        currency: data.currency || 'USD'
+      };
+      const { data: res, error } = await supabase.from('trading_accounts').insert(dbData).select().maybeSingle();
+      if (error) throw error;
+      return res;
     },
     getAll: async () => {
       const { data, error } = await supabase.from('trading_accounts').select('*');
@@ -196,12 +242,25 @@ export const api = {
   investmentWallets: {
     get: (userId: string) => fetch(`${serverUrl}/investment-wallets/${userId}`, { headers }).then(r => r.json()),
     update: async (userId: string, updates: any) => {
-      const { data, error } = await supabase.from('investment_wallets').update(updates).eq('user_id', userId).select().maybeSingle();
-      return error ? null : data;
+      const dbUpdates: any = {};
+      if (updates.ipo !== undefined) dbUpdates.ipo = updates.ipo;
+      if (updates.ecn !== undefined) dbUpdates.ecn = updates.ecn;
+      if (updates.portfolio !== undefined) dbUpdates.portfolio = updates.portfolio;
+
+      const { data, error } = await supabase.from('investment_wallets').update(dbUpdates).eq('user_id', userId).select().maybeSingle();
+      if (error) throw error;
+      return data;
     },
     insert: async (data: any) => {
-      const { data: res, error } = await supabase.from('investment_wallets').insert(data).select().maybeSingle();
-      return error ? null : res;
+      const dbData: any = {
+        user_id: data.user_id || data.userId,
+        ipo: data.ipo || 0,
+        ecn: data.ecn || 0,
+        portfolio: data.portfolio || 0
+      };
+      const { data: res, error } = await supabase.from('investment_wallets').insert(dbData).select().maybeSingle();
+      if (error) throw error;
+      return res;
     },
     getByUserId: async (userId: string) => {
       const { data, error } = await supabase.from('investment_wallets').select('*').eq('user_id', userId).maybeSingle();
@@ -448,7 +507,7 @@ export const api = {
       const payload = {
         id: crypto.randomUUID(),
         created_at: Date.now(),
-        updated_at: new Date().toISOString(),
+        updated_at: Date.now(),
         ...data
       };
       const { data: res, error } = await supabase.from('withdrawal_methods').insert(payload).select().single();
@@ -487,7 +546,7 @@ export const api = {
       const payload = {
         id: crypto.randomUUID(),
         created_at: Date.now(),
-        updated_at: new Date().toISOString(),
+        updated_at: Date.now(),
         ...data
       };
       const { data: res, error } = await supabase.from('payment_methods').insert(payload).select().single();
@@ -809,15 +868,40 @@ export const api = {
       return data;
     },
     create: async (payload: any) => {
-      const { data, error } = await supabase.from('crm_messages').insert({
-        ...payload,
+      const dbPayload: any = {
+        user_id: payload.user_id || payload.userId,
+        recipient_type: payload.recipient_type || payload.recipientType,
+        segment_filters: payload.segment_filters || payload.segmentFilters,
+        template_id: payload.template_id || payload.templateId,
+        subject: payload.subject || payload.title,
+        content: payload.content || payload.message,
+        channel: payload.channel,
+        status: payload.status || 'draft',
         created_at: Date.now()
-      }).select().single();
+      };
+
+      if (payload.scheduledAt || payload.scheduled_at) {
+        const sched = payload.scheduledAt || payload.scheduled_at;
+        dbPayload.scheduled_at = typeof sched === 'number' ? sched : new Date(sched).getTime();
+      }
+
+      const { data, error } = await supabase.from('crm_messages').insert(dbPayload).select().single();
       if (error) throw error;
       return data;
     },
     update: async (id: string, updates: any) => {
-      const { data, error } = await supabase.from('crm_messages').update(updates).eq('id', id).select().single();
+      const dbUpdates: any = {};
+      if (updates.status !== undefined) dbUpdates.status = updates.status;
+      if (updates.subject !== undefined || updates.title !== undefined) dbUpdates.subject = updates.subject || updates.title;
+      if (updates.content !== undefined || updates.message !== undefined) dbUpdates.content = updates.content || updates.message;
+      if (updates.error_message !== undefined) dbUpdates.error_message = updates.error_message;
+      
+      if (updates.sentAt || updates.sent_at) {
+        const sent = updates.sentAt || updates.sent_at;
+        dbUpdates.sent_at = typeof sent === 'number' ? sent : new Date(sent).getTime();
+      }
+
+      const { data, error } = await supabase.from('crm_messages').update(dbUpdates).eq('id', id).select().single();
       if (error) throw error;
       return data;
     },
@@ -854,7 +938,7 @@ export const api = {
         blocks: data.blocks,
         footer_text: data.footerText || data.footer,
         accent_color: data.accentColor,
-        updated_at: new Date().toISOString(),
+        updated_at: Date.now(),
         created_at: Date.now()
       };
       // Only attach id if it is a valid UUID, else let Supabase generate it
@@ -867,7 +951,7 @@ export const api = {
       return res;
     },
     update: async (id: string, updates: any) => {
-      const dbUpdates: any = { updated_at: new Date().toISOString() };
+      const dbUpdates: any = { updated_at: Date.now() };
       if (updates.name !== undefined) dbUpdates.name = updates.name;
       if (updates.category !== undefined) dbUpdates.category = updates.category;
       if (updates.subject !== undefined) dbUpdates.subject = updates.subject;
@@ -922,12 +1006,34 @@ export const api = {
       return error ? [] : data;
     },
     create: async (data: any) => {
-      const { data: res, error } = await supabase.from('member_packages').insert(data).select().single();
+      const dbData: any = {
+        user_id: data.user_id || data.userId,
+        plan: data.plan,
+        status: data.status || 'active',
+        amount: data.amount || 0,
+        created_at: new Date().toISOString(), // member_packages uses TIMESTAMPTZ
+        updated_at: new Date().toISOString()
+      };
+      
+      if (data.expires_at || data.next_billing) {
+        const expires = data.expires_at || data.next_billing;
+        dbData.next_billing = typeof expires === 'number' ? new Date(expires).toISOString() : expires;
+      }
+
+      const { data: res, error } = await supabase.from('member_packages').insert(dbData).select().single();
       if (error) throw error;
       return res;
     },
     update: async (id: string, updates: any) => {
-      const { data, error } = await supabase.from('member_packages').update(updates).eq('id', id).select().single();
+      const dbUpdates: any = { updated_at: Date.now() };
+      // Explicitly pick fields to avoid passing ISO strings for BIGINT columns
+      if (updates.plan_id !== undefined) dbUpdates.plan_id = updates.plan_id;
+      if (updates.status !== undefined) dbUpdates.status = updates.status;
+      if (updates.expires_at !== undefined) {
+        dbUpdates.expires_at = typeof updates.expires_at === 'number' ? updates.expires_at : new Date(updates.expires_at).getTime();
+      }
+
+      const { data, error } = await supabase.from('member_packages').update(dbUpdates).eq('id', id).select().single();
       if (error) throw error;
       return data;
     },

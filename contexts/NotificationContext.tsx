@@ -466,26 +466,36 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // Templates
   const saveEmailTemplate = useCallback(async (template: any) => {
     try {
+      let res;
       if (template.id && emailTemplates.find(t => t.id === template.id)) {
-        await api.emailTemplates.update(template.id, template);
+        res = await api.emailTemplates.update(template.id, template);
       } else {
-        await api.emailTemplates.create(template);
+        res = await api.emailTemplates.create(template);
       }
-      // Reload
-      const all = await api.emailTemplates.getAll();
-      if (Array.isArray(all)) setEmailTemplates(all.map((t: any) => ({
-        id: t.id,
-        name: t.name,
-        category: t.category,
-        subject: t.subject,
-        logoUrl: t.logo_url,
-        blocks: t.blocks || [],
-        accentColor: t.accent_color,
-        lastModified: new Date(t.updated_at || t.created_at)
-      })));
+      
+      // Reload templates to ensure state is in sync
+      const allTemplates = await api.emailTemplates.getAll();
+      if (Array.isArray(allTemplates)) {
+        setEmailTemplates(allTemplates.map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          category: t.category,
+          subject: t.subject,
+          logoUrl: t.logo_url,
+          heroImage: t.hero_image,
+          heroTitle: t.hero_title,
+          blocks: t.blocks || [],
+          footer: t.footer_text,
+          accentColor: t.accent_color,
+          lastModified: new Date(t.updated_at || t.created_at)
+        })));
+      }
       toast.success('Template saved');
+      return res;
     } catch (err) {
       console.error('Failed to save template:', err);
+      toast.error('Failed to save template');
+      throw err;
     }
   }, [emailTemplates]);
 

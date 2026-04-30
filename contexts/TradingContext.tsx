@@ -260,7 +260,11 @@ export function TradingProvider({ children }: { children: ReactNode }) {
         }
 
         setAccount({
-          balance: parseFloat(dbAccount?.balance ?? auth.currentUser?.balance ?? auth.currentUser?.liveBalance ?? 0),
+          balance: Math.max(
+            parseFloat(dbAccount?.balance ?? 0),
+            parseFloat(auth.currentUser?.balance ?? 0),
+            parseFloat(auth.currentUser?.liveBalance ?? 0)
+          ),
           equity: parseFloat(dbAccount?.equity || 0),
           realizedPnL: parseFloat(dbAccount?.realized_pnl || 0),
           unrealizedPnL: parseFloat(dbAccount?.unrealized_pnl || 0),
