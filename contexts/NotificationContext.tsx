@@ -450,8 +450,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
               html: message.message, // Will be used as fallback
             };
 
-            // If a template was used, pass its ID for server-side rendering
-            if (message.metadata?.emailTemplateId) {
+            // Use fully rendered HTML from metadata if available (generated when CRM message was created)
+            if (message.metadata?.htmlContent) {
+              emailPayload.html = message.metadata.htmlContent;
+            } else if (message.metadata?.emailTemplateId) {
               emailPayload.templateId = message.metadata.emailTemplateId;
             } else {
               // Build a simple HTML email from the message content

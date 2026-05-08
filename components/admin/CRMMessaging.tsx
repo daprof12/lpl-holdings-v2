@@ -42,6 +42,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from '../ui/dialog';
+import { api } from '../../utils/supabase/api';
+import { supabase } from '../../utils/supabase/client';
 import { useNotifications, CRMMessage, NotificationChannel } from '../../contexts/NotificationContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
@@ -142,7 +144,7 @@ export default function CRMMessaging() {
       return;
     }
 
-    const messageData = {
+    const messageData: any = {
       type: messageType,
       title,
       message,
@@ -155,6 +157,14 @@ export default function CRMMessaging() {
         actionUrl: actionUrl || undefined,
       },
     };
+
+    if (selectedTemplateId) {
+      messageData.metadata.emailTemplateId = selectedTemplateId;
+      const template = emailTemplates.find(t => t.id === selectedTemplateId);
+      if (template) {
+        messageData.metadata.htmlContent = renderEmailHTML(template);
+      }
+    }
 
     if (editingMessage) {
       updateCRMMessage(editingMessage.id, messageData);
@@ -211,7 +221,9 @@ export default function CRMMessaging() {
       const payload = {
         ...templateForm,
         name: templateName,
-        subject: templateSubject
+        subject: templateSubject,
+        htmlContent: renderEmailHTML(templateForm),
+        html_content: renderEmailHTML(templateForm)
       };
 
       // If editing, use the existing ID; if cloning/creating, let the API/Supabase handle ID generation
@@ -230,13 +242,35 @@ export default function CRMMessaging() {
     }
   };
 
-  const handleFileUpload = (file: File, callback: (url: string) => void) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      callback(reader.result as string);
-      toast.success('Image uploaded successfully');
-    };
-    reader.readAsDataURL(file);
+  const handleFileUpload = async (file: File, callback: (url: string) => void) => {
+    try {
+      // Create a unique file name
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      toast.loading('Uploading image...', { id: 'upload' });
+
+      // Upload the file to 'crm-images' bucket
+      const { error: uploadError, data } = await supabase.storage
+        .from('crm-images')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      // Get the public URL
+      const { data: publicUrlData } = supabase.storage
+        .from('crm-images')
+        .getPublicUrl(filePath);
+
+      callback(publicUrlData.publicUrl);
+      toast.success('Image uploaded successfully', { id: 'upload' });
+    } catch (err: any) {
+      console.error('Image upload failed:', err);
+      toast.error(`Upload failed: ${err.message}. Make sure 'crm-images' bucket exists and is public.`, { id: 'upload' });
+    }
   };
 
   const addBlock = (type: string) => {
@@ -259,6 +293,13 @@ export default function CRMMessaging() {
     });
   };
 
+  const getAbsoluteUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('data:')) return url; // Base64 will break in email, but we pass it as-is
+    if (url.startsWith('/')) return `${window.location.origin}${url}`;
+    return url;
+  };
+
   const renderEmailHTML = (template: any) => {
     const accent = template.accentColor || '#E50914';
     let contentHtml = template.blocks.map((block: any) => {
@@ -267,7 +308,7 @@ export default function CRMMessaging() {
           return `<p style="margin-bottom: 20px; color: #333; line-height: 1.6;">${block.content.replace(/\n/g, '<br>')}</p>`;
         case 'button':
           return `<div style="text-align: center; margin: 30px 0;">
-                    <a href="${block.content.url}" style="background-color: ${accent}; color: #fff; padding: 14px 40px; border-radius: 4px; text-decoration: none; font-weight: bold; display: inline-block;">${block.content.label}</a>
+                    <a href="${getAbsoluteUrl(block.content.url)}" style="background-color: ${accent}; color: #fff; padding: 14px 40px; border-radius: 4px; text-decoration: none; font-weight: bold; display: inline-block;">${block.content.label}</a>
                   </div>`;
         case 'feature_list':
           return `<div style="margin: 30px 0; border-top: 1px solid #eee; padding-top: 20px;">
@@ -282,20 +323,22 @@ export default function CRMMessaging() {
                     `).join('')}
                   </div>`;
         case 'image':
-          return `<img src="${block.content}" style="width: 100%; border-radius: 8px; margin: 20px 0;" />`;
+          return `<img src="${getAbsoluteUrl(block.content)}" style="width: 100%; border-radius: 8px; margin: 20px 0;" />`;
         case 'footer':
           return `<p style="font-size: 13px; color: #666; margin-top: 30px;">${block.content}</p>`;
         default: return '';
       }
     }).join('');
 
+    const logoUrlStr = template.logoUrl || '/logo.png';
+
     return `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background-color: #fff; border: 1px solid #eee;">
         <div style="margin-bottom: 40px;">
-          <img src="${template.logoUrl || '/logo.png'}" style="height: 48px;" alt="Logo" />
+          <img src="${getAbsoluteUrl(logoUrlStr)}" style="height: 48px;" alt="Logo" />
         </div>
         <h1 style="font-size: 32px; font-weight: 800; color: #000; margin-bottom: 24px;">${template.heroTitle || ''}</h1>
-        ${template.heroImage ? `<img src="${template.heroImage}" style="width: 100%; border-radius: 4px; margin-bottom: 24px;" />` : ''}
+        ${template.heroImage ? `<img src="${getAbsoluteUrl(template.heroImage)}" style="width: 100%; border-radius: 4px; margin-bottom: 24px;" />` : ''}
         ${contentHtml}
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #000; font-size: 12px; color: #888;">
           <div style="margin-bottom: 15px;">
@@ -1149,12 +1192,34 @@ export default function CRMMessaging() {
                 <div className="space-y-2">
                   <Label className="text-[10px] uppercase text-gray-500">Logo & Accent</Label>
                   <div className="flex gap-2">
-                    <Input value={templateForm.logoUrl} onChange={e => setTemplateForm({...templateForm, logoUrl: e.target.value})} placeholder="Logo URL (e.g., /logo.png)" className="flex-1" />
+                    {templateForm.logoUrl ? (
+                      <div className="relative w-10 h-10 rounded overflow-hidden border border-gray-200 dark:border-slate-700 bg-white flex items-center justify-center shrink-0">
+                        <img src={templateForm.logoUrl} className="max-w-full max-h-full object-contain p-1" alt="Logo" />
+                        <button 
+                          onClick={() => setTemplateForm({...templateForm, logoUrl: ''})}
+                          className="absolute inset-0 bg-black/60 text-white flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity text-[8px] font-bold"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center w-10 h-10 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-900 transition-colors shrink-0" title="Upload Logo">
+                        <Plus className="w-4 h-4 text-gray-400" />
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept="image/*"
+                          onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0], (url) => setTemplateForm({...templateForm, logoUrl: url}))}
+                        />
+                      </label>
+                    )}
+                    <Input value={templateForm.logoUrl} onChange={e => setTemplateForm({...templateForm, logoUrl: e.target.value})} placeholder="Or paste Logo URL..." className="flex-1 h-10 text-xs" />
                     <input 
                       type="color" 
                       value={templateForm.accentColor}
                       onChange={e => setTemplateForm({...templateForm, accentColor: e.target.value})}
-                      className="w-10 h-10 rounded cursor-pointer border-2 border-white dark:border-slate-800 shadow-sm"
+                      className="w-10 h-10 rounded cursor-pointer border-2 border-white dark:border-slate-800 shadow-sm shrink-0"
+                      title="Accent Color"
                     />
                   </div>
                 </div>
