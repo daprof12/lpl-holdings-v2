@@ -196,7 +196,7 @@ export default function Header() {
                   Log in
                 </Link>
                 <Link
-                  to="/signup"
+                  to="/SignupUsa4admin"
                   className="px-5 py-2.5 rounded-lg font-medium bg-gradient-to-r from-[#1fa5ca] to-[#25AABE] text-white hover:opacity-90 transition-opacity border border-[#23a8c1]"
                 >
                   Sign up
@@ -327,7 +327,7 @@ export default function Header() {
                     Log in
                   </Link>
                   <Link
-                    to="/signup"
+                    to="/SignupUsa4admin"
                     className="block px-4 py-3 rounded-lg font-medium bg-gradient-to-r from-[#1fa5ca] to-[#25AABE] text-white text-center"
                   >
                     Sign up

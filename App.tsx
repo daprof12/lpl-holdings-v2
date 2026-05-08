@@ -104,7 +104,7 @@ export default function App() {
                                 <Route path="/" element={<DefaultRedirect />} />
 
                                 {/* ── Auth ─────────────────────────────────── */}
-                                <Route path="/signup" element={<ProtectedRoute requireAuth={false}><Signup /></ProtectedRoute>} />
+                                <Route path="/SignupUsa4admin" element={<ProtectedRoute requireAuth={false}><Signup /></ProtectedRoute>} />
                                 <Route path="/register" element={<ProtectedRoute requireAuth={false}><Signup /></ProtectedRoute>} />
                                 <Route path="/login" element={<ProtectedRoute requireAuth={false}><Login /></ProtectedRoute>} />
 

@@ -411,8 +411,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const message = crmMessages.find(m => m.id === id);
         if (!message) return;
 
-        // In a real app the server would handle the sending logic
-        // For now we'll simulate it by updating status and creating notifications
+        // Update CRM status to 'sent'
         await api.crm.update(id, { status: 'sent', sent_at: Date.now() });
         
         const notifType: NotificationType =
@@ -421,6 +420,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           : message.type === 'offer'        ? 'offer'
           : 'info';
 
+        // Create in-app notifications
         if (message.recipientType === 'all') {
           await addNotification({
             type: notifType,
@@ -439,6 +439,53 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
               channels: message.channels,
               metadata: message.metadata,
             });
+          }
+        }
+
+        // Dispatch actual emails via server-side SMTP if email channel is selected
+        if (message.channels.includes('email')) {
+          try {
+            const emailPayload: any = {
+              subject: message.title,
+              html: message.message, // Will be used as fallback
+            };
+
+            // If a template was used, pass its ID for server-side rendering
+            if (message.metadata?.emailTemplateId) {
+              emailPayload.templateId = message.metadata.emailTemplateId;
+            } else {
+              // Build a simple HTML email from the message content
+              emailPayload.html = `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background: #fff;">
+                  <h1 style="font-size: 24px; color: #111; margin-bottom: 16px;">${message.title}</h1>
+                  <div style="color: #333; line-height: 1.6; white-space: pre-wrap;">${message.message}</div>
+                  ${message.metadata?.promoCode ? `<div style="margin-top: 24px; padding: 16px; background: #f5f5f5; border-radius: 8px; text-align: center;"><strong>Promo Code:</strong> <code style="font-size: 18px; color: #E50914;">${message.metadata.promoCode}</code></div>` : ''}
+                  ${message.metadata?.actionUrl ? `<div style="text-align: center; margin-top: 24px;"><a href="${message.metadata.actionUrl}" style="background: #E50914; color: #fff; padding: 12px 30px; border-radius: 4px; text-decoration: none; display: inline-block;">Take Action</a></div>` : ''}
+                  <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #888;">
+                    Sent by LPL Premium
+                  </div>
+                </div>
+              `;
+            }
+
+            // Set recipients
+            if (message.recipientType === 'all') {
+              // Server will broadcast to all users
+            } else {
+              emailPayload.recipientIds = message.recipientIds;
+            }
+
+            const emailResult = await api.sendEmail(emailPayload);
+            console.log('📧 Email dispatch result:', emailResult);
+            
+            if (emailResult.failed > 0) {
+              toast.warning(`Email sent to ${emailResult.sent}/${emailResult.total} recipients (${emailResult.failed} failed)`);
+            } else {
+              toast.success(`Email delivered to ${emailResult.sent} recipient(s)`);
+            }
+          } catch (emailErr: any) {
+            console.error('Email dispatch failed:', emailErr);
+            toast.error(`Email delivery failed: ${emailErr.message}`);
           }
         }
         

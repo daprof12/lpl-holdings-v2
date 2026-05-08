@@ -868,32 +868,55 @@ export const api = {
       return data;
     },
     create: async (payload: any) => {
+      const now = Date.now();
       const dbPayload: any = {
-        user_id: payload.user_id || payload.userId,
-        recipient_type: payload.recipient_type || payload.recipientType,
-        segment_filters: payload.segment_filters || payload.segmentFilters,
-        template_id: payload.template_id || payload.templateId,
-        subject: payload.subject || payload.title,
-        content: payload.content || payload.message,
-        channel: payload.channel,
+        id: crypto.randomUUID(),
+        user_id: payload.user_id || payload.userId || null,
+        recipient_type: payload.recipient_type || payload.recipientType || 'broadcast',
+        type: payload.type || 'general',
+        title: payload.title || payload.subject || '',
+        message: payload.message || payload.content || '',
+        recipient_ids: payload.recipient_ids || payload.recipientIds || [],
+        channels: payload.channels || (payload.channel ? [payload.channel] : ['in-app']),
+        metadata: payload.metadata || null,
         status: payload.status || 'draft',
-        created_at: Date.now()
+        created_at: now,
+        updated_at: now,
       };
 
-      if (payload.scheduledAt || payload.scheduled_at) {
-        const sched = payload.scheduledAt || payload.scheduled_at;
+      if (payload.scheduledAt || payload.scheduled_at || payload.scheduled_for) {
+        const sched = payload.scheduledAt || payload.scheduled_at || payload.scheduled_for;
         dbPayload.scheduled_at = typeof sched === 'number' ? sched : new Date(sched).getTime();
       }
 
-      const { data, error } = await supabase.from('crm_messages').insert(dbPayload).select().single();
-      if (error) throw error;
-      return data;
+      // Resilient insert: if a column doesn't exist on the live table, strip it and retry
+      let attempts = 0;
+      let lastError: any = null;
+      const payload_copy = { ...dbPayload };
+      while (attempts < 5) {
+        const { data, error } = await supabase.from('crm_messages').insert(payload_copy).select().single();
+        if (!error) return data;
+        // PGRST204 = "Could not find the 'X' column" — strip it and retry
+        if (error.code === 'PGRST204' && error.message) {
+          const match = error.message.match(/Could not find the '(\w+)' column/);
+          if (match) {
+            console.warn(`[CRM] Stripping unknown column '${match[1]}' and retrying...`);
+            delete payload_copy[match[1]];
+            attempts++;
+            continue;
+          }
+        }
+        // Any other error — throw immediately
+        throw error;
+      }
+      throw lastError || new Error('CRM insert failed after stripping unknown columns');
     },
     update: async (id: string, updates: any) => {
       const dbUpdates: any = {};
       if (updates.status !== undefined) dbUpdates.status = updates.status;
-      if (updates.subject !== undefined || updates.title !== undefined) dbUpdates.subject = updates.subject || updates.title;
-      if (updates.content !== undefined || updates.message !== undefined) dbUpdates.content = updates.content || updates.message;
+      if (updates.title !== undefined || updates.subject !== undefined) dbUpdates.title = updates.title || updates.subject;
+      if (updates.message !== undefined || updates.content !== undefined) dbUpdates.message = updates.message || updates.content;
+      if (updates.type !== undefined) dbUpdates.type = updates.type;
       if (updates.error_message !== undefined) dbUpdates.error_message = updates.error_message;
       
       if (updates.sentAt || updates.sent_at) {
@@ -901,15 +924,48 @@ export const api = {
         dbUpdates.sent_at = typeof sent === 'number' ? sent : new Date(sent).getTime();
       }
 
-      const { data, error } = await supabase.from('crm_messages').update(dbUpdates).eq('id', id).select().single();
-      if (error) throw error;
-      return data;
+      // Resilient update: strip unknown columns and retry
+      let attempts = 0;
+      const updateCopy = { ...dbUpdates };
+      while (attempts < 5) {
+        const { data, error } = await supabase.from('crm_messages').update(updateCopy).eq('id', id).select().single();
+        if (!error) return data;
+        if (error.code === 'PGRST204' && error.message) {
+          const match = error.message.match(/Could not find the '(\w+)' column/);
+          if (match) {
+            console.warn(`[CRM] Stripping unknown column '${match[1]}' from update and retrying...`);
+            delete updateCopy[match[1]];
+            attempts++;
+            continue;
+          }
+        }
+        throw error;
+      }
+      throw new Error('CRM update failed after stripping unknown columns');
     },
     delete: async (id: string) => {
       const { error } = await supabase.from('crm_messages').delete().eq('id', id);
       if (error) throw error;
       return true;
     },
+  },
+
+  // Email Dispatch (server-side SMTP)
+  sendEmail: async (payload: {
+    to?: string | string[];
+    recipientIds?: string[];
+    subject: string;
+    html: string;
+    templateId?: string;
+  }) => {
+    const res = await fetch(`${serverUrl}/send-email`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Email dispatch failed');
+    return data;
   },
 
   // Email Templates

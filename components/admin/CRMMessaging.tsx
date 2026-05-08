@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { 
+  AlertTriangle,
   Send, 
   MessageSquare, 
   Users, 
@@ -60,6 +61,7 @@ export default function CRMMessaging() {
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
   const [editingMessage, setEditingMessage] = useState<CRMMessage | null>(null);
   const [previewMessage, setPreviewMessage] = useState<CRMMessage | null>(null);
+  const [confirmSendId, setConfirmSendId] = useState<string | null>(null);
   
   // Form state
   const [messageType, setMessageType] = useState<'general' | 'personal' | 'promo' | 'announcement' | 'offer'>('general');
@@ -185,8 +187,13 @@ export default function CRMMessaging() {
   };
 
   const handleSend = (id: string) => {
-    if (confirm('Are you sure you want to send this message? This action cannot be undone.')) {
-      sendCRMMessage(id);
+    setConfirmSendId(id);
+  };
+
+  const confirmAndSend = () => {
+    if (confirmSendId) {
+      sendCRMMessage(confirmSendId);
+      setConfirmSendId(null);
     }
   };
 
@@ -1388,6 +1395,57 @@ export default function CRMMessaging() {
               <div dangerouslySetInnerHTML={{ __html: renderEmailHTML(templateForm) }} />
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      {/* ── Send Confirmation Modal ──────────────────────────────── */}
+      <Dialog open={!!confirmSendId} onOpenChange={(open) => { if (!open) setConfirmSendId(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+              </div>
+              Confirm Send Message
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              Are you sure you want to send this message? This action cannot be undone. The message will be delivered to the selected recipients via the chosen channels.
+            </DialogDescription>
+          </DialogHeader>
+          {confirmSendId && (() => {
+            const msg = crmMessages.find(m => m.id === confirmSendId);
+            return msg ? (
+              <div className="my-2 p-4 bg-gray-50 dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700 space-y-2">
+                <div className="flex items-center gap-2">
+                  {getTypeIcon(msg.type)}
+                  <span className="font-semibold text-sm">{msg.title}</span>
+                </div>
+                <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">{msg.message}</p>
+                <div className="flex items-center gap-3 text-xs text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <Users className="w-3 h-3" />
+                    {msg.recipientType === 'all' ? 'All Users' : `${msg.recipientIds.length} user(s)`}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    {msg.channels.includes('in-app') && <Bell className="w-3 h-3" />}
+                    {msg.channels.includes('email') && <Mail className="w-3 h-3" />}
+                    {msg.channels.join(', ')}
+                  </span>
+                </div>
+              </div>
+            ) : null;
+          })()}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setConfirmSendId(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmAndSend}
+              className="bg-green-600 hover:bg-green-700 text-white gap-2"
+            >
+              <Send className="w-4 h-4" />
+              Send Now
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

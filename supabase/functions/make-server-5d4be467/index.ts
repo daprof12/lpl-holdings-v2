@@ -4,6 +4,7 @@
 // This version uses Supabase tables instead of KV store
 
 import { Hono } from "npm:hono";
+import supabase from "./supabaseClient.ts";
 import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 
@@ -588,6 +589,139 @@ app.put("/make-server-5d4be467/smtp-config", async (c) => {
     const result = await SMTPConfigService.update(config);
     return c.json(result);
   } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ============================================
+// EMAIL DISPATCH ENDPOINT
+// ============================================
+
+app.post("/make-server-5d4be467/send-email", async (c) => {
+  try {
+    const { to, subject, html, recipientIds, templateId } = await c.req.json();
+
+    // 1. Fetch SMTP config
+    const smtpConfig = await SMTPConfigService.get();
+    if (!smtpConfig || !smtpConfig.host) {
+      return c.json({ error: "SMTP is not configured. Go to CRM > SMTP Config to set up your email server." }, 400);
+    }
+
+    // 2. Resolve recipient email addresses
+    let recipientEmails: string[] = [];
+
+    if (to && Array.isArray(to)) {
+      recipientEmails = to;
+    } else if (to && typeof to === 'string') {
+      recipientEmails = [to];
+    } else if (recipientIds && Array.isArray(recipientIds) && recipientIds.length > 0) {
+      // Look up emails from user IDs
+      const { data: users, error: userErr } = await supabase
+        .from('users')
+        .select('email')
+        .in('id', recipientIds);
+      if (userErr) throw new Error(`Failed to look up recipients: ${userErr.message}`);
+      recipientEmails = (users || []).map((u: any) => u.email).filter(Boolean);
+    } else {
+      // Broadcast: get all user emails
+      const { data: users, error: userErr } = await supabase
+        .from('users')
+        .select('email')
+        .eq('role', 'user');
+      if (userErr) throw new Error(`Failed to look up users: ${userErr.message}`);
+      recipientEmails = (users || []).map((u: any) => u.email).filter(Boolean);
+    }
+
+    if (recipientEmails.length === 0) {
+      return c.json({ error: "No valid recipient email addresses found." }, 400);
+    }
+
+    // 3. Resolve template HTML if templateId was provided but no html
+    let emailHtml = html || '';
+    let emailSubject = subject || '';
+    if (templateId && !emailHtml) {
+      const template = await EmailTemplateService.getById(templateId);
+      if (template) {
+        emailSubject = emailSubject || template.subject || template.name;
+        // Use stored HTML if available, otherwise build basic from blocks
+        emailHtml = template.html_content || template.htmlContent || `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <h1>${template.hero_title || template.heroTitle || emailSubject}</h1>
+            ${(template.blocks || []).map((b: any) => {
+              if (b.type === 'text') return `<p>${b.content}</p>`;
+              if (b.type === 'button') return `<a href="${b.content?.url}" style="background: ${template.accent_color || '#E50914'}; color: #fff; padding: 12px 30px; border-radius: 4px; text-decoration: none; display: inline-block;">${b.content?.label}</a>`;
+              if (b.type === 'image') return `<img src="${b.content}" style="width: 100%; border-radius: 8px;" />`;
+              return '';
+            }).join('')}
+          </div>
+        `;
+      }
+    }
+
+    if (!emailHtml) {
+      emailHtml = `<div style="font-family: sans-serif; padding: 20px;"><h2>${emailSubject}</h2><p>This message was sent from LPL Premium CRM.</p></div>`;
+    }
+
+    // 4. Send emails via SMTP using fetch to a raw SMTP relay
+    //    Deno Deploy doesn't support raw TCP, so we use the Resend-compatible
+    //    approach or a simple HTTP-based SMTP relay.
+    //    For maximum compatibility, we'll use Deno's built-in fetch to call
+    //    the SMTP server if it supports HTTP API, or use nodemailer-compatible approach.
+    
+    const smtpHost = smtpConfig.host;
+    const smtpPort = parseInt(smtpConfig.port) || 587;
+    const smtpUser = smtpConfig.auth_user;
+    const smtpPass = smtpConfig.auth_pass;
+    const fromEmail = smtpConfig.from_email || smtpUser;
+    const fromName = smtpConfig.from_name || 'LPL Premium';
+
+    // Use denomailer for Deno SMTP
+    const { SMTPClient } = await import("https://deno.land/x/denomailer@1.6.0/mod.ts");
+
+    const client = new SMTPClient({
+      connection: {
+        hostname: smtpHost,
+        port: smtpPort,
+        tls: smtpPort === 465,
+        auth: {
+          username: smtpUser,
+          password: smtpPass,
+        },
+      },
+    });
+
+    const results: { email: string; success: boolean; error?: string }[] = [];
+
+    for (const email of recipientEmails) {
+      try {
+        await client.send({
+          from: `${fromName} <${fromEmail}>`,
+          to: email,
+          subject: emailSubject,
+          content: "auto",
+          html: emailHtml,
+        });
+        results.push({ email, success: true });
+      } catch (sendErr: any) {
+        console.error(`Failed to send to ${email}:`, sendErr);
+        results.push({ email, success: false, error: sendErr.message });
+      }
+    }
+
+    await client.close();
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+
+    return c.json({
+      success: true,
+      sent: successCount,
+      failed: failCount,
+      total: recipientEmails.length,
+      results,
+    });
+  } catch (error: any) {
+    console.error('Email dispatch error:', error);
     return c.json({ error: error.message }, 500);
   }
 });
