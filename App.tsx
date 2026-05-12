@@ -168,9 +168,9 @@ export default function App() {
                       </TicketProvider>
                     </AutoTraderProvider>
                   </TradingProvider>
+                  </InvestmentProvider>
                 </MarketDataProvider>
-              </InvestmentProvider>
-            </TransactionProvider>
+              </TransactionProvider>
           </LanguageProvider>
         </ThemeProvider>
       </AuthProvider>
