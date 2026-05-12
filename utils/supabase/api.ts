@@ -39,29 +39,42 @@ export const api = {
     },
     update: async (id: string, updates: any) => {
       const dbUpdates: any = {};
+      // Accept camelCase (legacy callers)
       if (updates.name !== undefined) dbUpdates.name = updates.name;
       if (updates.email !== undefined) dbUpdates.email = updates.email;
       if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
       if (updates.country !== undefined) dbUpdates.country = updates.country;
       if (updates.role !== undefined) dbUpdates.role = updates.role;
+      if (updates.accountType !== undefined) dbUpdates.account_type = updates.accountType;
+      if (updates.kycStatus !== undefined) dbUpdates.kyc_status = updates.kycStatus;
+      if (updates.emailVerified !== undefined) dbUpdates.email_verified = updates.emailVerified;
+      if (updates.phoneVerified !== undefined) dbUpdates.phone_verified = updates.phoneVerified;
+      if (updates.lastActive !== undefined || updates.lastActivityAt !== undefined) {
+        const val = updates.lastActive || updates.lastActivityAt;
+        dbUpdates.last_activity_at = typeof val === 'number' ? val : new Date(val).getTime();
+      }
+      if (updates.passwordHash !== undefined) dbUpdates.password_hash = updates.passwordHash;
+      if (updates.balance !== undefined) dbUpdates.balance = updates.balance;
+      if (updates.bonus !== undefined) dbUpdates.bonus = updates.bonus;
+      if (updates.credit !== undefined) dbUpdates.credit = updates.credit;
+      if (updates.hasInvestmentAccess !== undefined) dbUpdates.has_investment_access = updates.hasInvestmentAccess;
+      if (updates.hasAutoTradeAccess !== undefined) dbUpdates.has_auto_trade_access = updates.hasAutoTradeAccess;
+      if (updates.hasSignalAccess !== undefined) dbUpdates.has_signal_access = updates.hasSignalAccess;
+
+      // Also accept snake_case directly (pre-mapped callers like AuthContext.updateProfile)
       if (updates.account_type !== undefined) dbUpdates.account_type = updates.account_type;
       if (updates.kyc_status !== undefined) dbUpdates.kyc_status = updates.kyc_status;
       if (updates.email_verified !== undefined) dbUpdates.email_verified = updates.email_verified;
       if (updates.phone_verified !== undefined) dbUpdates.phone_verified = updates.phone_verified;
-      if (updates.is_online !== undefined) dbUpdates.is_online = updates.is_online;
-      if (updates.last_active !== undefined) {
-        dbUpdates.last_active = typeof updates.last_active === 'number' ? updates.last_active : new Date(updates.last_active).getTime();
-      }
       if (updates.password_hash !== undefined) dbUpdates.password_hash = updates.password_hash;
-      if (updates.balance !== undefined) dbUpdates.balance = updates.balance;
-      if (updates.bonus !== undefined) dbUpdates.bonus = updates.bonus;
-      if (updates.credit !== undefined) dbUpdates.credit = updates.credit;
-      if (updates.portfolio_balance !== undefined) dbUpdates.portfolio_balance = updates.portfolio_balance;
-      if (updates.ipo_balance !== undefined) dbUpdates.ipo_balance = updates.ipo_balance;
-      if (updates.ecn_balance !== undefined) dbUpdates.ecn_balance = updates.ecn_balance;
       if (updates.has_investment_access !== undefined) dbUpdates.has_investment_access = updates.has_investment_access;
       if (updates.has_auto_trade_access !== undefined) dbUpdates.has_auto_trade_access = updates.has_auto_trade_access;
       if (updates.has_signal_access !== undefined) dbUpdates.has_signal_access = updates.has_signal_access;
+      if (updates.updated_at !== undefined) dbUpdates.updated_at = updates.updated_at;
+      if (updates.subscription_plan !== undefined) dbUpdates.subscription_plan = updates.subscription_plan;
+      if (updates.portfolio_balance !== undefined) dbUpdates.portfolio_balance = updates.portfolio_balance;
+      if (updates.ipo_balance !== undefined) dbUpdates.ipo_balance = updates.ipo_balance;
+      if (updates.ecn_balance !== undefined) dbUpdates.ecn_balance = updates.ecn_balance;
 
       const { data, error } = await supabase.from('users').update(dbUpdates).eq('id', id).select().maybeSingle();
       if (error) throw error;
@@ -94,7 +107,7 @@ export const api = {
 
       // Delete the user from the custom table
       const { data, error } = await supabase.from('users').delete().eq('id', id).select();
-      
+
       // If RLS blocks it (0 rows returned) and there's no error, we throw
       if (error) throw error;
       if (!data || data.length === 0) {
@@ -195,18 +208,18 @@ export const api = {
         action: data.action, // 'login' or 'logout'
         description: `User ${data.action}`,
         metadata: {
-           device: data.device || 'Unknown',
-           success: data.success,
-           browser: data.browser,
-           ip: data.ip,
-           location: data.location,
-           userAgent: data.userAgent || data.device
+          device: data.device || 'Unknown',
+          success: data.success,
+          browser: data.browser,
+          ip: data.ip,
+          location: data.location,
+          userAgent: data.userAgent || data.device
         },
         resource: 'session',
         resource_type: 'session',
         created_at: Date.now()
       }).select().single();
-      
+
       if (error) {
         console.error('[API] loginHistory.log error:', error);
         return { success: false, error };
@@ -352,9 +365,9 @@ export const api = {
 
       // 3. Update position
       const { data, error } = await supabase.from('positions')
-        .update({ 
-          status: 'closed', 
-          exit_price: exitPrice, 
+        .update({
+          status: 'closed',
+          exit_price: exitPrice,
           profit: profit,
           closed_at: now,
           updated_at: now
@@ -362,7 +375,7 @@ export const api = {
         .eq('id', id)
         .select()
         .single();
-        
+
       if (error) throw error;
       return data;
     },
@@ -637,21 +650,38 @@ export const api = {
     },
   },
 
-  // Auto Trader
   autoTrader: {
-    getByUserId: (userId: string) => fetch(`${serverUrl}/auto-trader/user/${userId}`, { headers }).then(r => r.json()),
-    getAll: () => fetch(`${serverUrl}/auto-trader`, { headers }).then(r => r.json()),
-    create: (data: any) => fetch(`${serverUrl}/auto-trader`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    }).then(r => r.json()),
-    update: (id: string, updates: any) => fetch(`${serverUrl}/auto-trader/${id}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(updates)
-    }).then(r => r.json()),
-    delete: (id: string) => fetch(`${serverUrl}/auto-trader/${id}`, { method: 'DELETE', headers }).then(r => r.json())
+    getByUserId: async (userId: string) => {
+      const { data, error } = await supabase.from('auto_trader_configs').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+      if (error) { console.error('[API] autoTrader.getByUserId error:', error); return []; }
+      return data;
+    },
+    getAll: async () => {
+      const { data, error } = await supabase.from('auto_trader_configs').select('*').order('created_at', { ascending: false });
+      if (error) { console.error('[API] autoTrader.getAll error:', error); return []; }
+      return data;
+    },
+    create: async (data: any) => {
+      const dbData = {
+        id: crypto.randomUUID(),
+        ...data,
+        created_at: Date.now(),
+        updated_at: Date.now()
+      };
+      const { data: res, error } = await supabase.from('auto_trader_configs').insert(dbData).select().single();
+      if (error) throw error;
+      return res;
+    },
+    update: async (id: string, updates: any) => {
+      const { data: res, error } = await supabase.from('auto_trader_configs').update({ ...updates, updated_at: Date.now() }).eq('id', id).select().single();
+      if (error) throw error;
+      return res;
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase.from('auto_trader_configs').delete().eq('id', id);
+      if (error) throw error;
+      return true;
+    }
   },
 
   // Tickets — direct Supabase calls (bypasses broken server routes)
@@ -811,7 +841,7 @@ export const api = {
       };
       // Remove id from payload if it exists but is empty/invalid to let DB handle it
       if (!payload.id) delete payload.id;
-      
+
       const { data: res, error } = await supabase.from('system_memos').insert(payload).select().single();
       if (error) {
         console.error('[API] Error creating notification:', error);
@@ -918,7 +948,7 @@ export const api = {
       if (updates.message !== undefined || updates.content !== undefined) dbUpdates.message = updates.message || updates.content;
       if (updates.type !== undefined) dbUpdates.type = updates.type;
       if (updates.error_message !== undefined) dbUpdates.error_message = updates.error_message;
-      
+
       if (updates.sentAt || updates.sent_at) {
         const sent = updates.sentAt || updates.sent_at;
         dbUpdates.sent_at = typeof sent === 'number' ? sent : new Date(sent).getTime();
@@ -1001,7 +1031,7 @@ export const api = {
       if (data.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data.id)) {
         dbData.id = data.id;
       }
-      
+
       const { data: res, error } = await supabase.from('email_templates').insert(dbData).select().single();
       if (error) throw error;
       return res;
@@ -1070,7 +1100,7 @@ export const api = {
         created_at: new Date().toISOString(), // member_packages uses TIMESTAMPTZ
         updated_at: new Date().toISOString()
       };
-      
+
       if (data.expires_at || data.next_billing) {
         const expires = data.expires_at || data.next_billing;
         dbData.next_billing = typeof expires === 'number' ? new Date(expires).toISOString() : expires;

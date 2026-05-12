@@ -18,7 +18,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
   const { currentUser, logout } = useAuth();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoadingLogout, setIsLoadingLogout] = useState(false);
-  const { account, balanceLoaded } = useTrading();
+  const { account, balanceLoaded, isHydrated } = useTrading();
   const { pricesReady } = useMarketData();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
@@ -148,7 +148,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
           {/* Account Summary Stats — shown after search on xl+ screens */}
           <div className="flex items-center text-xs border-l border-gray-200 dark:border-slate-700 pl-1 min-w-0 overflow-x-auto scrollbar-hide">
             <div className="flex items-center divide-x divide-gray-200 dark:divide-slate-700">
-              {!balanceLoaded ? (
+              {!isHydrated || !balanceLoaded ? (
                 // Show skeleton stats while loading
                 Array.from({ length: 6 }).map((_, i) => (
                   <SkeletonStat key={i} />
@@ -181,7 +181,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
             >
               <Wallet className="w-4 h-4" />
               <div className="flex flex-col items-start">
-                {balanceLoaded ? (
+                {isHydrated && balanceLoaded ? (
                   <span className="font-semibold">${formatCurrency(account.balance)}</span>
                 ) : (
                   <Skeleton className="h-5 w-16" />

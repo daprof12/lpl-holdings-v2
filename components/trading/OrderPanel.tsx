@@ -105,7 +105,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
     if (!isEditMode && !isManualPrice) {
       setLimitPrice(activePrice.toString());
     }
-  }, [activePrice, activeSymbol, isEditMode, isManualPrice]);
+  }, [activeSymbol, isEditMode, isManualPrice]);
 
   // Reset SL/TP when symbol changes
   useEffect(() => {
@@ -500,7 +500,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
 
       {/* Scrollable Middle Content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="p-4 space-y-4 max-h-[300px]">
+        <div className="p-4 space-y-4">
           {/* Market Status Banner */}
           {!marketStatus.isOpen && (
             <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
@@ -652,8 +652,8 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
           </div>
 
           {/* Exits Section */}
-          <div>
-            <details className="group">
+          <div className="pt-2 border-t border-gray-100 dark:border-slate-700/50">
+            <details className="group" open>
               <summary className="flex items-center justify-between cursor-pointer text-sm py-2 text-gray-700 dark:text-gray-300">
                 <span>Exits</span>
                 <ChevronDown className="w-4 h-4 group-open:rotate-180 transition-transform" />

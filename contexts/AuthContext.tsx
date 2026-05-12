@@ -187,6 +187,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             kycStatus: u.kyc_status === 'approved' ? 'verified' : u.kyc_status === 'rejected' ? 'rejected' : 'not_started',
             accountType: u.account_type || 'standard',
             subscriptionPlan: sub.plan || u.subscription_plan || '',
+            // Use Math.max across all possible balance sources to handle historical data splits
             balance: Math.max(safeFloat(ta.balance), safeFloat(u.balance)),
             liveBalance: Math.max(safeFloat(ta.balance), safeFloat(u.balance)),
             credit: Math.max(safeFloat(ta.credit), safeFloat(u.credit)),
@@ -207,6 +208,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             },
             passwordHash: u.password_hash
           };
+        });
+
+        // Debug: log any users where ta.balance and u.balance disagree
+        processedUsers.forEach(pu => {
+          const ta = dbAccounts?.find((acc: any) => acc.user_id === pu.id);
+          const u = dbUsers.find((usr: any) => usr.id === pu.id);
+          if (ta && u && safeFloat(ta.balance) !== safeFloat(u.balance)) {
+            console.warn(`⚠️ Balance discrepancy for ${pu.email}: trading_accounts.balance=${safeFloat(ta.balance)}, users.balance=${safeFloat(u.balance)}, resolved=${pu.liveBalance}`);
+          }
         });
 
         setUsers(processedUsers);
@@ -323,10 +333,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 phone: u.phone || '',
                 kycStatus: u.kyc_status === 'approved' ? 'verified' : u.kyc_status === 'rejected' ? 'rejected' : 'not_started',
                 accountType: u.account_type || 'standard',
-                balance: parseFloat((ta as any)?.balance || u.balance || 0),
-                liveBalance: parseFloat((ta as any)?.balance || u.balance || 0),
-                credit: parseFloat((ta as any)?.credit ?? u.credit ?? 0),
-                bonus: parseFloat((ta as any)?.bonus ?? u.bonus ?? 0),
+                // Use Math.max across all possible balance sources to handle historical data splits
+                balance: Math.max(parseFloat((ta as any)?.balance || 0), parseFloat(u.balance || 0)),
+                liveBalance: Math.max(parseFloat((ta as any)?.balance || 0), parseFloat(u.balance || 0)),
+                credit: Math.max(parseFloat((ta as any)?.credit || 0), parseFloat(u.credit || 0)),
+                bonus: Math.max(parseFloat((ta as any)?.bonus || 0), parseFloat(u.bonus || 0)),
                 isVerified: u.email_verified || false,
                 phoneVerified: u.phone_verified || false,
                 createdAt: new Date(u.created_at || Date.now()),
@@ -384,7 +395,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const handleUsersUpdated = () => {
       // Refresh user data from DB instead of localStorage to avoid stale state
       loadInitialData();
-      
+
       // Also sync notifications
       const storedNotifications = localStorage.getItem('gross_notifications');
       if (storedNotifications) {
@@ -533,22 +544,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             console.log('⚡ Realtime Admin: User row changed', payload.eventType);
             // Instead of full reload, we can merge the update
             if (payload.new && (payload.new as any).id) {
-               const u = payload.new as any;
-               setUsers(prev => prev.map(old => old.id === u.id ? {
-                 ...old,
-                 hasInvestmentAccess: u.has_investment_access,
-                 hasAutoTradeAccess: u.has_auto_trade_access,
-                 hasSignalAccess: u.has_signal_access,
-                 isVerified: u.email_verified,
-                 phoneVerified: u.phone_verified,
-                 kycStatus: u.kyc_status === 'approved' ? 'verified' : u.kyc_status === 'rejected' ? 'rejected' : 'pending',
-                 liveBalance: parseFloat(u.balance || 0),
-                 investmentBalances: u.investment_balances || old.investmentBalances
-               } : old));
+              const u = payload.new as any;
+              setUsers(prev => prev.map(old => old.id === u.id ? {
+                ...old,
+                hasInvestmentAccess: u.has_investment_access,
+                hasAutoTradeAccess: u.has_auto_trade_access,
+                hasSignalAccess: u.has_signal_access,
+                isVerified: u.email_verified,
+                phoneVerified: u.phone_verified,
+                kycStatus: u.kyc_status === 'approved' ? 'verified' : u.kyc_status === 'rejected' ? 'rejected' : 'pending',
+                liveBalance: parseFloat(u.balance || 0),
+                investmentBalances: u.investment_balances || old.investmentBalances
+              } : old));
             } else if (payload.eventType === 'DELETE') {
-               setUsers(prev => prev.filter(old => old.id !== payload.old.id));
+              setUsers(prev => prev.filter(old => old.id !== payload.old.id));
             } else {
-               loadInitialData();
+              loadInitialData();
             }
           }
         )
@@ -637,6 +648,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           kycStatus: user.kyc_status === 'approved' ? 'verified' : user.kyc_status === 'rejected' ? 'rejected' : 'not_started',
           accountType: user.account_type || 'standard',
           subscriptionPlan: activeSub?.plan || user.subscription_plan || '',
+          // Use Math.max across all possible balance sources to handle historical data splits
           balance: Math.max(safeFloat((ta as any)?.balance), safeFloat(user.balance)),
           liveBalance: Math.max(safeFloat((ta as any)?.balance), safeFloat(user.balance)),
           credit: Math.max(safeFloat((ta as any)?.credit), safeFloat(user.credit)),
@@ -897,10 +909,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         sessionStorage.setItem('gross_current_user', JSON.stringify(updatedCurrentUser));
       }
 
-      toast.success('Profile updated successfully');
-
-      // Dispatch global event for other components to refresh
-      window.dispatchEvent(new Event('usersUpdated'));
+      // NOTE: Do NOT dispatch 'usersUpdated' here — that triggers loadInitialData()
+      // which re-fetches from DB and can race-overwrite the local state we just set.
+      // Each caller handles its own toast & any needed side-effects.
     } catch (err) {
       console.error('Failed to update profile:', err);
       toast.error('Failed to sync profile update.');

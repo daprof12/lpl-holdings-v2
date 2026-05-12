@@ -71,12 +71,12 @@ export default function TradingSettings() {
     try {
       const { error } = await supabase
         .from('global_settings')
-        .upsert({ 
+        .upsert({
           id: 'global_settings',
-          trading_config: { 
-            ...settings, 
+          trading_config: {
+            ...settings,
             autoTradeEnabled,
-            signalEnabled 
+            signalEnabled
           }
         });
 
@@ -105,7 +105,7 @@ export default function TradingSettings() {
     try {
       // 1. Update main user balance in relational DB
       await api.users.updateBalance(selectedLiveUserId, balance);
-      
+
       // 2. Update Trading Account record
       await api.tradingAccounts.update(selectedLiveUserId, {
         balance: balance,
@@ -116,10 +116,10 @@ export default function TradingSettings() {
       // 3. Clear positions/orders in DB (Assumes positions API exists for bulk clear if needed)
       // For now, we update local context
       updateUser(selectedLiveUserId, { balance: balance, liveBalance: balance });
-      
+
       const user = users.find(u => u.id === selectedLiveUserId);
       toast.success(`Live balance reset to $${balance.toFixed(2)} for ${user?.email || 'user'}`);
-      
+
       // Send notification to user
       addNotification(selectedLiveUserId, {
         type: 'warning',
@@ -149,21 +149,21 @@ export default function TradingSettings() {
     };
 
     localStorage.setItem('gross_live_account', JSON.stringify(liveAccount));
-    
+
     // Clear all positions and orders
     localStorage.setItem('gross_live_positions', JSON.stringify([]));
     localStorage.setItem('gross_live_orders', JSON.stringify([]));
-    
+
     // Trigger storage event
     window.dispatchEvent(new Event('storage'));
-    
+
     toast.success(`All users' live balances reset to $${settings.defaultLiveBalance.toFixed(2)}`);
   };
 
   const toggleInvestmentAccess = async (userId: string, enabled: boolean) => {
     try {
       await updateUser(userId, { hasInvestmentAccess: enabled });
-      
+
       const user = users.find(u => u.id === userId);
       toast.success(
         `Investment access ${enabled ? 'enabled' : 'disabled'} for ${user?.email || 'user'}`
@@ -207,7 +207,7 @@ export default function TradingSettings() {
   // Helper function to get user balances from source of truth
   const getUserBalances = (userId: string) => {
     const user = users.find(u => u.id === userId);
-    
+
     const walletBalance = user?.liveBalance ?? user?.balance ?? 0;
     const ecn = user?.investmentBalances?.ecn ?? 0;
     const ipo = user?.investmentBalances?.ipo ?? 0;
@@ -233,28 +233,28 @@ export default function TradingSettings() {
       if (balanceType === 'wallet') {
         // 1. Update per-user wallet account in DB
         await api.users.updateBalance(selectedUserForBalance, amount);
-        await api.tradingAccounts.update(selectedUserForBalance, { 
-          balance: amount, 
+        await api.tradingAccounts.update(selectedUserForBalance, {
+          balance: amount,
           available_funds: amount,
-          equity: amount 
+          equity: amount
         });
-        
+
         // 2. Sync to local context
         updateUser(selectedUserForBalance, { balance: amount, liveBalance: amount });
-        
+
         toast.success(`Wallet balance updated to $${amount.toFixed(2)}`);
       } else {
         // Update ECN, IPO, or Portfolio balance in DB
         const updates = { [balanceType]: amount };
         await api.investmentWallets.update(selectedUserForBalance, updates);
-        
+
         // Sync to local context
         const user = users.find(u => u.id === selectedUserForBalance);
         if (user) {
           const newInvestments = { ...(user.investmentBalances || { ipo: 0, ecn: 0, portfolio: 0 }), ...updates };
           updateUser(selectedUserForBalance, { investmentBalances: newInvestments });
         }
-        
+
         toast.success(`${balanceType.toUpperCase()} balance updated to $${amount.toFixed(2)}`);
       }
 
@@ -324,15 +324,15 @@ export default function TradingSettings() {
       const newBalances = { ...balances };
       newBalances[transferFrom] -= amount;
       newBalances[transferTo] += amount;
-      
-      updateUser(selectedUserForBalance, { 
-        balance: newBalances.wallet, 
+
+      updateUser(selectedUserForBalance, {
+        balance: newBalances.wallet,
         liveBalance: newBalances.wallet,
         investmentBalances: { ipo: newBalances.ipo, ecn: newBalances.ecn, portfolio: newBalances.portfolio }
       });
 
       toast.success(`Transferred $${amount.toFixed(2)} from ${transferFrom} to ${transferTo}`);
-      
+
       setTransferFundsModal(false);
       setTransferAmount('');
       setSelectedUserForBalance('');
@@ -376,7 +376,7 @@ export default function TradingSettings() {
   const toggleAutoTradeAccess = async (userId: string, enabled: boolean) => {
     try {
       await updateUser(userId, { hasAutoTradeAccess: enabled });
-      
+
       const user = users.find(u => u.id === userId);
       toast.success(
         `Auto Trade access ${enabled ? 'enabled' : 'disabled'} for ${user?.email || 'user'}`
@@ -391,7 +391,7 @@ export default function TradingSettings() {
   const toggleSignalAccess = async (userId: string, enabled: boolean) => {
     try {
       await updateUser(userId, { hasSignalAccess: enabled });
-      
+
       const user = users.find(u => u.id === userId);
       toast.success(
         `Signal access ${enabled ? 'enabled' : 'disabled'} for ${user?.email || 'user'}`
@@ -556,8 +556,8 @@ export default function TradingSettings() {
                   />
                 </div>
 
-                <Button 
-                  onClick={handleResetUserLiveBalance} 
+                <Button
+                  onClick={handleResetUserLiveBalance}
                   className="w-full bg-emerald-600 hover:bg-emerald-700"
                   disabled={!selectedLiveUserId}
                 >
@@ -589,7 +589,7 @@ export default function TradingSettings() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4">
-              <Button 
+              <Button
                 onClick={handleResetAllUsersLiveBalance}
                 variant="destructive"
                 className="flex-1"
@@ -745,24 +745,24 @@ export default function TradingSettings() {
                   <Label htmlFor="investmentAccess" className="mb-2 block">
                     Investment Access
                   </Label>
-                  <div className="flex items-center">
-                    <Button 
-                      onClick={() => toggleInvestmentAccess(selectedLiveUserId, true)} 
-                      className="w-full"
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                      onClick={() => toggleInvestmentAccess(selectedLiveUserId, true)}
+                      className="flex-1"
                       variant="outline"
                       disabled={!selectedLiveUserId}
                     >
                       <Unlock className="w-4 h-4 mr-2" />
-                      Enable Investment Access
+                      Enable Access
                     </Button>
-                    <Button 
-                      onClick={() => toggleInvestmentAccess(selectedLiveUserId, false)} 
-                      className="w-full"
+                    <Button
+                      onClick={() => toggleInvestmentAccess(selectedLiveUserId, false)}
+                      className="flex-1"
                       variant="outline"
                       disabled={!selectedLiveUserId}
                     >
                       <Lock className="w-4 h-4 mr-2" />
-                      Disable Investment Access
+                      Disable Access
                     </Button>
                   </div>
                 </div>
@@ -790,7 +790,7 @@ export default function TradingSettings() {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-4">
-                <Button 
+                <Button
                   onClick={enableAllInvestmentAccess}
                   variant="destructive"
                   className="flex-1"
@@ -798,7 +798,7 @@ export default function TradingSettings() {
                   <Unlock className="w-4 h-4 mr-2" />
                   Enable Investment Access for All Users
                 </Button>
-                <Button 
+                <Button
                   onClick={disableAllInvestmentAccess}
                   variant="destructive"
                   className="flex-1"
@@ -914,18 +914,18 @@ export default function TradingSettings() {
                     Auto Trade Access
                   </Label>
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <Button 
-                      onClick={() => toggleAutoTradeAccess(selectedLiveUserId, true)} 
-                      className="w-full"
+                    <Button
+                      onClick={() => toggleAutoTradeAccess(selectedLiveUserId, true)}
+                      className="flex-1"
                       variant="outline"
                       disabled={!selectedLiveUserId}
                     >
                       <Unlock className="w-4 h-4 mr-2" />
                       Enable Access
                     </Button>
-                    <Button 
-                      onClick={() => toggleAutoTradeAccess(selectedLiveUserId, false)} 
-                      className="w-full"
+                    <Button
+                      onClick={() => toggleAutoTradeAccess(selectedLiveUserId, false)}
+                      className="flex-1"
                       variant="outline"
                       disabled={!selectedLiveUserId}
                     >
@@ -958,14 +958,14 @@ export default function TradingSettings() {
               </div>
 
               <div className="flex flex-col gap-4">
-                <Button 
+                <Button
                   onClick={enableAllAutoTradeAccess}
                   className="w-full bg-green-600 hover:bg-green-700"
                 >
                   <Unlock className="w-4 h-4 mr-2" />
                   Enable Auto Trade for All Users
                 </Button>
-                <Button 
+                <Button
                   onClick={disableAllAutoTradeAccess}
                   variant="destructive"
                   className="w-full"
@@ -1081,18 +1081,18 @@ export default function TradingSettings() {
                     Signal Access
                   </Label>
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <Button 
-                      onClick={() => toggleSignalAccess(selectedLiveUserId, true)} 
-                      className="w-full"
+                    <Button
+                      onClick={() => toggleSignalAccess(selectedLiveUserId, true)}
+                      className="flex-1"
                       variant="outline"
                       disabled={!selectedLiveUserId}
                     >
                       <Unlock className="w-4 h-4 mr-2" />
                       Enable Access
                     </Button>
-                    <Button 
-                      onClick={() => toggleSignalAccess(selectedLiveUserId, false)} 
-                      className="w-full"
+                    <Button
+                      onClick={() => toggleSignalAccess(selectedLiveUserId, false)}
+                      className="flex-1"
                       variant="outline"
                       disabled={!selectedLiveUserId}
                     >
@@ -1125,14 +1125,14 @@ export default function TradingSettings() {
               </div>
 
               <div className="flex flex-col gap-4">
-                <Button 
+                <Button
                   onClick={enableAllSignalAccess}
                   className="w-full bg-green-600 hover:bg-green-700"
                 >
                   <Unlock className="w-4 h-4 mr-2" />
                   Enable Signal for All Users
                 </Button>
-                <Button 
+                <Button
                   onClick={disableAllSignalAccess}
                   variant="destructive"
                   className="w-full"

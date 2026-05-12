@@ -219,14 +219,30 @@ export default function UserManagement() {
     const user = users.find(u => u.id === userId);
     if (user) {
       setSelectedUserId(userId);
+
+      // Always fetch the freshest balance directly from both DB tables to avoid
+      // showing a stale cached value of $0 in the balance field.
+      let freshBalance = user.liveBalance ?? user.balance ?? 0;
+      try {
+        const [ta, u] = await Promise.all([
+          api.tradingAccounts.getByUserId(userId),
+          api.users.getById(userId),
+        ]);
+        const taBalance = parseFloat((ta as any)?.balance ?? 0);
+        const uBalance = parseFloat((u as any)?.balance ?? 0);
+        freshBalance = Math.max(taBalance, uBalance);
+      } catch (e) {
+        console.warn('Could not refresh balance from DB for edit modal:', e);
+      }
+
       setFormData({
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
-        password: user.passwordHash || '', 
+        password: user.passwordHash || '',
         phone: user.phone || '',
         country: user.country || '',
-        balance: (user.liveBalance ?? user.balance ?? 0).toString(),
+        balance: freshBalance.toString(),
         portfolioBalance: (user.investmentBalances?.portfolio || 0).toString(),
         ipoBalance: (user.investmentBalances?.ipo || 0).toString(),
         ecnBalance: (user.investmentBalances?.ecn || 0).toString(),
@@ -241,6 +257,7 @@ export default function UserManagement() {
       setShowDialog(true);
     }
   };
+
 
   const handleView = (userId: string) => {
     setSelectedUserId(userId);
@@ -288,12 +305,19 @@ export default function UserManagement() {
       // Update investment balances in DB
       await api.investmentWallets.update(selectedUserId, newInvestmentBalances);
 
-      // Update Trading Account in DB
-      await api.tradingAccounts.update(selectedUserId, {
-        balance: parseFloat(formData.balance) || 0,
+      // Update Trading Account in DB — only overwrite balance if the new value is
+      // explicitly set (positive), OR if admin is intentionally zeroing it out AND
+      // the current DB balance is also 0. This prevents accidental wipe-outs.
+      const newBalance = parseFloat(formData.balance) || 0;
+      const taUpdates: any = {
         bonus: parseFloat(formData.bonus) || 0,
         credit: parseFloat(formData.credit) || 0
-      });
+      };
+      if (newBalance > 0) {
+        taUpdates.balance = newBalance;
+        taUpdates.available_funds = Math.max(0, newBalance - parseFloat(String(user.account?.margin ?? 0)));
+      }
+      await api.tradingAccounts.update(selectedUserId, taUpdates);
 
       // Update password if changed in edit mode
       if (formData.password && formData.password !== user.passwordHash) {

@@ -245,7 +245,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       }
 
       // Set account
-      if (dbAccount || auth.currentUser) {
+      if (dbAccount) {
         // Calculate net deposits from history
         let netDeposits = 0;
         if (Array.isArray(dbDeposits)) {
@@ -259,27 +259,73 @@ export function TradingProvider({ children }: { children: ReactNode }) {
             .reduce((sum: number, w: any) => sum + parseFloat(w.amount || 0), 0);
         }
 
+        // ── Self-healing balance sync ──────────────────────────────────────────
+        // If trading_accounts.balance is 0 but users table has a non-zero balance
+        // (e.g., from a direct DB edit or legacy admin action), treat the users
+        // balance as canonical and sync it back to trading_accounts automatically.
+        // This permanently fixes split-table data discrepancies.
+        const dbBalance = parseFloat(dbAccount.balance || 0);
+        const userBalance = parseFloat(auth.currentUser?.liveBalance || 0);
+        let resolvedBalance = dbBalance;
+
+        if (dbBalance === 0 && userBalance > 0) {
+          console.warn(`⚠️ Balance discrepancy detected for user ${userId}: trading_accounts.balance=0 but users.balance=${userBalance}. Auto-healing...`);
+          resolvedBalance = userBalance;
+          // Write the correct balance back to trading_accounts so future loads are consistent
+          api.tradingAccounts.update(userId, {
+            balance: userBalance,
+            available_funds: Math.max(0, userBalance - parseFloat(dbAccount.margin || 0))
+          }).catch(err => console.error('Failed to self-heal balance discrepancy:', err));
+        }
+        // ──────────────────────────────────────────────────────────────────────
+
         setAccount({
-          balance: Math.max(
-            parseFloat(dbAccount?.balance ?? 0),
-            parseFloat(auth.currentUser?.balance ?? 0),
-            parseFloat(auth.currentUser?.liveBalance ?? 0)
-          ),
-          equity: parseFloat(dbAccount?.equity || 0),
-          realizedPnL: parseFloat(dbAccount?.realized_pnl || 0),
-          unrealizedPnL: parseFloat(dbAccount?.unrealized_pnl || 0),
-          margin: parseFloat(dbAccount?.margin || 0),
-          availableFunds: parseFloat(dbAccount?.available_funds || 0),
-          bonus: parseFloat(dbAccount?.bonus ?? auth.currentUser?.bonus ?? 0),
-          credit: parseFloat(dbAccount?.credit ?? auth.currentUser?.credit ?? 0),
-          netDeposits: netDeposits > 0 ? netDeposits : parseFloat(dbAccount?.balance || 0) - parseFloat(dbAccount?.realized_pnl || 0),
+          balance: resolvedBalance,
+          equity: parseFloat(dbAccount.equity || 0),
+          realizedPnL: parseFloat(dbAccount.realized_pnl || 0),
+          unrealizedPnL: parseFloat(dbAccount.unrealized_pnl || 0),
+          margin: parseFloat(dbAccount.margin || 0),
+          availableFunds: parseFloat(dbAccount.available_funds || 0) || Math.max(0, resolvedBalance - parseFloat(dbAccount.margin || 0)),
+          bonus: parseFloat(dbAccount.bonus || 0),
+          credit: parseFloat(dbAccount.credit || 0),
+          netDeposits: netDeposits > 0 ? netDeposits : resolvedBalance - parseFloat(dbAccount.realized_pnl || 0),
+        });
+        setBalanceLoaded(true);
+      } else if (auth.currentUser) {
+        // trading_accounts record is completely missing — initialize from users table
+        // and insert a new trading_accounts record to normalize data.
+        const fallbackBalance = parseFloat(auth.currentUser.liveBalance || 0);
+        console.warn(`⚠️ No trading_accounts record found for user ${userId}. Creating one from users.balance=${fallbackBalance}...`);
+        api.tradingAccounts.insert({
+          user_id: userId,
+          balance: fallbackBalance,
+          equity: fallbackBalance,
+          margin: 0,
+          available_funds: fallbackBalance,
+          bonus: parseFloat(auth.currentUser.bonus || 0),
+          credit: parseFloat(auth.currentUser.credit || 0),
+          currency: 'USD'
+        }).catch(err => console.error('Failed to auto-create trading_accounts record:', err));
+
+        setAccount({
+          balance: fallbackBalance,
+          equity: fallbackBalance,
+          realizedPnL: 0,
+          unrealizedPnL: 0,
+          margin: 0,
+          availableFunds: fallbackBalance,
+          bonus: parseFloat(auth.currentUser.bonus || 0),
+          credit: parseFloat(auth.currentUser.credit || 0),
+          netDeposits: fallbackBalance,
         });
         setBalanceLoaded(true);
       }
+
     } catch (error) {
       console.error('Error fetching all trading data:', error);
     }
   };
+
 
   // ============================================
   // LOAD DATA FROM DATABASE ON MOUNT

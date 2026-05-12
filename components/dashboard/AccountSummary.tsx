@@ -134,7 +134,7 @@ export default function AccountSummary() {
         const Icon = card.icon;
         
         // Determine if this card should show skeleton
-        const showSkeleton = (card.needsBalance && !balanceLoaded) || (card.needsPrices && !metricsReady);
+        const showSkeleton = !isHydrated || (card.needsBalance && !balanceLoaded) || (card.needsPrices && !metricsReady);
 
         if (showSkeleton) {
           return (

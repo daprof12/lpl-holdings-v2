@@ -540,8 +540,8 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
           </div>
 
           {/* Exits Section */}
-          <div className="mb-4">
-            <details className="group">
+          <div className="mb-4 pt-2 border-t border-gray-100 dark:border-slate-700/50">
+            <details className="group" open>
               <summary className="flex items-center justify-between cursor-pointer text-sm py-2 text-gray-700 dark:text-gray-300">
                 <span>Exits</span>
                 <ChevronDown className="w-4 h-4 group-open:rotate-180 transition-transform" />
