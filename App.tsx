@@ -89,8 +89,8 @@ export default function App() {
         <ThemeProvider>
           <LanguageProvider>
             <TransactionProvider>
-              <InvestmentProvider>
-                <MarketDataProvider>
+              <MarketDataProvider>
+                <InvestmentProvider>
                   <TradingProvider>
                     <AutoTraderProvider>
                       <TicketProvider>

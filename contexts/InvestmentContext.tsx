@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
 import { useAuth } from './AuthContext';
+import { useMarketData } from './MarketDataContext';
 import { api } from '../utils/supabase/api';
 import { supabase, serverUrl } from '../utils/supabase/client';
 import { publicAnonKey } from '../utils/supabase/info';
@@ -121,6 +122,7 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const { currentUser } = useAuth();
+  const marketData = useMarketData();
 
   // Refresh functions v2.0
   const refreshOffers = async () => {
@@ -248,6 +250,38 @@ export function InvestmentProvider({ children }: { children: ReactNode }) {
       supabase.removeChannel(offersSubscription);
     };
   }, [currentUser?.id]);
+
+  // ── WebSocket Price Integration ──────────────────────────────────────────
+  
+  // 1. Automatically subscribe to all asset symbols in ECN offers
+  useEffect(() => {
+    const symbolsToSubscribe = investmentOffers
+      .filter(o => o.type === 'ECN' && o.assetSymbol)
+      .map(o => o.assetSymbol as string);
+    
+    symbolsToSubscribe.forEach(sym => marketData.subscribeToSymbol(sym));
+  }, [investmentOffers, marketData.subscribeToSymbol]);
+
+  // 2. React to live price changes and update the offer list state
+  useEffect(() => {
+    const hasPriceUpdates = investmentOffers.some(offer => {
+      if (offer.type !== 'ECN' || !offer.assetSymbol) return false;
+      const livePrice = marketData.getPrice(offer.assetSymbol)?.price;
+      return livePrice && livePrice !== offer.marketPrice;
+    });
+
+    if (hasPriceUpdates) {
+      setInvestmentOffers(prevOffers => prevOffers.map(offer => {
+        if (offer.type === 'ECN' && offer.assetSymbol) {
+          const livePrice = marketData.getPrice(offer.assetSymbol)?.price;
+          if (livePrice && livePrice !== offer.marketPrice) {
+            return { ...offer, marketPrice: livePrice };
+          }
+        }
+        return offer;
+      }));
+    }
+  }, [marketData.prices, marketData.getPrice]);
 
   // Legacy sync logic and real-time listeners removed
   // All state changes are now triggered via API calls with local refresh
