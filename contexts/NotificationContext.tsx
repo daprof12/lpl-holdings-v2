@@ -452,7 +452,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
             // Use fully rendered HTML from metadata if available (generated when CRM message was created)
             if (message.metadata?.htmlContent) {
-              emailPayload.html = message.metadata.htmlContent;
+              emailPayload.html = message.metadata.htmlContent.replace(/[ \t]+$/gm, '');
             } else if (message.metadata?.emailTemplateId) {
               emailPayload.templateId = message.metadata.emailTemplateId;
             } else {
@@ -467,7 +467,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                     Sent by LPL Premium
                   </div>
                 </div>
-              `;
+              `.replace(/[ \t]+$/gm, '');
             }
 
             // Set recipients

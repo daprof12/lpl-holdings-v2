@@ -29,7 +29,8 @@ import {
   ListChecks,
   Square,
   Copy,
-  Image as ImageIcon
+  Image as ImageIcon,
+  GripVertical
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -64,6 +65,7 @@ export default function CRMMessaging() {
   const [editingMessage, setEditingMessage] = useState<CRMMessage | null>(null);
   const [previewMessage, setPreviewMessage] = useState<CRMMessage | null>(null);
   const [confirmSendId, setConfirmSendId] = useState<string | null>(null);
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   
   // Form state
   const [messageType, setMessageType] = useState<'general' | 'personal' | 'promo' | 'announcement' | 'offer'>('general');
@@ -352,7 +354,7 @@ export default function CRMMessaging() {
           <p>This message was mailed to you. If you no longer wish to receive these emails, you can <a href="#" style="color: #E50914; text-decoration: underline;">unsubscribe here</a>.</p>
         </div>
       </div>
-    `;
+    `.replace(/[ \t]+$/gm, '');
   };
 
   const toggleChannel = (channel: NotificationChannel) => {
@@ -1320,14 +1322,34 @@ export default function CRMMessaging() {
               </div>
 
                 <div className="space-y-4">
-                  {templateForm.blocks.map((block: any, idx) => (
-                    <div key={block.id} className="p-4 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl relative group">
-                      <button 
-                        onClick={() => removeBlock(block.id)}
-                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+                  {templateForm.blocks.map((block: any, idx: number) => (
+                    <div 
+                      key={block.id} 
+                      draggable
+                      onDragStart={() => setDraggedIdx(idx)}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (draggedIdx === null || draggedIdx === idx) return;
+                        const newBlocks = [...templateForm.blocks];
+                        const draggedBlock = newBlocks[draggedIdx];
+                        newBlocks.splice(draggedIdx, 1);
+                        newBlocks.splice(idx, 0, draggedBlock);
+                        setTemplateForm({ ...templateForm, blocks: newBlocks });
+                        setDraggedIdx(idx);
+                      }}
+                      onDragEnd={() => setDraggedIdx(null)}
+                      className={`p-4 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl relative group transition-all ${draggedIdx === idx ? 'opacity-40 border-dashed border-blue-400' : ''}`}
+                    >
+                      <div className="absolute top-4 left-2 cursor-grab text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 active:cursor-grabbing">
+                        <GripVertical className="w-4 h-4" />
+                      </div>
+                      <div className="pl-6">
+                        <button 
+                          onClick={() => removeBlock(block.id)}
+                          className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
 
                       <div className="flex items-center gap-2 mb-2 text-[10px] font-bold uppercase text-gray-400">
                         {block.type === 'text' && <Type className="w-3 h-3" />}
@@ -1423,6 +1445,7 @@ export default function CRMMessaging() {
                           </Button>
                         </div>
                       )}
+                      </div>
                     </div>
                   ))}
                   {templateForm.blocks.length === 0 && (
