@@ -207,48 +207,9 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
 
   const confirmClosePosition = () => {
     if (!positionToClose) return;
-    const position = positionToClose;
-    const priceDiff = position.side === 'buy'
-      ? currentPrice - position.entryPrice
-      : position.entryPrice - currentPrice;
-    const pnl = priceDiff * position.units;
-
-    removePosition(position.id);
-
-    const historyItem: HistoryItem = {
-      id: position.id,
-      userId: position.userId,
-      symbol: position.symbol,
-      side: position.side,
-      type: 'market',
-      units: position.units,
-      price: currentPrice,
-      entryPrice: position.entryPrice,
-      entryTimestamp: position.timestamp,
-      pnl,
-      timestamp: new Date(),
-      status: 'closed',
-      mode: tradingMode
-    };
-    addHistory(historyItem);
-
-    // Compute remaining unrealized P&L and margin from other open positions
-    const remainingPositions = positions.filter(p => p.id !== position.id);
-    const remainingUnrealizedPnL = remainingPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
-    const remainingMargin = remainingPositions.reduce((sum, p) => sum + (p.margin || 0), 0);
-    const newBalance = account.balance + pnl;
-    const newEquity = newBalance + remainingUnrealizedPnL;
-
-    updateAccount({
-      balance: newBalance,
-      equity: newEquity,
-      realizedPnL: account.realizedPnL + pnl,
-      unrealizedPnL: remainingUnrealizedPnL,
-      margin: remainingMargin,
-      availableFunds: newEquity - remainingMargin,
-    });
-
-    toast.success(`Position closed: ${pnl >= 0 ? 'Profit' : 'Loss'} of $${Math.abs(pnl).toFixed(2)}`);
+    // removePosition now handles P&L calculation, balance update,
+    // DB persistence, and history entry (via DB trigger)
+    removePosition(positionToClose.id);
     setPositionToClose(null);
   };
 

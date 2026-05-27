@@ -370,6 +370,21 @@ export default function TradeManagement() {
         const res = await api.positions.close(tradeId, position.currentPrice);
         
         if (res) {
+          // Update user balance
+          const priceDiff = position.type === 'long' 
+            ? position.currentPrice - position.entryPrice 
+            : position.entryPrice - position.currentPrice;
+          const pnl = priceDiff * position.quantity;
+          
+          const accountRes = await api.tradingAccounts.get(position.userId);
+          if (accountRes) {
+            const newBalance = (accountRes.balance || 0) + pnl;
+            await Promise.all([
+              api.tradingAccounts.update(position.userId, { balance: newBalance }),
+              api.users.updateBalance(position.userId, newBalance)
+            ]).catch(err => console.error("Admin force close balance update failed:", err));
+          }
+
           toast.success('Trade force closed successfully');
           // Realtime will refresh the lists automatically
         }
@@ -458,6 +473,16 @@ export default function TradeManagement() {
           updates.profit = calculatedPnl;
           await api.positions.update(selectedTrade.id, updates);
           await api.positions.close(selectedTrade.id, newCurrentPrice);
+          
+          // Update user balance
+          const accountRes = await api.tradingAccounts.get(selectedTrade.userId);
+          if (accountRes) {
+            const newBalance = (accountRes.balance || 0) + calculatedPnl;
+            await Promise.all([
+              api.tradingAccounts.update(selectedTrade.userId, { balance: newBalance }),
+              api.users.updateBalance(selectedTrade.userId, newBalance)
+            ]).catch(err => console.error("Admin balance update failed:", err));
+          }
         } else {
           await api.positions.update(selectedTrade.id, updates);
         }

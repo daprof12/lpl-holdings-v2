@@ -112,10 +112,10 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 
 // ─── Storage helpers ────────────────────────────────────────────────────────
 
-const NOTIF_KEY     = 'gross_notifications';
-const CRM_KEY       = 'gross_crm_messages';
+const NOTIF_KEY = 'gross_notifications';
+const CRM_KEY = 'gross_crm_messages';
 const TEMPLATES_KEY = 'gross_email_templates';
-const SMTP_KEY      = 'gross_smtp_config';
+const SMTP_KEY = 'gross_smtp_config';
 
 // Legacy load helpers removed - using API directly
 
@@ -125,8 +125,8 @@ function loadCRMMessages(): CRMMessage[] {
     if (!raw) return [];
     return (JSON.parse(raw) as any[]).map(m => ({
       ...m,
-      createdAt:    new Date(m.createdAt),
-      sentAt:       m.sentAt       ? new Date(m.sentAt)       : undefined,
+      createdAt: new Date(m.createdAt),
+      sentAt: m.sentAt ? new Date(m.sentAt) : undefined,
       scheduledFor: m.scheduledFor ? new Date(m.scheduledFor) : undefined,
     }));
   } catch {
@@ -138,7 +138,7 @@ function loadCRMMessages(): CRMMessage[] {
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [crmMessages,   setCrmMessages]   = useState<CRMMessage[]>(loadCRMMessages);
+  const [crmMessages, setCrmMessages] = useState<CRMMessage[]>(loadCRMMessages);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
   const [smtpConfig, setSmtpConfig] = useState<SMTPConfig | null>(null);
   const [loading, setLoading] = useState(false);
@@ -162,7 +162,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       try {
         setLoading(true);
         console.log('🔄 Loading notification data from relational API...');
-        
+
         const [dbNotifs, dbCrm, dbTemplates, dbSmtp] = await Promise.all([
           api.notifications.getAll().catch(e => { console.error('Notif error', e); return null; }),
           api.crm.getAll().catch(e => { console.error('CRM error', e); return null; }),
@@ -232,7 +232,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             fromName: dbSmtp.from_name
           });
         }
-        
+
         console.log('✅ Notification data loaded');
       } catch (error) {
         console.error('Failed to load notifications from database:', error);
@@ -248,27 +248,27 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // Refresh notifications v2.0
   const refreshNotifications = useCallback(async () => {
     if (currentUser?.id) {
-       setLoading(true);
-       try {
-         const dbNotifs = await api.notifications.getAll();
-         if (Array.isArray(dbNotifs)) {
-             setNotifications(dbNotifs.map((n: any) => ({
-               id: n.id,
-               type: n.type,
-               title: n.title,
-               message: n.message,
-               timestamp: new Date(Number(n.created_at)),
-               read: n.is_read || false,
-               userId: n.user_id,
-               channels: n.channels || ['in-app'],
-               isVisibleToUser: n.is_visible ?? false,
-               relatedId: n.related_id,
-               metadata: n.metadata
-             })));
-         }
-       } finally {
-         setLoading(false);
-       }
+      setLoading(true);
+      try {
+        const dbNotifs = await api.notifications.getAll();
+        if (Array.isArray(dbNotifs)) {
+          setNotifications(dbNotifs.map((n: any) => ({
+            id: n.id,
+            type: n.type,
+            title: n.title,
+            message: n.message,
+            timestamp: new Date(Number(n.created_at)),
+            read: n.is_read || false,
+            userId: n.user_id,
+            channels: n.channels || ['in-app'],
+            isVisibleToUser: n.is_visible ?? false,
+            relatedId: n.related_id,
+            metadata: n.metadata
+          })));
+        }
+      } finally {
+        setLoading(false);
+      }
     }
   }, [currentUser?.id]);
 
@@ -326,7 +326,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       // In a real app we'd have a bulk update endpoint
       // For now we'll just update local state and let the server catch up or do individual calls
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    } catch (err) {}
+    } catch (err) { }
   }, []);
 
   const deleteNotification = useCallback(async (notificationId: string) => {
@@ -342,7 +342,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     try {
       // Logic for bulk delete
       setNotifications([]);
-    } catch (err) {}
+    } catch (err) { }
   }, []);
 
   // ─── CRM ────────────────────────────────────────────────────────────────
@@ -413,12 +413,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
         // Update CRM status to 'sent'
         await api.crm.update(id, { status: 'sent', sent_at: Date.now() });
-        
+
         const notifType: NotificationType =
-          message.type === 'promo'        ? 'promo'
-          : message.type === 'announcement' ? 'announcement'
-          : message.type === 'offer'        ? 'offer'
-          : 'info';
+          message.type === 'promo' ? 'promo'
+            : message.type === 'announcement' ? 'announcement'
+              : message.type === 'offer' ? 'offer'
+                : 'info';
 
         // Create in-app notifications
         if (message.recipientType === 'all') {
@@ -479,7 +479,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
             const emailResult = await api.sendEmail(emailPayload);
             console.log('📧 Email dispatch result:', emailResult);
-            
+
             if (emailResult.failed > 0) {
               toast.warning(`Email sent to ${emailResult.sent}/${emailResult.total} recipients (${emailResult.failed} failed)`);
             } else {
@@ -490,7 +490,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             toast.error(`Email delivery failed: ${emailErr.message}`);
           }
         }
-        
+
         setCrmMessages(prev =>
           prev.map(m => m.id === id ? { ...m, status: 'sent', sentAt: new Date() } : m)
         );
@@ -521,7 +521,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       } else {
         res = await api.emailTemplates.create(template);
       }
-      
+
       // Reload templates to ensure state is in sync
       const allTemplates = await api.emailTemplates.getAll();
       if (Array.isArray(allTemplates)) {

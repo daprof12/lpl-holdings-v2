@@ -11,7 +11,7 @@ import { formatPercentage, formatCurrency } from '../../utils/formatNumber';
 import { SkeletonRow, SkeletonMobileCard, Skeleton } from '../ui/skeleton';
 
 export default function OpenPositions() {
-  const { positions, removePosition, updatePosition, addHistory, account, updateAccount, isHydrated } = useTrading();
+  const { positions, removePosition, updatePosition, isHydrated } = useTrading();
   const { isPriceLive } = useMarketData();
   const [modifyingPosition, setModifyingPosition] = useState<string | null>(null);
   const [modifyStopLoss, setModifyStopLoss] = useState('');
@@ -40,53 +40,10 @@ export default function OpenPositions() {
   };
 
   const handleClose = (position: Position) => {
-    // Get current market price
-    const currentPrice = position.currentPrice;
-
-    // Calculate P&L
-    const priceDiff = position.side === 'buy' 
-      ? currentPrice - position.entryPrice 
-      : position.entryPrice - currentPrice;
-    const pnl = priceDiff * position.units;
-
-    // Remove from positions
+    // removePosition now handles P&L calculation, balance update,
+    // DB persistence, and history entry (via DB trigger)
     removePosition(position.id);
-
-    // Add to history
-    addHistory({
-      id: position.id,
-      userId: position.userId,
-      symbol: position.symbol,
-      side: position.side,
-      type: 'market',
-      units: position.units,
-      price: currentPrice,
-      entryPrice: position.entryPrice,
-      entryTimestamp: position.timestamp, // Store when position was opened
-      pnl,
-      timestamp: new Date(),
-      status: 'closed',
-      mode: 'live' as any // Use live mode exclusively
-    });
-
-    // Compute remaining unrealized P&L and margin from other open positions
-    const remainingPositions = positions.filter(p => p.id !== position.id);
-    const remainingUnrealizedPnL = remainingPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
-    const remainingMargin = remainingPositions.reduce((sum, p) => sum + (p.margin || 0), 0);
-    const newBalance = account.balance + pnl;
-    const newEquity = newBalance + remainingUnrealizedPnL;
-
-    // Update account
-    updateAccount({
-      balance: newBalance,
-      equity: newEquity,
-      realizedPnL: account.realizedPnL + pnl,
-      unrealizedPnL: remainingUnrealizedPnL,
-      margin: remainingMargin,
-      availableFunds: newEquity - remainingMargin,
-    });
-
-    toast.success(`Position closed: ${pnl >= 0 ? 'Profit' : 'Loss'} of $${Math.abs(pnl).toFixed(2)}`);
+    toast.success(`Closing position ${position.symbol}...`);
   };
 
   const calculatePL = (position: Position) => {

@@ -485,15 +485,55 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   };
 
   const removePosition = async (positionId: string) => {
+    const userId = auth.currentUser?.id;
     try {
       const position = positions.find(p => p.id === positionId);
       if (!position) return;
 
+      // Calculate P&L for the closed position
+      const priceDiff = position.side === 'buy'
+        ? position.currentPrice - position.entryPrice
+        : position.entryPrice - position.currentPrice;
+      const pnl = priceDiff * position.units;
+
       // Optimistic UI update: Remove immediately from screen
       setPositions(prev => prev.filter(p => p.id !== positionId));
 
+      // Calculate remaining positions metrics (excluding the one being closed)
+      const remainingPositions = positions.filter(p => p.id !== positionId);
+      const remainingUnrealizedPnL = remainingPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
+      const remainingMargin = remainingPositions.reduce((sum, p) => sum + (p.margin || 0), 0);
+      const newBalance = account.balance + pnl;
+      const newEquity = newBalance + (account.bonus || 0) + (account.credit || 0) + remainingUnrealizedPnL;
+
+      // Optimistic account update
+      setAccount(prev => ({
+        ...prev,
+        balance: newBalance,
+        equity: newEquity,
+        realizedPnL: prev.realizedPnL + pnl,
+        unrealizedPnL: remainingUnrealizedPnL,
+        margin: remainingMargin,
+        availableFunds: newEquity - remainingMargin,
+      }));
+
       const res = await api.positions.close(positionId, position.currentPrice);
       if (res) {
+        // Persist the new balance to trading_accounts AND users table
+        if (userId) {
+          await Promise.all([
+            api.tradingAccounts.update(userId, {
+              balance: newBalance,
+              equity: newEquity,
+              available_funds: newEquity - remainingMargin,
+            }),
+            api.users.updateBalance(userId, newBalance),
+          ]).catch(err => console.error('Failed to persist balance after close:', err));
+
+          // Sync the auth context so other components see the updated balance
+          auth.updateUser(userId, { balance: newBalance, liveBalance: newBalance });
+        }
+
         // The DB trigger handles history entry. 
         // We await the refresh to ensure local state is perfectly synced.
         await loadTradingData();
@@ -699,11 +739,13 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   const positionsRef = useRef(positions);
   const accountRef = useRef(account);
   const ordersRef = useRef(orders);
+  const authRef = useRef(auth);
 
   // Keep refs in sync
   positionsRef.current = positions;
   accountRef.current = account;
   ordersRef.current = orders;
+  authRef.current = auth;
 
   useEffect(() => {
     let databaseSyncTick = 0;
@@ -800,22 +842,26 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
         // --- 2. HANDLE POSITION PRICE UPDATES ---
         if (currentPositions.length === 0) {
-          const targetEquity = currentAccount.balance + (currentAccount.bonus || 0) + (currentAccount.credit || 0);
-          if (currentAccount.unrealizedPnL !== 0 || currentAccount.margin !== 0 || currentAccount.availableFunds !== targetEquity || currentAccount.equity !== targetEquity) {
-            setAccountState({
-              ...currentAccount,
-              equity: targetEquity,
-              unrealizedPnL: 0,
-              margin: 0,
-              availableFunds: targetEquity,
-            });
-          }
+          setAccountState(prev => {
+            const targetEquity = prev.balance + (prev.bonus || 0) + (prev.credit || 0);
+            if (prev.unrealizedPnL !== 0 || prev.margin !== 0 || prev.availableFunds !== targetEquity || prev.equity !== targetEquity) {
+              return {
+                ...prev,
+                equity: targetEquity,
+                unrealizedPnL: 0,
+                margin: 0,
+                availableFunds: targetEquity,
+              };
+            }
+            return prev;
+          });
           return;
         }
 
         let totalUnrealizedPnL = 0;
         let totalMargin = 0;
         let hasUpdates = false;
+        let newlyRealizedPnL = 0;
 
         const updatedPositions = currentPositions.map(position => {
           const priceData = marketData.getPrice(position.symbol);
@@ -840,6 +886,12 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
           if (shouldClose) {
             console.log(`🎯 Position ${position.id} closed due to ${closeReason} at ${currentPrice}`);
+            
+            const priceDiff = position.side === 'buy'
+              ? currentPrice - position.entryPrice
+              : position.entryPrice - currentPrice;
+            newlyRealizedPnL += priceDiff * position.units;
+            
             api.positions.close(position.id, currentPrice)
               .then(() => toast.info(`${closeReason} hit! Closed ${position.symbol} @ $${currentPrice.toFixed(2)}`))
               .catch(err => console.error("Failed to process SL/TP close:", err));
@@ -873,15 +925,31 @@ export function TradingProvider({ children }: { children: ReactNode }) {
         const equity = currentAccount.balance + (currentAccount.bonus || 0) + (currentAccount.credit || 0) + totalUnrealizedPnL;
         const availableFunds = equity - totalMargin;
 
-        // Force update if position prices changed OR if derived summary values don't match latest polls
-        if (hasUpdates || currentAccount.equity !== equity || currentAccount.availableFunds !== availableFunds || currentAccount.margin !== totalMargin) {
+        // Force update if position prices changed OR if derived summary values don't match latest polls OR if positions were closed
+        if (hasUpdates || newlyRealizedPnL !== 0 || currentAccount.equity !== equity || currentAccount.availableFunds !== availableFunds || currentAccount.margin !== totalMargin) {
           setPositionsState(updatedPositions);
-          setAccountState({
-            ...currentAccount,
-            equity,
-            unrealizedPnL: totalUnrealizedPnL,
-            margin: totalMargin,
-            availableFunds,
+          setAccountState(prev => {
+            const newBalance = prev.balance + newlyRealizedPnL;
+            const newEquity = newBalance + (prev.bonus || 0) + (prev.credit || 0) + totalUnrealizedPnL;
+            
+            if (newlyRealizedPnL !== 0) {
+              const userId = authRef.current.currentUser?.id;
+              if (userId) {
+                api.users.updateBalance(userId, newBalance).catch(() => {});
+                api.tradingAccounts.update(userId, { balance: newBalance }).catch(() => {});
+                authRef.current.updateUser(userId, { balance: newBalance, liveBalance: newBalance });
+              }
+            }
+            
+            return {
+              ...prev,
+              balance: newBalance,
+              realizedPnL: prev.realizedPnL + newlyRealizedPnL,
+              equity: newEquity,
+              unrealizedPnL: totalUnrealizedPnL,
+              margin: totalMargin,
+              availableFunds: newEquity - totalMargin,
+            };
           });
 
           // BACKGROUND DATABASE SYNC (Throttle to every ~30s = 6 ticks of 5000ms)
