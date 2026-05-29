@@ -11,6 +11,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import {
   Select,
   SelectContent,
@@ -272,7 +273,7 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
   };
 
   const orderInfo = calculateOrderInfo();
-  const marginUsagePercent = account.balance > 0 ? (orderInfo.margin / account.balance) * 100 : 0;
+  const marginUsagePercent = account.availableFunds > 0 ? (orderInfo.margin / account.availableFunds) * 100 : 0;
 
   const handlePlaceOrder = () => {
     // Check if market is closed and user is not admin
@@ -723,10 +724,21 @@ export default function OrderPanel({ symbol, currentPrice, bid, ask, calculatorD
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-gray-600 dark:text-gray-400">Margin</span>
-                  <HelpCircle className="w-3 h-3 text-gray-400" />
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <HelpCircle className="w-3 h-3 text-gray-400 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="w-[200px] text-xs">
+                          Margin is the funds required to open the position. Free Margin is the funds available for new trades.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
                 <span className="text-xs">
-                  {formatNumber(orderInfo.margin)} / {formatNumber(account.balance)}
+                  {formatNumber(orderInfo.margin)} / {formatNumber(account.availableFunds)}
                 </span>
               </div>
               <div className="w-full h-2 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
